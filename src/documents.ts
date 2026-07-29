@@ -80,96 +80,133 @@ export const Handoff = baseEnvelope.extend({
 export type Handoff = z.infer<typeof Handoff>;
 
 /* ================================================================== */
-/* Programme registers (PRD §9.4)                                      */
-/* Discriminated on `register`; all share type 'register_entry'.       */
+/* Registers (PRD §9.4) — data-driven, built per facility              */
 /* ================================================================== */
+/*
+ * Registers are NOT hard-coded schemas. A facility configures each one at
+ * runtime: a `register_definition` document holds its typed fields, and staff
+ * record `register_entry` documents whose `values` are keyed by field id. This
+ * is what lets a facility create a register with no code change and no DB
+ * migration — creating one is just another document write.
+ */
 
-const registerBase = baseEnvelope.extend({
+export const RegisterFieldType = z.enum([
+  'text',
+  'textarea',
+  'number',
+  'date',
+  'phone',
+  'select',
+  'multiselect',
+  'checkbox',
+  'section',
+]);
+export type RegisterFieldType = z.infer<typeof RegisterFieldType>;
+
+/** One field in a register. `id` is STABLE — entries key their values by it, so
+ *  it must never be reused or reassigned (labels may change freely). */
+export const RegisterFieldDef = z.object({
+  id: z.string().min(1),
+  type: RegisterFieldType,
+  label: z.string().min(1),
+  required: z.boolean().default(false),
+  help: z.string().optional(),
+  /** Choices for `select` / `multiselect`. */
+  options: z.array(z.string()).optional(),
+});
+export type RegisterFieldDef = z.infer<typeof RegisterFieldDef>;
+
+export const RegisterStatus = z.enum(['draft', 'published']);
+export type RegisterStatus = z.infer<typeof RegisterStatus>;
+
+/**
+ * A facility-configured register. **Immutable per version:** publishing an edit
+ * writes a NEW version document rather than mutating fields in place, so entries
+ * pinned to an older `version` still render against the fields they were recorded
+ * with — historical data never needs migrating.
+ *
+ * `_id` convention: `${registerId}:v${version}` (a specific version). The
+ * "current" register is the highest-version `published` doc for a `registerId`.
+ */
+export const RegisterDefinition = baseEnvelope.extend({
+  type: z.literal('register_definition'),
+  registerId: z.string().min(1),
+  version: z.number().int().positive().default(1),
+  name: z.string().min(1),
+  category: z.string().min(1),
+  description: z.string().default(''),
+  status: RegisterStatus.default('draft'),
+  fields: z.array(RegisterFieldDef),
+});
+export type RegisterDefinition = z.infer<typeof RegisterDefinition>;
+
+/** One field's recorded value — shape depends on the field's type. */
+export const RegisterEntryValue = z.union([z.string(), z.number(), z.boolean(), z.array(z.string())]);
+export type RegisterEntryValue = z.infer<typeof RegisterEntryValue>;
+
+/**
+ * An append-only entry recorded against a specific published register version.
+ * `values` is keyed by `RegisterFieldDef.id`. The envelope and value *shapes* are
+ * Zod-checked here, but per-field rules (required, correct type, valid option)
+ * cannot be — no static schema knows a runtime register's fields. Enforce those
+ * with {@link validateRegisterEntry} on the write path, in addition to
+ * `parseDocument`.
+ */
+export const RegisterEntry = baseEnvelope.extend({
   type: z.literal('register_entry'),
-  /** Optional: some tally-style entries are not tied to a stored patient. */
-  patientId: patientId.optional(),
+  registerId: z.string().min(1),
+  registerVersion: z.number().int().positive(),
   entryDate: isoDate,
   setting: Setting.default('facility'),
-  ageYears: z.number().int().nonnegative().optional(),
-  sex: Sex.optional(),
+  /** Some entries link a stored patient; tally-style ones don't. */
+  patientId: patientId.optional(),
+  values: z.record(z.string(), RegisterEntryValue),
 });
-
-export const OpdEntry = registerBase.extend({
-  register: z.literal('opd'),
-  diagnosis: z.array(z.string()).default([]),
-  referred: z.boolean().default(false),
-});
-
-export const Antigen = z.enum([
-  'BCG',
-  'OPV',
-  'Penta',
-  'PCV',
-  'Rotavirus',
-  'Measles',
-  'YellowFever',
-  'HepB',
-  'TT', // tetanus toxoid
-  'Vitamin_A',
-]);
-export const ImmunisationEntry = registerBase.extend({
-  register: z.literal('immunisation'),
-  antigen: Antigen,
-  doseNumber: z.number().int().min(0),
-  childAgeMonths: z.number().int().nonnegative().optional(),
-});
-
-export const FpMethod = z.enum([
-  'implant',
-  'injectable',
-  'pills',
-  'iud',
-  'condom',
-  'sterilisation',
-  'other',
-]);
-export const FamilyPlanningEntry = registerBase.extend({
-  register: z.literal('family_planning'),
-  method: FpMethod,
-  clientType: z.enum(['new', 'returning']),
-  followUpDue: isoDate.optional(),
-});
-
-export const AntenatalEntry = registerBase.extend({
-  register: z.literal('antenatal'),
-  visitNumber: z.number().int().min(1),
-  gestationalWeeks: z.number().int().min(0).max(45).optional(),
-  testsDone: z.array(z.string()).default([]), // e.g. HIV, haemoglobin
-  referred: z.boolean().default(false),
-});
-
-export const TbEntry = registerBase.extend({
-  register: z.literal('tb'),
-  presumptive: z.boolean().default(true),
-  testType: z.enum(['sputum_smear', 'genexpert', 'none']).default('none'),
-  result: z
-    .enum(['positive', 'negative', 'pending', 'not_done'])
-    .default('not_done'),
-  startedTreatment: z.boolean().default(false),
-});
-
-export const MalariaEntry = registerBase.extend({
-  register: z.literal('malaria'),
-  testType: z.enum(['rdt', 'microscopy', 'none']).default('rdt'),
-  result: z.enum(['positive', 'negative', 'not_done']).default('not_done'),
-  treated: z.boolean().default(false),
-  antimalarial: z.string().optional(),
-});
-
-export const RegisterEntry = z.discriminatedUnion('register', [
-  OpdEntry,
-  ImmunisationEntry,
-  FamilyPlanningEntry,
-  AntenatalEntry,
-  TbEntry,
-  MalariaEntry,
-]);
 export type RegisterEntry = z.infer<typeof RegisterEntry>;
+
+const matchesFieldType = (field: RegisterFieldDef, value: RegisterEntryValue | undefined): boolean => {
+  switch (field.type) {
+    case 'text':
+    case 'textarea':
+    case 'date':
+    case 'phone':
+      return typeof value === 'string';
+    case 'number':
+      return typeof value === 'number' || (typeof value === 'string' && value.trim() !== '' && !Number.isNaN(Number(value)));
+    case 'checkbox':
+      return typeof value === 'boolean';
+    case 'select':
+      return typeof value === 'string' && (!field.options || field.options.includes(value));
+    case 'multiselect':
+      return Array.isArray(value) && value.every((v) => !field.options || field.options.includes(v));
+    default:
+      return true;
+  }
+};
+
+/**
+ * Definition-driven validation for an entry's values against its register's
+ * fields — the piece a static schema can't do. Enforces required fields and
+ * per-field value types/options, so a new register needs no bespoke schema and
+ * no migration. Returns human-readable issues (`[]` means valid).
+ */
+export const validateRegisterEntry = (
+  fields: RegisterFieldDef[],
+  values: Record<string, RegisterEntryValue | undefined>,
+): string[] => {
+  const issues: string[] = [];
+  for (const field of fields) {
+    if (field.type === 'section') continue;
+    const value = values[field.id];
+    const empty = value === undefined || value === '' || (Array.isArray(value) && value.length === 0);
+    if (empty) {
+      if (field.required) issues.push(`"${field.label}" is required`);
+      continue;
+    }
+    if (!matchesFieldType(field, value)) issues.push(`"${field.label}" has an invalid value for a ${field.type} field`);
+  }
+  return issues;
+};
 
 /* ================================================================== */
 /* Referral (PRD §11)                                                  */
