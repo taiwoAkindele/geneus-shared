@@ -1,0 +1,27 @@
+# Dependencies (consuming repo supplies zod / tsconfig)
+node_modules/
+
+# Build output (this package has no build step, but just in case)
+dist/
+build/
+*.tsbuildinfo
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+
+# Editor / IDE
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini

@@ -43,7 +43,8 @@ table name and a foreign key would do in SQL.
 | `patient` | `Patient` | §10 (NASADOR) |
 | `visit` | `Visit` | §9.1 |
 | `handoff` | `Handoff` | §9.7 |
-| `register_entry` | `RegisterEntry` (union on `register`) | §9.4 |
+| `register_definition` | `RegisterDefinition` | §9.4 |
+| `register_entry` | `RegisterEntry` (values keyed by field id) | §9.4 |
 | `referral` | `Referral` | §11 |
 | `stock_item` / `stock_movement` | `StockItem` / `StockMovement` | §9.1, §9.6 |
 | `facility` / `unit` | `Facility` / `Unit` | §9.7 |
@@ -51,10 +52,12 @@ table name and a foreign key would do in SQL.
 | `device_enrollment` | `DeviceEnrollment` | root §4.3c |
 | `audit_event` | `AuditEvent` | §14 |
 
-**Register entries are special:** all six carry `type: 'register_entry'` and discriminate
-further on a `register` field (`opd` | `immunisation` | `family_planning` | `antenatal` |
-`tb` | `malaria`). That two-level shape is why `AnyDocument` is a plain `z.union` rather
-than a `type`-discriminated union — see the note in [`src/index.ts`](src/index.ts).
+**Registers are data-driven (see §9).** A facility builds each register at runtime: a
+`register_definition` document holds its typed `fields`, and each `register_entry` carries
+a `values` map keyed by field id. There is **no per-register schema** — creating a register
+is just a document write, so it never needs a code change or a DB migration. The six
+statutory programme registers (OPD, Immunisation, FP, ANC, TB, Malaria) are simply seeded
+definitions, not hard-coded types.
 
 ## 4. `_id` conventions
 
@@ -123,3 +126,48 @@ TypeScript. To keep the DB-level guard from drifting from the contract:
   rebuilt from these documents (root §2.3), not part of the write contract.
 - **API request/response envelopes** beyond the document shapes — add a `src/api.ts` here
   later if the two repos need to share those too.
+
+## 9. Registers: data-driven and migration-free (PRD §9.4)
+
+Registers are configured by each facility at runtime, not defined in code. This section is
+the reasoning behind that model — the thing that lets a facility create a register with **no
+code change and no database migration**.
+
+### 9.1 The shape
+
+- **`register_definition`** — a form definition: `name`, `category`, `description`, `status`
+  (`draft` | `published`), a `version`, and a `fields[]` array of `RegisterFieldDef`
+  (`{ id, type, label, required?, help?, options? }`). Field `type` is one of
+  `text · textarea · number · date · phone · select · multiselect · checkbox · section`.
+- **`register_entry`** — an append-only row: `registerId`, `registerVersion`, `entryDate`,
+  `setting` (Facility/Outreach, PRD §9.5), optional `patientId`, and a **`values` map keyed
+  by `RegisterFieldDef.id`**.
+
+Because CouchDB is one bag of JSON per facility (§2), creating a register or recording an
+entry is just a `put`. No table, no column, no DDL — the same reason a new patient needs no
+migration.
+
+### 9.2 Three rules that keep it migration-free
+
+1. **Field ids are stable.** Entries reference fields by `id`, so an id is never reused or
+   reassigned. Labels can change freely (they're display only); ids cannot.
+2. **Edits version, they don't rewrite.** A `register_definition` is treated as **immutable
+   per `version`** (`_id` = `${registerId}:v${version}`). Publishing an edit writes a *new*
+   version; existing entries stay pinned to the `registerVersion` they were recorded against
+   and still render against the fields they used. Historical data is never back-filled.
+3. **Validation is definition-driven.** No static Zod schema can know a runtime register's
+   fields, so `parseDocument` only checks the entry *envelope* and value *shapes*. Per-field
+   rules (required, correct type, valid option) are enforced by
+   **`validateRegisterEntry(fields, values)`** ([documents.ts](src/documents.ts)) on the
+   write path, using the register's own definition. Belt (`parseDocument`) and braces
+   (`validateRegisterEntry`).
+
+### 9.3 Reporting (a note for `geneus-server`)
+
+The offline write path is migration-free; the **analytics projection is where a naïve design
+would not be**. A column-per-field table would need Postgres DDL every time a facility adds a
+register or a field. Store entry `values` as **JSONB** (or a key/value table) and query with
+JSON operators, so new registers and fields need no schema migration downstream either.
+Programme indicators (malaria positivity, ANC 4th-visit, immunisation dropout, …) are then a
+mapping from well-known field ids/conventions to indicators, defined once — not a schema per
+register.

@@ -17,6 +17,7 @@ import {
   Patient,
   Visit,
   Handoff,
+  RegisterDefinition,
   RegisterEntry,
   Referral,
   StockItem,
@@ -30,16 +31,17 @@ import {
 } from './documents';
 
 /**
- * The union of every persisted document. Note this is a plain `z.union`, not a
- * discriminated union on `type`: the six register variants all share
- * type='register_entry' (they discriminate on `register`), so a single
- * type-discriminator can't cover them. Validation still works — it just tries
- * each member. When you already know the type, prefer the specific schema.
+ * The union of every persisted document. Kept a plain `z.union` (not a
+ * discriminated union) for simplicity — validation just tries each member. When
+ * you already know the `type`, prefer the specific schema via `parseDocument`.
+ * Note a `register_entry`'s per-field rules are validated separately, against its
+ * register definition — see `validateRegisterEntry` (documents.ts).
  */
 export const AnyDocument = z.union([
   Patient,
   Visit,
   Handoff,
+  RegisterDefinition,
   RegisterEntry,
   Referral,
   StockItem,
@@ -58,6 +60,7 @@ export const SCHEMA_BY_TYPE = {
   patient: Patient,
   visit: Visit,
   handoff: Handoff,
+  register_definition: RegisterDefinition,
   register_entry: RegisterEntry,
   referral: Referral,
   stock_item: StockItem,

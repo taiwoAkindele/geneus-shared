@@ -11,8 +11,13 @@
  */
 import { z } from 'zod';
 
-/** Bump when a breaking change is made to any document shape. Drives migration. */
-export const SCHEMA_VERSION = 1 as const;
+/**
+ * Bump when a breaking change is made to any document shape. Drives migration.
+ * v2: registers became data-driven — the fixed six-programme `register_entry`
+ * union was replaced by a generic `register_definition` + `register_entry`
+ * (values keyed by field id). See documents.ts and SCHEMA.md §9.
+ */
+export const SCHEMA_VERSION = 2 as const;
 
 /* ------------------------------------------------------------------ */
 /* Primitive helpers                                                   */
@@ -42,6 +47,7 @@ export const DocType = z.enum([
   'patient',
   'visit',
   'handoff',
+  'register_definition',
   'register_entry',
   'referral',
   'stock_item',
