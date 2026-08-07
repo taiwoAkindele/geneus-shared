@@ -43,6 +43,7 @@ table name and a foreign key would do in SQL.
 | `patient` | `Patient` | §10 (NASADOR) |
 | `visit` | `Visit` | §9.1 |
 | `handoff` | `Handoff` | §9.7 |
+| `appointment` | `Appointment` | §9.8 |
 | `register_definition` | `RegisterDefinition` | §9.4 |
 | `register_entry` | `RegisterEntry` (values keyed by field id) | §9.4 |
 | `referral` | `Referral` | §11 |

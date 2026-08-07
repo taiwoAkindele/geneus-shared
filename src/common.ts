@@ -47,6 +47,7 @@ export const DocType = z.enum([
   'patient',
   'visit',
   'handoff',
+  'appointment',
   'register_definition',
   'register_entry',
   'referral',

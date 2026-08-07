@@ -36,6 +36,7 @@ export const Patient = baseEnvelope
     ageYears: z.number().int().nonnegative().max(130).optional(),
     occupation: z.string().optional(),
     religion: z.string().optional(),
+    allergies: z.array(z.string()).default([]),
     // Strongest returning-patient signals (optional)
     phone: z.string().optional(),
     nin: z.string().optional(),
@@ -78,6 +79,27 @@ export const Handoff = baseEnvelope.extend({
   status: z.enum(['pending', 'received', 'done']).default('pending'),
 });
 export type Handoff = z.infer<typeof Handoff>;
+
+/* ================================================================== */
+/* Appointment (PRD §9.8)                                              */
+/* ================================================================== */
+
+export const AppointmentStatus = z.enum(['pending', 'scheduled']);
+export type AppointmentStatus = z.infer<typeof AppointmentStatus>;
+
+export const Appointment = baseEnvelope
+  .extend({
+    type: z.literal('appointment'),
+    patientId,
+    reason: z.string().min(1),
+    scheduledFor: isoDateTime.optional(),
+    status: AppointmentStatus.default('pending'),
+  })
+  .refine((a) => a.status !== 'scheduled' || Boolean(a.scheduledFor), {
+    message: 'A scheduled appointment needs scheduledFor',
+    path: ['scheduledFor'],
+  });
+export type Appointment = z.infer<typeof Appointment>;
 
 /* ================================================================== */
 /* Registers (PRD §9.4) — data-driven, built per facility              */
