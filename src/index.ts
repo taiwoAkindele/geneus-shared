@@ -5,13 +5,14 @@
  *   import { Patient, AnyDocument, parseDocument } from '<path-to-submodule>/src';
  *
  * This is a plain git-submodule folder (no package.json). The consuming repo
- * supplies `zod` and its own tsconfig; use moduleResolution "bundler" (Vite) or
- * an equivalent so the extensionless relative imports resolve. See README.md.
+ * supplies `zod` and its own tsconfig. Relative imports carry an explicit `.ts`
+ * extension so both consumers resolve them: Vite in geneus-web, and Node's own
+ * type stripping in geneus-server. See README.md.
  */
 import { z } from 'zod';
 
-export * from './common';
-export * from './documents';
+export * from './common.ts';
+export * from './documents.ts';
 
 import {
   Patient,
@@ -29,7 +30,7 @@ import {
   RosterShift,
   DeviceEnrollment,
   AuditEvent,
-} from './documents';
+} from './documents.ts';
 
 /**
  * The union of every persisted document. Kept a plain `z.union` (not a

@@ -15,7 +15,7 @@ import {
   patientId,
   Sex,
   Setting,
-} from './common';
+} from './common.ts';
 
 /* ================================================================== */
 /* Patient (PRD §10 — NASADOR)                                         */
