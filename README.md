@@ -35,9 +35,10 @@ build step**. The consuming repo supplies `zod` and its own tsconfig.
 
 - **`zod` installed** in the consumer (peer of this contract). Keep the version in sync
   across both repos.
-- **`moduleResolution: "bundler"`** (Vite/esbuild) or an equivalent that resolves
-  extensionless relative TS imports. `geneus-web` (Vite) satisfies this out of the box;
-  `geneus-server` should use a bundler-mode tsconfig or a bundler (tsup/esbuild).
+- **TypeScript that allows `.ts` import specifiers** — relative imports here carry an
+  explicit `.ts` extension so the same files load in a bundler and in Node. `geneus-web`
+  uses `moduleResolution: "bundler"`; `geneus-server` uses `nodenext` with
+  `allowImportingTsExtensions`, and Node runs the files directly via type stripping.
 - Include the submodule in the consumer's `tsconfig` `include`.
 
 ### Updating the contract

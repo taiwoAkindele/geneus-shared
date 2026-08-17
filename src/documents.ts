@@ -15,7 +15,7 @@ import {
   patientId,
   Sex,
   Setting,
-} from './common';
+} from './common.ts';
 
 /* ================================================================== */
 /* Patient (PRD §10 — NASADOR)                                         */
@@ -36,6 +36,7 @@ export const Patient = baseEnvelope
     ageYears: z.number().int().nonnegative().max(130).optional(),
     occupation: z.string().optional(),
     religion: z.string().optional(),
+    allergies: z.array(z.string()).default([]),
     // Strongest returning-patient signals (optional)
     phone: z.string().optional(),
     nin: z.string().optional(),
@@ -78,6 +79,27 @@ export const Handoff = baseEnvelope.extend({
   status: z.enum(['pending', 'received', 'done']).default('pending'),
 });
 export type Handoff = z.infer<typeof Handoff>;
+
+/* ================================================================== */
+/* Appointment (PRD §9.8)                                              */
+/* ================================================================== */
+
+export const AppointmentStatus = z.enum(['pending', 'scheduled']);
+export type AppointmentStatus = z.infer<typeof AppointmentStatus>;
+
+export const Appointment = baseEnvelope
+  .extend({
+    type: z.literal('appointment'),
+    patientId,
+    reason: z.string().min(1),
+    scheduledFor: isoDateTime.optional(),
+    status: AppointmentStatus.default('pending'),
+  })
+  .refine((a) => a.status !== 'scheduled' || Boolean(a.scheduledFor), {
+    message: 'A scheduled appointment needs scheduledFor',
+    path: ['scheduledFor'],
+  });
+export type Appointment = z.infer<typeof Appointment>;
 
 /* ================================================================== */
 /* Registers (PRD §9.4) — data-driven, built per facility              */
@@ -317,11 +339,20 @@ export type Role = z.infer<typeof Role>;
  * secrets and roster signatures are handled by geneus-server; the replica only
  * carries identity + role (PRD §14, root §4.3).
  */
+/**
+ * Whether this person may record care, or only look. Deliberately binary: the
+ * role already carries what someone does, and a flag the app does not enforce
+ * everywhere is worse than none.
+ */
+export const StaffPermission = z.enum(['read_only', 'read_write']);
+export type StaffPermission = z.infer<typeof StaffPermission>;
+
 export const Staff = baseEnvelope.extend({
   type: z.literal('staff'),
   staffId: z.string().min(1),
   fullName: z.string().min(1),
   role: Role,
+  permission: StaffPermission.default('read_write'),
   active: z.boolean().default(true),
 });
 export type Staff = z.infer<typeof Staff>;
