@@ -339,11 +339,20 @@ export type Role = z.infer<typeof Role>;
  * secrets and roster signatures are handled by geneus-server; the replica only
  * carries identity + role (PRD §14, root §4.3).
  */
+/**
+ * Whether this person may record care, or only look. Deliberately binary: the
+ * role already carries what someone does, and a flag the app does not enforce
+ * everywhere is worse than none.
+ */
+export const StaffPermission = z.enum(['read_only', 'read_write']);
+export type StaffPermission = z.infer<typeof StaffPermission>;
+
 export const Staff = baseEnvelope.extend({
   type: z.literal('staff'),
   staffId: z.string().min(1),
   fullName: z.string().min(1),
   role: Role,
+  permission: StaffPermission.default('read_write'),
   active: z.boolean().default(true),
 });
 export type Staff = z.infer<typeof Staff>;
