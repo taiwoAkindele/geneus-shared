@@ -122,7 +122,8 @@ TypeScript. To keep the DB-level guard from drifting from the contract:
 ## 8. Not in this contract
 
 - **Auth secrets / credentials / roster signatures** — handled by `geneus-server`; only
-  identity + role live in the replica (PRD §14).
+  identity, role and permission live in the replica (PRD §14). A staff member's PIN is
+  never a document: it stays on the device that set it.
 - **Postgres analytics shapes** — those are derived projections owned by `geneus-server`,
   rebuilt from these documents (root §2.3), not part of the write contract.
 - **API request/response envelopes** beyond the document shapes — add a `src/api.ts` here
