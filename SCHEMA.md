@@ -121,9 +121,16 @@ TypeScript. To keep the DB-level guard from drifting from the contract:
 
 ## 8. Not in this contract
 
-- **Auth secrets / credentials / roster signatures** — handled by `geneus-server`; only
-  identity, role and permission live in the replica (PRD §14). A staff member's PIN is
-  never a document: it stays on the device that set it.
+- **Auth secrets / credentials** — never in the replica; only identity, role and permission
+  live here (PRD §14). A staff member's PIN is owned by **the device**, not by
+  `geneus-server`: it is set and verified on the device that set it, never travels, and is
+  never a document. Offline login has to work with no network, so there is nothing here for
+  a server to own.
+- **Roster signatures are the deliberate exception** — `roster_shift.signature` is a field
+  of the document precisely because devices must verify it offline. `geneus-server`
+  produces it by sweep *after* the device writes the shift, so a shift is unsigned until its
+  first sync and grants access either way: the signature is tamper-evidence, not an access
+  gate (server PLAN §4.1).
 - **Postgres analytics shapes** — those are derived projections owned by `geneus-server`,
   rebuilt from these documents (root §2.3), not part of the write contract.
 - **API request/response envelopes** beyond the document shapes — add a `src/api.ts` here
