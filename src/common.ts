@@ -1,10 +1,10 @@
 /**
  * Geneus Health — shared contract: common building blocks.
  *
- * The envelope, enums, and helpers every document reuses. Nothing here is
+ * The envelope, enums, and helpers every record reuses. Nothing here is
  * Geneus-specific business logic — it is the shared vocabulary that keeps the
- * frontend (geneus-web), the backend (geneus-server), and CouchDB's
- * validate_doc_update guard from ever disagreeing about document shape.
+ * client (geneus-web, SQLite via PowerSync) and the server (geneus-server,
+ * PostgreSQL) from ever disagreeing about record shape.
  *
  * `zod` is provided by the CONSUMING repo (this is a plain submodule, not a
  * package), so both repos must have zod installed.
@@ -12,12 +12,13 @@
 import { z } from 'zod';
 
 /**
- * Bump when a breaking change is made to any document shape. Drives migration.
- * v2: registers became data-driven — the fixed six-programme `register_entry`
- * union was replaced by a generic `register_definition` + `register_entry`
- * (values keyed by field id). See documents.ts and SCHEMA.md §9.
+ * Bump when a breaking change is made to any record shape. Drives migration.
+ * v2: registers became data-driven (`register_definition` + `register_entry`).
+ * v3: PostgreSQL + PowerSync — `_id`/`_rev` replaced by `id`; `device_enrollment`
+ *     became `device`; `sync_rejection` added; audit events carry an outcome;
+ *     roster signatures are optional until the server signs them.
  */
-export const SCHEMA_VERSION = 2 as const;
+export const SCHEMA_VERSION = 3 as const;
 
 /* ------------------------------------------------------------------ */
 /* Primitive helpers                                                   */
@@ -42,7 +43,11 @@ export type Sex = z.infer<typeof Sex>;
 export const Setting = z.enum(['facility', 'outreach']);
 export type Setting = z.infer<typeof Setting>;
 
-/** The `type` discriminator carried by every persisted document. */
+/**
+ * The `type` discriminator carried by every synced record. Each value is also
+ * the name of the record's PostgreSQL table (pluralised) and its Sync Stream,
+ * which is what lets the server keep one allowlist for uploads.
+ */
 export const DocType = z.enum([
   'patient',
   'visit',
@@ -57,8 +62,9 @@ export const DocType = z.enum([
   'unit',
   'staff',
   'roster_shift',
-  'device_enrollment',
+  'device',
   'audit_event',
+  'sync_rejection',
 ]);
 export type DocType = z.infer<typeof DocType>;
 
@@ -82,28 +88,28 @@ export const patientId = z
   .regex(PATIENT_ID_RE, 'Expected a Patient ID like OOE-PHC-000047-K2');
 
 /* ------------------------------------------------------------------ */
-/* The document envelope                                               */
+/* The record envelope                                                 */
 /* ------------------------------------------------------------------ */
 
 /**
- * Every persisted CouchDB document extends this. CouchDB is one bag of JSON, so
- * `type` is how documents are told apart, and `facilityId` is how each
- * per-facility database keeps its data isolated (enforced again at the DB level
- * by validate_doc_update — see SCHEMA.md).
+ * Every synced record extends this. `type` tells records apart in the client's
+ * SQLite and in the upload stream; `facilityId` is the isolation boundary,
+ * enforced by the server on every upload and by the facility-scoped Sync
+ * Streams on every download (SCHEMA.md §2, §6).
  *
- * `_id` / `_rev` are CouchDB-managed. `_rev` is absent until the first save.
+ * `id` is minted by whoever creates the record — the device, offline — and is
+ * the primary key on both sides. PowerSync requires it to be text.
  */
 export const baseEnvelope = z.object({
-  _id: z.string().min(1),
-  _rev: z.string().optional(),
+  id: z.string().min(1),
 
-  /** Owning facility. For most docs this equals the DB it lives in. */
+  /** Owning facility. Every record belongs to exactly one. */
   facilityId: z.string().min(1),
 
-  /** Shape version this document was written against. */
+  /** Shape version this record was written against. */
   schemaVersion: z.number().int().positive().default(SCHEMA_VERSION),
 
-  /** Staff who created it (staffId) — 'system' for provisioning docs. */
+  /** Staff who created it (staffId) — 'system' for server-written records. */
   createdBy: z.string().min(1),
   createdOn: isoDateTime,
 
@@ -114,3 +120,15 @@ export const baseEnvelope = z.object({
   updatedOn: isoDateTime.optional(),
 });
 export type BaseEnvelope = z.infer<typeof baseEnvelope>;
+
+/**
+ * The envelope fields a PATCH may never change. The server rejects an update
+ * that touches any of them; the client never sends one (SCHEMA.md §6).
+ */
+export const IMMUTABLE_ENVELOPE_FIELDS = [
+  'id',
+  'facilityId',
+  'createdBy',
+  'createdOn',
+  'deviceId',
+] as const satisfies readonly (keyof BaseEnvelope)[];

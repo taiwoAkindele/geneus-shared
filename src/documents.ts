@@ -1,15 +1,15 @@
 /**
  * Geneus Health — shared contract: the document schemas.
  *
- * One Zod schema per document type. These are the single source of truth for
- * what a valid document looks like. geneus-web validates before writing to local
- * PouchDB; geneus-server validates API payloads and reads; CouchDB's
- * validate_doc_update guard is GENERATED from these (see SCHEMA.md) — never
- * hand-duplicated.
+ * One Zod schema per record type. These are the single source of truth for
+ * what a valid record looks like. geneus-web validates before writing to local
+ * SQLite; geneus-server validates every uploaded mutation against the same
+ * schema before it reaches PostgreSQL (see SCHEMA.md) — never hand-duplicated.
  */
 import { z } from 'zod';
 import {
   baseEnvelope,
+  DocType,
   isoDate,
   isoDateTime,
   patientId,
@@ -21,7 +21,7 @@ import {
 /* Patient (PRD §10 — NASADOR)                                         */
 /* ================================================================== */
 
-/** Convention: a patient document's `_id` IS its patientId. */
+/** Convention: a patient record's `id` IS its patientId. */
 export const Patient = baseEnvelope
   .extend({
     type: z.literal('patient'),
@@ -147,8 +147,8 @@ export type RegisterStatus = z.infer<typeof RegisterStatus>;
  * pinned to an older `version` still render against the fields they were recorded
  * with — historical data never needs migrating.
  *
- * `_id` convention: `${registerId}:v${version}` (a specific version). The
- * "current" register is the highest-version `published` doc for a `registerId`.
+ * `id` convention: `${registerId}:v${version}` (a specific version). The
+ * "current" register is the highest-version `published` record for a `registerId`.
  */
 export const RegisterDefinition = baseEnvelope.extend({
   type: z.literal('register_definition'),
@@ -255,7 +255,7 @@ export type Tier1Payload = z.infer<typeof Tier1Payload>;
 
 export const Referral = baseEnvelope.extend({
   type: z.literal('referral'),
-  /** `_id` convention: equals referralId. */
+  /** `id` convention: equals referralId. */
   referralId: z.string().min(1),
   patientId,
   fromFacilityId: z.string().min(1), // usually === envelope.facilityId (the sender)
@@ -358,33 +358,53 @@ export const Staff = baseEnvelope.extend({
 export type Staff = z.infer<typeof Staff>;
 
 /**
- * One signed shift window (PRD §14.1). `signature` is produced by geneus-server
- * so the device can trust the roster while evaluating login OFFLINE (root §4.3).
+ * One shift window (PRD §14.1). Written on the device; `signature` is added by
+ * geneus-server once the shift syncs up, so the device can tell a tampered
+ * roster from a genuine one while evaluating login OFFLINE (root §4.3). A shift
+ * is unsigned until its first sync and grants access either way — the signature
+ * is tamper-evidence, not an access gate (server PLAN §4.1).
  */
 export const RosterShift = baseEnvelope.extend({
   type: z.literal('roster_shift'),
   staffId: z.string().min(1),
   startsAt: isoDateTime,
   endsAt: isoDateTime,
-  /** Detached server signature over (staffId, facilityId, startsAt, endsAt). */
-  signature: z.string().min(1),
+  /**
+   * Detached server signature over (staffId, facilityId, startsAt, endsAt).
+   * Server-owned: an upload that sets or changes it is rejected.
+   */
+  signature: z.string().min(1).optional(),
   /** Supervisor "extend for the day" override (PRD §14.1). */
   extendedUntil: isoDateTime.optional(),
 });
 export type RosterShift = z.infer<typeof RosterShift>;
 
-/** Device enrollment gates the durable offline replica (root §4.3c). */
-export const DeviceEnrollment = baseEnvelope.extend({
-  type: z.literal('device_enrollment'),
-  enrolledDeviceId: z.string().min(1),
+export const DeviceStatus = z.enum(['active', 'revoked']);
+export type DeviceStatus = z.infer<typeof DeviceStatus>;
+
+/**
+ * An enrolled device — the "where" of every write (root §4.3c). `id` is the
+ * deviceId stamped on the envelope of everything that device writes. The
+ * credential that lets it sync is held server-side as a hash and never appears
+ * here; this record is what the facility can *see* about its devices.
+ *
+ * Server-written only: enrollment and revocation are online operations
+ * (api.ts), so an upload to this table is rejected.
+ */
+export const Device = baseEnvelope.extend({
+  type: z.literal('device'),
+  /** Human label chosen at enrollment, e.g. "Front desk tablet". */
+  label: z.string().optional(),
   enrolledBy: z.string().min(1),
-  status: z.enum(['active', 'revoked']).default('active'),
+  status: DeviceStatus.default('active'),
   /** Set on de-enroll → device drops its local replica on next contact. */
   wipeRequested: z.boolean().default(false),
   enrolledOn: isoDateTime,
   revokedOn: isoDateTime.optional(),
+  /** Last time the server heard from it — what "recent server contact" means. */
+  lastSeenOn: isoDateTime.optional(),
 });
-export type DeviceEnrollment = z.infer<typeof DeviceEnrollment>;
+export type Device = z.infer<typeof Device>;
 
 /** Append-only "who did what, when" trail (PRD §14). */
 export const AuditAction = z.enum([
@@ -397,13 +417,88 @@ export const AuditAction = z.enum([
   'enroll',
   'revoke',
   'export',
+  /** The server refused an uploaded mutation — see `sync_rejection`. */
+  'reject',
 ]);
+export type AuditAction = z.infer<typeof AuditAction>;
+
+export const AuditResult = z.enum(['ok', 'rejected']);
+export type AuditResult = z.infer<typeof AuditResult>;
+
+/**
+ * Never updated or deleted, by anyone: PostgreSQL forbids it at the table level
+ * and the server rejects a PATCH. `id` is minted on the device so a retried
+ * upload cannot record the same event twice (root §12).
+ *
+ * `occurredOn` is the device's clock; `receivedOn` is the server's, set on
+ * arrival and absent until then — security-sensitive ordering uses the latter.
+ * `metadata` is for small facts about the action, never clinical content.
+ */
 export const AuditEvent = baseEnvelope.extend({
   type: z.literal('audit_event'),
+  /** Staff the action is attributed to; absent for server-originated events. */
   actorStaffId: z.string().optional(),
   action: AuditAction,
-  targetType: z.string().optional(),
-  targetId: z.string().optional(),
+  entityType: DocType.optional(),
+  entityId: z.string().optional(),
+  result: AuditResult.default('ok'),
   occurredOn: isoDateTime,
+  receivedOn: isoDateTime.optional(),
+  metadata: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional(),
 });
 export type AuditEvent = z.infer<typeof AuditEvent>;
+
+/* ================================================================== */
+/* Sync rejection — the records officer's reconcile queue (root §4.1)  */
+/* ================================================================== */
+
+export const SyncOperation = z.enum(['put', 'patch', 'delete']);
+export type SyncOperation = z.infer<typeof SyncOperation>;
+
+/** Why the server would not apply a mutation. Drives the queue's grouping. */
+export const RejectionCategory = z.enum([
+  /** The device, facility or staff identity did not check out. */
+  'identity',
+  /** The attributed staff member may not perform this action. */
+  'authorization',
+  /** The payload failed the contract or an immutable field changed. */
+  'validation',
+  /** Another device changed the same thing first — a human must choose. */
+  'conflict',
+]);
+export type RejectionCategory = z.infer<typeof RejectionCategory>;
+
+/** One column two devices disagree on, with both values for a human to compare. */
+export const ConflictingColumn = z.object({
+  column: z.string().min(1),
+  deviceValue: z.unknown(),
+  serverValue: z.unknown(),
+});
+export type ConflictingColumn = z.infer<typeof ConflictingColumn>;
+
+/**
+ * Written by the server when an uploaded mutation cannot be applied, and
+ * synced back down so the facility can see and resolve it. A rejected clinical
+ * write is never discarded silently: this record is where it goes. Only
+ * `resolvedOn` / `resolvedBy` / `resolution` may be set from the device, by a
+ * staff member holding `sync_rejection:resolve`.
+ */
+export const SyncRejection = baseEnvelope.extend({
+  type: z.literal('sync_rejection'),
+  entityType: DocType,
+  entityId: z.string().min(1),
+  operation: SyncOperation,
+  category: RejectionCategory,
+  /** Human-readable, e.g. "staff:manage is not granted to role nurse". */
+  reason: z.string().min(1),
+  /** Staff the rejected mutation was attributed to (its createdBy/updatedBy). */
+  attributedTo: z.string().optional(),
+  /** Device's clock for the mutation; the envelope's createdOn is the server's. */
+  occurredOn: isoDateTime.optional(),
+  /** Present for `conflict` only — the columns to reconcile, nothing more. */
+  conflicts: z.array(ConflictingColumn).optional(),
+  resolvedOn: isoDateTime.optional(),
+  resolvedBy: z.string().optional(),
+  resolution: z.string().optional(),
+});
+export type SyncRejection = z.infer<typeof SyncRejection>;

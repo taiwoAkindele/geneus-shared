@@ -13,6 +13,8 @@ import { z } from 'zod';
 
 export * from './common.ts';
 export * from './documents.ts';
+export * from './permissions.ts';
+export * from './api.ts';
 
 import {
   Patient,
@@ -28,12 +30,13 @@ import {
   Unit,
   Staff,
   RosterShift,
-  DeviceEnrollment,
+  Device,
   AuditEvent,
+  SyncRejection,
 } from './documents.ts';
 
 /**
- * The union of every persisted document. Kept a plain `z.union` (not a
+ * The union of every synced record. Kept a plain `z.union` (not a
  * discriminated union) for simplicity — validation just tries each member. When
  * you already know the `type`, prefer the specific schema via `parseDocument`.
  * Note a `register_entry`'s per-field rules are validated separately, against its
@@ -53,12 +56,13 @@ export const AnyDocument = z.union([
   Unit,
   Staff,
   RosterShift,
-  DeviceEnrollment,
+  Device,
   AuditEvent,
+  SyncRejection,
 ]);
 export type AnyDocument = z.infer<typeof AnyDocument>;
 
-/** Map of `type` → schema, for validating a document when its type is known. */
+/** Map of `type` → schema, for validating a record when its type is known. */
 export const SCHEMA_BY_TYPE = {
   patient: Patient,
   visit: Visit,
@@ -73,19 +77,20 @@ export const SCHEMA_BY_TYPE = {
   unit: Unit,
   staff: Staff,
   roster_shift: RosterShift,
-  device_enrollment: DeviceEnrollment,
+  device: Device,
   audit_event: AuditEvent,
+  sync_rejection: SyncRejection,
 } as const;
 
 /**
- * Validate an unknown value as a document. If it carries a known `type`, the
+ * Validate an unknown value as a record. If it carries a known `type`, the
  * matching schema is used for precise errors; otherwise it falls back to the
  * full union. Returns Zod's SafeParseReturn — the caller decides how to react
  * (reject the write, queue for the reconcile queue, etc.).
  *
- * Use this on EVERY write path (geneus-web before PouchDB.put, geneus-server on
- * ingest) — a bad document written offline may not surface until it syncs, up to
- * 7 days later (root §4.3).
+ * Use this on EVERY write path (geneus-web before the SQLite write,
+ * geneus-server on upload) — a bad record written offline may not surface until
+ * it syncs, up to 7 days later (root §4.3).
  */
 export function parseDocument(input: unknown) {
   const type = (input as { type?: unknown })?.type;
