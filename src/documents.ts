@@ -370,14 +370,74 @@ export const RosterShift = baseEnvelope.extend({
   startsAt: isoDateTime,
   endsAt: isoDateTime,
   /**
-   * Detached server signature over (staffId, facilityId, startsAt, endsAt).
-   * Server-owned: an upload that sets or changes it is rejected.
+   * Detached Ed25519 signature (base64) over {@link rosterSignaturePayload}.
+   * Server-owned: an upload that sets or changes it is rejected, and a change
+   * to any signed field clears it until the server signs the shift again.
    */
   signature: z.string().min(1).optional(),
   /** Supervisor "extend for the day" override (PRD §14.1). */
   extendedUntil: isoDateTime.optional(),
 });
 export type RosterShift = z.infer<typeof RosterShift>;
+
+/** The fields a roster signature covers; changing any of them invalidates it. */
+export const ROSTER_SIGNED_FIELDS = ['staffId', 'facilityId', 'startsAt', 'endsAt', 'extendedUntil'] as const;
+
+/**
+ * The exact bytes geneus-server signs and the device verifies, as JSON with a
+ * fixed key order. Times are epoch milliseconds rather than the ISO text,
+ * because PostgreSQL and PowerSync may hand the same instant to each side
+ * formatted differently. `extendedUntil` is covered so a supervisor extension
+ * cannot be forged on the device under an old signature.
+ */
+export const rosterSignaturePayload = (
+  shift: Pick<RosterShift, (typeof ROSTER_SIGNED_FIELDS)[number]>,
+): string =>
+  JSON.stringify({
+    staffId: shift.staffId,
+    facilityId: shift.facilityId,
+    startsAt: Date.parse(shift.startsAt),
+    endsAt: Date.parse(shift.endsAt),
+    extendedUntil: shift.extendedUntil ? Date.parse(shift.extendedUntil) : null,
+  });
+
+/**
+ * A one-time code that lets a member of staff set their PIN on a facility
+ * device without anyone else's PIN being typed there (root §4.3). An admin
+ * asks geneus-server for it from any enrolled device; the server shows the
+ * code once, stores only its PBKDF2 hash here, and the record syncs down so a
+ * device can check the code offline. Issuing a new code for the same person
+ * revokes their earlier ones.
+ *
+ * Server-written. The only change a device may make is marking it used, as the
+ * staff member the code was issued for.
+ */
+export const PinSetupCode = baseEnvelope.extend({
+  type: z.literal('pin_setup_code'),
+  /** Who may use it. */
+  staffId: z.string().min(1),
+  /** PBKDF2-SHA-256 of the code, base64. */
+  codeHash: z.string().min(1),
+  codeSalt: z.string().min(1),
+  codeIterations: z.number().int().positive(),
+  expiresOn: isoDateTime,
+  revokedOn: isoDateTime.optional(),
+  usedOn: isoDateTime.optional(),
+  /** The device the PIN was set on. */
+  usedOnDevice: z.string().optional(),
+});
+export type PinSetupCode = z.infer<typeof PinSetupCode>;
+
+/** The columns a device may set on a {@link PinSetupCode}: marking it used. */
+export const PIN_SETUP_CODE_CLAIM_FIELDS = ['usedOn', 'usedOnDevice'] as const;
+
+/**
+ * The code as it is hashed: read aloud and typed on a phone, so case and
+ * stray spaces must not matter. The hash is PBKDF2-SHA-256 of these UTF-8
+ * bytes, with the record's base64 `codeSalt` decoded to bytes, its
+ * `codeIterations`, and a 32-byte output.
+ */
+export const normalizePinSetupCode = (code: string): string => code.replace(/\s+/g, '').toUpperCase();
 
 export const DeviceStatus = z.enum(['active', 'revoked']);
 export type DeviceStatus = z.infer<typeof DeviceStatus>;

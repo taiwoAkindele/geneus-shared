@@ -115,6 +115,28 @@ export const DeviceRevocationRequest = z.object({
 export type DeviceRevocationRequest = z.infer<typeof DeviceRevocationRequest>;
 
 /* ------------------------------------------------------------------ */
+/* PIN setup codes — POST /staff/:staffId/pin-codes                    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * An admin, from any enrolled device, asks for a code that lets a member of
+ * staff set (or reset) their PIN on a facility device. The plain code is in
+ * this response only; the `pin_setup_code` record that syncs down carries its
+ * hash. Read it to the staff member by phone — nothing else delivers it.
+ */
+export const PinSetupCodeRequest = z.object({
+  /** Staff issuing the code — verified server-side to hold `staff:manage`. */
+  issuedBy: z.string().min(1),
+});
+export type PinSetupCodeRequest = z.infer<typeof PinSetupCodeRequest>;
+
+export const PinSetupCodeIssued = z.object({
+  code: z.string().min(1),
+  expiresOn: isoDateTime,
+});
+export type PinSetupCodeIssued = z.infer<typeof PinSetupCodeIssued>;
+
+/* ------------------------------------------------------------------ */
 /* Sync token — POST /sync/token (Authorization: Bearer <credential>)  */
 /* ------------------------------------------------------------------ */
 

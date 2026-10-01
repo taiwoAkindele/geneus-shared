@@ -16,7 +16,7 @@ import { Role, StaffPermission } from './documents.ts';
  * they authorised against, so a stale device is visible at sync rather than
  * silently applying yesterday's rules.
  */
-export const POLICY_VERSION = 1 as const;
+export const POLICY_VERSION = 2 as const;
 
 /**
  * One explicit capability per action the system can perform. Every mutation a
@@ -50,6 +50,8 @@ export const Permission = z.enum([
   'device:revoke',
   // Reconciliation
   'sync_rejection:resolve',
+  // Setting one's own PIN with a code an admin issued
+  'pin_setup_code:claim',
 ]);
 export type Permission = z.infer<typeof Permission>;
 
@@ -75,10 +77,19 @@ const FRONT_DESK: readonly Permission[] = [
 ];
 
 /**
+ * Granted by no role. It belongs only to the person a PIN setup code was
+ * issued for, before they have a PIN to sign in with: the device builds a
+ * context holding just this permission for that claim, and the server accepts
+ * the claim only from the code's own staff member.
+ */
+const CLAIM_ONLY: readonly Permission[] = ['pin_setup_code:claim'];
+
+/**
  * What each role may do. Roles are the PRD's job titles (§7.1, §14.1); the
  * matrix is the smallest one that covers what the app persists today.
- * `facility_admin` holds everything by construction — a facility must be able
- * to configure itself with no one else's help (<60-minute onboarding, PRD §8).
+ * `facility_admin` holds every role-granted permission — a facility must be
+ * able to configure itself with no one else's help (<60-minute onboarding,
+ * PRD §8).
  */
 export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   chew: CLINICAL,
@@ -86,7 +97,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   doctor: [...CLINICAL, 'referral:update'],
   supervisor: [...CLINICAL, 'referral:update', 'roster:extend'],
   records_officer: FRONT_DESK,
-  facility_admin: Permission.options,
+  facility_admin: Permission.options.filter((permission) => !CLAIM_ONLY.includes(permission)),
 };
 
 /**
