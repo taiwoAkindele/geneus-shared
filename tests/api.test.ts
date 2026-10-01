@@ -2,6 +2,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   DeviceCredential,
+  emailAddress,
+  emailCode,
   FacilityRegistration,
   SyncTokenClaims,
   UploadMutation,
@@ -16,6 +18,8 @@ const registration = {
   lga: 'Ibadan SW',
   level: 'phc',
   adminFullName: 'Amaka Okoro',
+  adminEmail: 'amaka@example.org',
+  emailCode: '482193',
   deviceId: 'device-one',
   inviteToken: 'ABCDEFGHJK',
 };
@@ -30,6 +34,19 @@ describe('facility registration', () => {
     for (const code of ['ooe-phc', 'OOE PHC', 'OOE-', 'X']) {
       assert.equal(FacilityRegistration.safeParse({ ...registration, code }).success, false, code);
     }
+  });
+
+  /** Recovery depends on it, so a registration without a proven email is incomplete (SCHEMA.md §10). */
+  it('requires the admin email and its verification code', () => {
+    const { adminEmail: _email, ...withoutEmail } = registration;
+    assert.equal(FacilityRegistration.safeParse(withoutEmail).success, false);
+    assert.equal(FacilityRegistration.safeParse({ ...registration, emailCode: '12345' }).success, false);
+  });
+
+  it('stores an email as typed on a phone would be compared: trimmed and lower-case', () => {
+    assert.equal(emailAddress.parse('  Amaka@Example.ORG '), 'amaka@example.org');
+    assert.equal(emailAddress.safeParse('not an email').success, false);
+    assert.equal(emailCode.parse(' 482193 '), '482193');
   });
 });
 

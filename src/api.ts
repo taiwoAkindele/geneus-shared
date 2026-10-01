@@ -42,6 +42,12 @@ export const facilityCode = z
   .max(20)
   .regex(/^[A-Z0-9]+(?:-[A-Z0-9]+)*$/, 'Use uppercase letters, digits and hyphens');
 
+/** An email address as it is stored and compared: trimmed and lower-case. */
+export const emailAddress = z.string().trim().toLowerCase().pipe(z.email());
+
+/** The 6-digit code that proves someone can read an email address. */
+export const emailCode = z.string().trim().regex(/^\d{6}$/, 'Enter the 6-digit code from the email');
+
 export const FacilityRegistration = z.object({
   code: facilityCode,
   name: z.string().min(1),
@@ -49,6 +55,14 @@ export const FacilityRegistration = z.object({
   lga: z.string().min(1),
   level: Facility.shape.level,
   adminFullName: z.string().min(1),
+  /**
+   * The first admin's email, proven with `emailCode` from
+   * `POST /email-verifications`. Kept on the server only — never a synced
+   * record — and used for one thing: emailing them a PIN setup code if they
+   * forget their PIN (SCHEMA.md §10).
+   */
+  adminEmail: emailAddress,
+  emailCode,
   /** Minted on the device before it has any other identity; becomes `devices.id`. */
   deviceId: z.string().min(1),
   deviceLabel: z.string().optional(),
@@ -115,7 +129,55 @@ export const DeviceRevocationRequest = z.object({
 export type DeviceRevocationRequest = z.infer<typeof DeviceRevocationRequest>;
 
 /* ------------------------------------------------------------------ */
+/* Email verification — POST /email-verifications                      */
+/*   POST /staff/:staffId/email/code · POST /staff/:staffId/email      */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Before registering, the would-be admin proves their email: the server emails
+ * a 6-digit code, which goes back with the registration. The invite token is
+ * required so the endpoint cannot be used to send mail to anyone.
+ */
+export const RegistrationEmailRequest = z.object({
+  email: emailAddress,
+  inviteToken: z.string().min(1),
+});
+export type RegistrationEmailRequest = z.infer<typeof RegistrationEmailRequest>;
+
+/**
+ * A facility admin adding or changing their own recovery email, from an
+ * enrolled device. The server knows the device, not the person holding it, so
+ * replacing an email already on file also needs a code sent to that current
+ * address — otherwise whoever holds a facility phone could redirect an admin's
+ * recovery to themselves.
+ */
+export const StaffEmailRequest = z.object({
+  email: emailAddress,
+  /** Must be the admin named in the path — an admin sets only their own email. */
+  requestedBy: z.string().min(1),
+});
+export type StaffEmailRequest = z.infer<typeof StaffEmailRequest>;
+
+export const StaffEmailConfirmation = StaffEmailRequest.extend({
+  /** From the email sent to the new address. */
+  code: emailCode,
+  /** From the email sent to the address already on file; required when there is one. */
+  currentCode: emailCode.optional(),
+});
+export type StaffEmailConfirmation = z.infer<typeof StaffEmailConfirmation>;
+
+/** Where a code was emailed, masked (`a•••@gmail.com`) — the address itself is never sent back. */
+export const EmailSent = z.object({
+  sentTo: z.string().min(1),
+  /** When an email is being replaced: where the second code went (the address on file), masked. */
+  currentSentTo: z.string().min(1).optional(),
+  expiresOn: isoDateTime,
+});
+export type EmailSent = z.infer<typeof EmailSent>;
+
+/* ------------------------------------------------------------------ */
 /* PIN setup codes — POST /staff/:staffId/pin-codes                    */
+/*   POST /staff/:staffId/pin-codes/email (a facility admin, by email) */
 /* ------------------------------------------------------------------ */
 
 /**

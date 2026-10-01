@@ -205,7 +205,14 @@ attribution rests on the device's shift session (root §4.3a).
   same person revokes older ones, and the device marks it used by patching `usedOn` and
   `usedOnDevice` as that staff member (`pin_setup_code:claim`, a permission no role
   holds). The first admin sets their PIN with no approval, straight after registering
-  the facility, because nobody else exists yet.
+  the facility, because nobody else exists yet. On site, only a facility admin may
+  approve a facility admin's PIN — whoever approves could choose the PIN themselves.
+- **Admin recovery by email.** A facility admin's email is proven with a 6-digit code at
+  registration (or added later by the admin) and kept on the server only — never a record,
+  never synced to a phone. Replacing one already on file also needs a code sent to that
+  current address, because the server knows the device, not who is holding it. A facility admin who forgets their PIN asks for a PIN setup code
+  by email (`POST /staff/:staffId/pin-codes/email`, from any of the facility's enrolled
+  devices); it is the same 24-hour, one-time code an admin would issue.
 - **Roster signatures are the deliberate exception** — `roster_shift.signature` is a field
   precisely because devices must verify it offline. The server signs
   `rosterSignaturePayload` (staff, facility, start, end and any extension, as epoch
@@ -262,6 +269,10 @@ The handful of things that must happen online. Shapes only; handlers live in
 | `POST /devices/codes` | `EnrollmentCodeRequest` → `EnrollmentCode` | An enrolled device issues a short-lived code (needs `device:enroll`) |
 | `POST /devices` | `DeviceEnrollmentRequest` → `DeviceCredential` | The joining device spends the code |
 | `POST /devices/:id/revoke` | `DeviceRevocationRequest` → `Device` | De-enrol; optionally request a wipe (needs `device:revoke`) |
+| `POST /email-verifications` | `RegistrationEmailRequest` → `EmailSent` | Email a 6-digit code to the would-be admin (needs a valid invite) |
+| `POST /staff/:staffId/email/code` · `POST /staff/:staffId/email` | `StaffEmailRequest` → `EmailSent` · `StaffEmailConfirmation` → 204 | A facility admin adds or changes their own recovery email (a code to the new address, and to the current one when replacing it) |
+| `POST /staff/:staffId/pin-codes` | `PinSetupCodeRequest` → `PinSetupCodeIssued` | An admin issues a PIN setup code (needs `staff:manage`) |
+| `POST /staff/:staffId/pin-codes/email` | *(device credential)* → `EmailSent` | A facility admin who forgot their PIN gets a PIN setup code by email |
 | `POST /sync/token` | *(device credential)* → `SyncTokenResponse` | Short-lived PowerSync JWT: `sub` = device, `facility_id` claim |
 | `POST /sync/upload` | `UploadRequest` → `UploadResponse` | The connector's write-back; every mutation authorised server-side (§6–§8) |
 | `GET /time` | → `SignedTime` | The clock devices trust (unchanged from v2) |
