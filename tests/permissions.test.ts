@@ -43,8 +43,16 @@ describe('role permissions', () => {
     }
   });
 
-  it('gives the facility admin every permission, so a facility can configure itself alone', () => {
-    assert.deepEqual([...ROLE_PERMISSIONS.facility_admin].sort(), [...Permission.options].sort());
+  it('gives the facility admin every role-granted permission, so a facility can configure itself alone', () => {
+    const roleGranted = Permission.options.filter((permission) => permission !== 'pin_setup_code:claim');
+    assert.deepEqual([...ROLE_PERMISSIONS.facility_admin].sort(), [...roleGranted].sort());
+  });
+
+  /** Only the person a PIN setup code was issued for may claim it (SCHEMA.md §10). */
+  it('grants the PIN setup code claim to no role', () => {
+    for (const role of Role.options) {
+      assert.equal(ROLE_PERMISSIONS[role].includes('pin_setup_code:claim'), false, role);
+    }
   });
 
   it('strips every permission from read-only staff, whatever their role', () => {
@@ -53,8 +61,8 @@ describe('role permissions', () => {
     }
   });
 
-  it('grants every permission to at least one role, so none is unreachable', () => {
-    for (const permission of Permission.options) {
+  it('grants every other permission to at least one role, so none is unreachable', () => {
+    for (const permission of Permission.options.filter((candidate) => candidate !== 'pin_setup_code:claim')) {
       const holders = Role.options.filter((role) => ROLE_PERMISSIONS[role].includes(permission));
       assert.ok(holders.length > 0, `${permission} is granted to no role`);
     }

@@ -2,7 +2,16 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { AnyDocument, parseDocument, SCHEMA_BY_TYPE } from '../src/index.ts';
 import { DocType, IMMUTABLE_ENVELOPE_FIELDS, SCHEMA_VERSION } from '../src/common.ts';
-import { AuditEvent, Device, Patient, RosterShift, SyncRejection } from '../src/documents.ts';
+import {
+  AuditEvent,
+  Device,
+  normalizePinSetupCode,
+  Patient,
+  PinSetupCode,
+  RosterShift,
+  rosterSignaturePayload,
+  SyncRejection,
+} from '../src/documents.ts';
 
 const envelope = {
   facilityId: 'OOE-PHC',
@@ -131,5 +140,47 @@ describe('record types', () => {
 
   it('refuses an unknown type', () => {
     assert.equal(parseDocument({ ...envelope, id: 'x', type: 'prescription' }).success, false);
+  });
+});
+
+describe('roster signatures', () => {
+  const shift = {
+    staffId: 'staff:one',
+    facilityId: 'OOE-PHC',
+    startsAt: '2026-09-12T08:00:00+01:00',
+    endsAt: '2026-09-12T16:00:00+01:00',
+  };
+
+  it('signs the same bytes however each side formats the same instant', () => {
+    const fromPostgres = { ...shift, startsAt: '2026-09-12T07:00:00.000Z', endsAt: '2026-09-12T15:00:00.000Z' };
+    assert.equal(rosterSignaturePayload(fromPostgres), rosterSignaturePayload(shift));
+  });
+
+  it('covers the supervisor extension, so it cannot be added under an old signature', () => {
+    const extended = { ...shift, extendedUntil: '2026-09-12T20:00:00+01:00' };
+    assert.notEqual(rosterSignaturePayload(extended), rosterSignaturePayload(shift));
+  });
+});
+
+describe('PIN setup codes', () => {
+  const code = {
+    ...envelope,
+    id: 'pin_setup_code:one',
+    type: 'pin_setup_code',
+    staffId: 'staff:two',
+    codeHash: 'aGFzaA==',
+    codeSalt: 'c2FsdA==',
+    codeIterations: 100_000,
+    expiresOn: '2026-09-13T09:30:00+01:00',
+  };
+
+  it('carries the hash of the code, never the code itself', () => {
+    const parsed = PinSetupCode.parse(code);
+    assert.equal('code' in parsed, false);
+    assert.equal(parseDocument(code).success, true);
+  });
+
+  it('ignores case and spaces in a code read aloud', () => {
+    assert.equal(normalizePinSetupCode(' ab3d ef7h '), 'AB3DEF7H');
   });
 });

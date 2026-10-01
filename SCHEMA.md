@@ -67,6 +67,7 @@ snake_case names.
 | `device` | `Device` | **server** (enrollment / revocation) | root §4.3c |
 | `audit_event` | `AuditEvent` | device and server, append-only | §14 |
 | `sync_rejection` | `SyncRejection` | **server**; device may resolve | root §4.1 |
+| `pin_setup_code` | `PinSetupCode` | **server**; device may mark it used | §14.1 |
 
 "Server-written" types are synced *down* to the facility but an upload to them is rejected.
 
@@ -195,10 +196,23 @@ attribution rests on the device's shift session (root §4.3a).
 - **Auth secrets / credentials.** A staff member's PIN is owned by **the device**: set and
   verified where it was set, never a record. A device's credential is held by the server
   as a **hash** and by the device as a secret; the `device` record carries neither.
+- **Who may set a PIN.** A PIN is set on a device only with someone's approval, never by
+  whoever is holding the phone. Two ways: a facility admin or supervisor on site enters
+  their own PIN on that device, or an admin anywhere asks geneus-server for a one-time
+  **PIN setup code** (`POST /staff/:staffId/pin-codes`) and reads it to the staff member.
+  The `pin_setup_code` record syncs down with the code's PBKDF2 **hash** only (never the
+  code), so the device checks it offline. It expires after 24 hours, a newer code for the
+  same person revokes older ones, and the device marks it used by patching `usedOn` and
+  `usedOnDevice` as that staff member (`pin_setup_code:claim`, a permission no role
+  holds). The first admin sets their PIN with no approval, straight after registering
+  the facility, because nobody else exists yet.
 - **Roster signatures are the deliberate exception** — `roster_shift.signature` is a field
-  precisely because devices must verify it offline. The server adds it after the shift
-  syncs up; a shift is unsigned until then and grants access either way (tamper-evidence,
-  not an access gate).
+  precisely because devices must verify it offline. The server signs
+  `rosterSignaturePayload` (staff, facility, start, end and any extension, as epoch
+  milliseconds) with Ed25519 after the shift syncs up, and clears the signature whenever
+  one of those fields changes, so the next signing pass covers the new values. A shift is
+  unsigned until then and grants access either way (tamper-evidence, not an access gate);
+  a signature that does **not** match refuses sign-in on that shift.
 - **PostgreSQL schema, SQL, migrations** — `geneus-server`.
 - **PowerSync configuration (Sync Streams), the connector, SQLite schema** — the
   consumers; they are derived from these shapes, never the other way round.

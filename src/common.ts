@@ -65,6 +65,7 @@ export const DocType = z.enum([
   'device',
   'audit_event',
   'sync_rejection',
+  'pin_setup_code',
 ]);
 export type DocType = z.infer<typeof DocType>;
 
