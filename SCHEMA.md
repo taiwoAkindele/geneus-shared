@@ -54,8 +54,9 @@ snake_case names.
 | `type` | Schema | Written by | PRD |
 | --- | --- | --- | --- |
 | `patient` | `Patient` | device | §10 (NASADOR) |
-| `visit` | `Visit` | device | §9.1 |
-| `handoff` | `Handoff` | device | §9.7 |
+| `visit` | `Visit` | device — superseded by `encounter`, kept readable | §9.1 |
+| `encounter` / `encounter_entry` | `Encounter` / `EncounterEntry` (values per step, §13) | device, insert-only | §9.8 |
+| `handoff` | `Handoff` (optionally within an encounter) | device | §9.7 |
 | `appointment` | `Appointment` | device | §9.8 |
 | `register_definition` | `RegisterDefinition` | device | §9.4 |
 | `register_entry` | `RegisterEntry` (values keyed by field id) | device | §9.4 |
@@ -87,13 +88,14 @@ the device, offline.
 - **facility / unit / staff / device** → their natural id (`code`, `unitId`, `staffId`,
   the device's own id).
 - **register_definition** → `${registerId}:v${version}`.
-- **visit / handoff / register_entry / stock_movement / audit_event / sync_rejection** →
-  an event-scoped id (`<type>:<uuid>`).
+- **visit / encounter / encounter_entry / handoff / register_entry / stock_movement /
+  audit_event / sync_rejection** → an event-scoped id (`<type>:<uuid>`).
 
 > Patient IDs are **generated on the device, offline** (geneus-web). This contract only
-> owns the **format** (`PATIENT_ID_RE`) — it validates, it does not mint. Two devices
-> minting the same id is detected at upload and lands in the reconcile queue (§7); identity
-> is never silently overwritten.
+> owns the **format** (`PATIENT_ID_RE`) — it validates, it does not mint. The facility code
+> is whatever registration accepted (`OOE-PHC`, or a single segment such as `OOE`). Two
+> devices minting the same id is detected at upload and lands in the reconcile queue (§7);
+> identity is never silently overwritten.
 
 ## 5. Validate on every write
 
@@ -136,6 +138,7 @@ The server never picks a winner for clinical data. Per type:
 | Type(s) | Rule |
 | --- | --- |
 | `register_entry`, `stock_movement`, `audit_event` | Append-only; PATCH rejected |
+| `encounter`, `encounter_entry` | Insert-only; PATCH rejected. An `amendment` must amend an entry of the same encounter; once a closing step is saved, only amendments may be added (§13) |
 | `register_definition` | Immutable per version; a colliding version is rejected, never overwritten |
 | `patient` | Changed-column merge. If the server row and the device both changed the **same column** since the device's base, that column is a `conflict` |
 | `appointment`, `handoff`, `referral`, `stock_item` | Changed-column merge; same-column race → `conflict` |
@@ -143,16 +146,28 @@ The server never picks a winner for clinical data. Per type:
 
 Anything the server will not apply becomes a **`sync_rejection`** record with a
 `category` (`identity`, `authorization`, `validation`, `conflict`), the reason, the
-attributed staff member and — for conflicts — the columns with both values. It syncs back
-down to the facility so a records officer can resolve it (`sync_rejection:resolve`). A
-rejected clinical write is never discarded silently.
+attributed staff member and — for conflicts — the columns with both values. A refused
+`put` also carries the whole record as the device sent it (`refusedRecord`), so a refused
+insert can be recovered. It syncs back down to the facility so a records officer can
+resolve it (`sync_rejection:resolve`). A rejected clinical write is never discarded
+silently.
+
+**A Patient ID taken by another device.** Two offline devices can mint the same Patient ID
+(PRD §10.1). The second `put` is refused as a `conflict` carrying its `refusedRecord`, and
+every later record from that device naming that patient (an encounter, an entry, a
+handoff, an appointment) is refused into the queue with it, so none of it attaches to the
+other patient. The records officer re-registers the patient under a new ID and re-saves
+what was held; the original rejections stay as the trail.
 
 ## 8. Permissions and the offline policy
 
 [`src/permissions.ts`](src/permissions.ts) defines:
 
 - **`Permission`** — one explicit capability per action (`patient:create`,
-  `register_entry:create`, `staff:manage`, …). No `*:delete` exists for any type.
+  `encounter:record`, `register_entry:create`, `staff:manage`, …). No `*:delete` exists for
+  any type. `encounter:record` covers every encounter step for every clinical role (CHEW,
+  nurse, doctor, supervisor); per-step rules wait until the facility roles that need them
+  (lab, pharmacy) exist.
 - **`ROLE_PERMISSIONS`** and **`permissionsFor(role, staffPermission)`** — the matrix.
   `read_only` staff hold no permissions at all (every permission is a mutation).
 - **`POLICY_VERSION`** — bumped when the matrix or the windows change.
@@ -281,3 +296,35 @@ The handful of things that must happen online. Shapes only; handlers live in
 an earlier attempt; the idempotency ledger), or `rejected` with a category and reason. A
 rejected mutation is not retried: it would only be rejected again, and would stall every
 mutation queued behind it. Its record is the `sync_rejection` that syncs back down.
+
+## 13. Encounters (PRD §9.8)
+
+An encounter is one episode of care, recorded station by station. It is a header plus
+append-only entries:
+
+- **`encounter`** — `patientId`, `openedOn`, `setting`. Written when the first step is
+  saved; never changed.
+- **`encounter_entry`** — one saved, locked step: `encounterId`, `patientId` (repeated so a
+  patient's history is one lookup), `step`, `actorRole`, an optional `amends`, and
+  `values`. The envelope's `createdBy` / `createdOn` are the actor and the system time
+  (PRD §9.8.5); `actorRole` is the role they held then.
+
+Steps: `vitals · complaint · lab_order · lab_results · diagnosis · injection · dispense ·
+admission · follow_up · amendment`. Each step's `values` has its own strict schema
+(`ENCOUNTER_STEP_VALUES`), checked by `EncounterEntry` itself, so `parseDocument` covers
+it with no extra call. Any step may be skipped (PRD §9.8.2); a step may be saved more than
+once (a second set of vitals is a new entry).
+
+Three rules make "saved means saved" (PRD §9.8.3) a property of the data, not the screen:
+
+1. **Nothing is patched.** Entries and headers are insert-only; there is no
+   `encounter:update`. Two devices recording the same patient therefore never race on a
+   column.
+2. **Corrections are amendments.** An `amendment` entry names the entry it corrects in
+   `amends`; only an amendment may set it. Both stay visible.
+3. **Closing is a step.** Saving `admission` (inpatient) or `follow_up` (sent home, with or
+   without a review booked) closes the encounter (`CLOSING_STEPS`). An encounter is open
+   while it has no closing entry; after one, only amendments are accepted.
+
+A `handoff` may name the `encounterId` it moves the patient within, so the receiving unit
+opens the same encounter.

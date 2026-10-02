@@ -1,10 +1,14 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { AnyDocument, parseDocument, SCHEMA_BY_TYPE } from '../src/index.ts';
-import { DocType, IMMUTABLE_ENVELOPE_FIELDS, SCHEMA_VERSION } from '../src/common.ts';
+import { DocType, IMMUTABLE_ENVELOPE_FIELDS, PATIENT_ID_RE, SCHEMA_VERSION } from '../src/common.ts';
 import {
   AuditEvent,
+  CLOSING_STEPS,
   Device,
+  Encounter,
+  EncounterEntry,
+  Handoff,
   normalizePinSetupCode,
   Patient,
   PinSetupCode,
@@ -138,6 +142,23 @@ describe('record types', () => {
     assert.equal(rejection.resolvedOn, undefined);
   });
 
+  it('keeps the whole refused record on a refused insert, so nothing is lost', () => {
+    const rejection = SyncRejection.parse({
+      ...envelope,
+      createdBy: 'system',
+      id: 'sync_rejection:2',
+      type: 'sync_rejection',
+      entityType: 'patient',
+      entityId: patient.id,
+      operation: 'put',
+      category: 'conflict',
+      reason: 'a record with this identity already exists',
+      refusedRecord: patient,
+    });
+
+    assert.equal(rejection.refusedRecord?.fullName, 'Amaka Okoro');
+  });
+
   it('refuses an unknown type', () => {
     assert.equal(parseDocument({ ...envelope, id: 'x', type: 'prescription' }).success, false);
   });
@@ -182,5 +203,93 @@ describe('PIN setup codes', () => {
 
   it('ignores case and spaces in a code read aloud', () => {
     assert.equal(normalizePinSetupCode(' ab3d ef7h '), 'AB3DEF7H');
+  });
+});
+
+describe('Patient IDs', () => {
+  it('accepts a facility code of one segment or several', () => {
+    assert.match('OOE-PHC-000047-K2', PATIENT_ID_RE);
+    assert.match('OOE-000047-K2', PATIENT_ID_RE);
+  });
+
+  it('refuses an id without the sequence or the safety code', () => {
+    assert.doesNotMatch('OOE-PHC-47-K2', PATIENT_ID_RE);
+    assert.doesNotMatch('OOE-PHC-000047', PATIENT_ID_RE);
+    assert.doesNotMatch('ooe-phc-000047-k2', PATIENT_ID_RE);
+  });
+});
+
+describe('encounters', () => {
+  const encounter = {
+    ...envelope,
+    id: 'encounter:1',
+    type: 'encounter',
+    patientId: patient.id,
+    openedOn: '2026-09-12T09:31:00+01:00',
+  };
+
+  const entry = (step: string, values: Record<string, unknown>, extra: Record<string, unknown> = {}) => ({
+    ...envelope,
+    id: `encounter_entry:${step}`,
+    type: 'encounter_entry',
+    encounterId: encounter.id,
+    patientId: patient.id,
+    step,
+    actorRole: 'nurse',
+    values,
+    ...extra,
+  });
+
+  it('opens an encounter in the facility unless told otherwise', () => {
+    assert.equal(Encounter.parse(encounter).setting, 'facility');
+  });
+
+  it('saves a step whose values fit that step', () => {
+    const vitals = entry('vitals', { temperatureC: 38.9, systolicMmHg: 118, diastolicMmHg: 76 });
+
+    assert.equal(parseDocument(vitals).success, true);
+  });
+
+  it('refuses an empty step, so a save always records something', () => {
+    assert.equal(EncounterEntry.safeParse(entry('vitals', {})).success, false);
+    assert.equal(EncounterEntry.safeParse(entry('complaint', {})).success, false);
+  });
+
+  it("refuses a field that belongs to another step, naming where it went wrong", () => {
+    const result = EncounterEntry.safeParse(entry('vitals', { temperatureC: 37, diagnosis: 'Malaria' }));
+
+    assert.equal(result.success, false);
+    assert.equal(result.error?.issues[0]?.path[0], 'values');
+  });
+
+  it('asks for a reason when a prescribed drug is not dispensed', () => {
+    const withoutReason = entry('dispense', { lines: [{ drug: 'Artemether-Lumefantrine', dispensed: false }] });
+    const withReason = entry('dispense', {
+      lines: [{ drug: 'Artemether-Lumefantrine', dispensed: false, reason: 'Out of stock' }],
+    });
+
+    assert.equal(EncounterEntry.safeParse(withoutReason).success, false);
+    assert.equal(EncounterEntry.safeParse(withReason).success, true);
+  });
+
+  /** Corrections are added, never written over the original (PRD §9.8.3). */
+  it('links an amendment to the entry it corrects, and only an amendment', () => {
+    const amendment = entry('amendment', { note: 'Temperature was 37.9, not 38.9' }, { amends: 'encounter_entry:vitals' });
+    const unlinked = entry('amendment', { note: 'Temperature was 37.9' });
+    const linkedVitals = entry('vitals', { temperatureC: 37.9 }, { amends: 'encounter_entry:vitals' });
+
+    assert.equal(EncounterEntry.safeParse(amendment).success, true);
+    assert.equal(EncounterEntry.safeParse(unlinked).success, false);
+    assert.equal(EncounterEntry.safeParse(linkedVitals).success, false);
+  });
+
+  it('closes on admission or follow-up, and a follow-up need not book a review', () => {
+    assert.deepEqual([...CLOSING_STEPS], ['admission', 'follow_up']);
+    assert.equal(EncounterEntry.safeParse(entry('follow_up', {})).success, true);
+  });
+
+  it('keeps entry values in one column, as both consumers derive tables from the shape', () => {
+    assert.ok('values' in EncounterEntry.shape);
+    assert.ok('encounterId' in Handoff.shape);
   });
 });

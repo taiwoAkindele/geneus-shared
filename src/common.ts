@@ -51,6 +51,8 @@ export type Setting = z.infer<typeof Setting>;
 export const DocType = z.enum([
   'patient',
   'visit',
+  'encounter',
+  'encounter_entry',
   'handoff',
   'appointment',
   'register_definition',
@@ -76,14 +78,15 @@ export type DocType = z.infer<typeof DocType>;
 /**
  * Human-readable Patient ID: FACILITYCODE-SEQ-XX
  *   e.g. OOE-PHC-000047-K2
- *   - facility code = one or more UPPERCASE segments (OOE-PHC)
+ *   - facility code = one or more UPPERCASE segments (OOE-PHC, or just OOE —
+ *                     whatever `FacilityRegistration.facilityCode` accepted)
  *   - SEQ           = 6-digit zero-padded registration order (000047)
  *   - XX            = 2-char random safety code guaranteeing offline uniqueness
  *
  * Generation happens on the device, offline (see geneus-web). This regex is the
  * shared FORMAT contract — it validates, it does not generate.
  */
-export const PATIENT_ID_RE = /^[A-Z0-9]+(?:-[A-Z0-9]+)+-\d{6}-[A-Z0-9]{2}$/;
+export const PATIENT_ID_RE = /^[A-Z0-9]+(?:-[A-Z0-9]+)*-\d{6}-[A-Z0-9]{2}$/;
 export const patientId = z
   .string()
   .regex(PATIENT_ID_RE, 'Expected a Patient ID like OOE-PHC-000047-K2');
