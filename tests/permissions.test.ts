@@ -31,6 +31,14 @@ describe('role permissions', () => {
     assert.equal(nurse.includes('device:enroll'), false);
   });
 
+  /** Roles decide who may do what, not where they stand (PRD §9.8.2). */
+  it('lets every clinical role record an encounter step, and not the front desk', () => {
+    for (const role of ['chew', 'nurse', 'doctor', 'supervisor'] as const) {
+      assert.ok(permissionsFor(role, 'read_write').includes('encounter:record'), role);
+    }
+    assert.equal(permissionsFor('records_officer', 'read_write').includes('encounter:record'), false);
+  });
+
   it('grants doctor-only actions to doctors and not to CHEWs', () => {
     assert.ok(permissionsFor('doctor', 'read_write').includes('referral:update'));
     assert.equal(permissionsFor('chew', 'read_write').includes('referral:update'), false);

@@ -19,6 +19,8 @@ export * from './api.ts';
 import {
   Patient,
   Visit,
+  Encounter,
+  EncounterEntry,
   Handoff,
   Appointment,
   RegisterDefinition,
@@ -46,6 +48,8 @@ import {
 export const AnyDocument = z.union([
   Patient,
   Visit,
+  Encounter,
+  EncounterEntry,
   Handoff,
   Appointment,
   RegisterDefinition,
@@ -68,6 +72,8 @@ export type AnyDocument = z.infer<typeof AnyDocument>;
 export const SCHEMA_BY_TYPE = {
   patient: Patient,
   visit: Visit,
+  encounter: Encounter,
+  encounter_entry: EncounterEntry,
   handoff: Handoff,
   appointment: Appointment,
   register_definition: RegisterDefinition,

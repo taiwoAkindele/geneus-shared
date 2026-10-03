@@ -16,7 +16,7 @@ import { Role, StaffPermission } from './documents.ts';
  * they authorised against, so a stale device is visible at sync rather than
  * silently applying yesterday's rules.
  */
-export const POLICY_VERSION = 2 as const;
+export const POLICY_VERSION = 3 as const;
 
 /**
  * One explicit capability per action the system can perform. Every mutation a
@@ -30,6 +30,7 @@ export const Permission = z.enum([
   'patient:update',
   'appointment:create',
   'visit:create',
+  'encounter:record',
   'handoff:create',
   'handoff:update',
   'referral:create',
@@ -60,6 +61,7 @@ const CLINICAL: readonly Permission[] = [
   'patient:update',
   'appointment:create',
   'visit:create',
+  'encounter:record',
   'handoff:create',
   'handoff:update',
   'referral:create',

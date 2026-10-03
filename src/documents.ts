@@ -50,10 +50,13 @@ export const Patient = baseEnvelope
 export type Patient = z.infer<typeof Patient>;
 
 /* ================================================================== */
-/* Encounters: Visit + Unit Handoff                                    */
+/* Visit + Unit Handoff                                                */
 /* ================================================================== */
 
-/** A single guided visit note (PRD §9.1). Feeds registers + dashboards. */
+/**
+ * A single guided visit note (PRD §9.1). Superseded by the encounter (PRD §9.8,
+ * `encounter` + `encounter_entry` below); kept so existing rows stay readable.
+ */
 export const Visit = baseEnvelope.extend({
   type: z.literal('visit'),
   patientId,
@@ -75,6 +78,8 @@ export const Handoff = baseEnvelope.extend({
   patientId,
   fromUnitId: z.string().min(1),
   toUnitId: z.string().min(1),
+  /** The encounter the patient is being moved within, when there is one. */
+  encounterId: z.string().min(1).optional(),
   instruction: z.string().min(1), // e.g. "Give tetanus toxoid injection"
   status: z.enum(['pending', 'received', 'done']).default('pending'),
 });
@@ -509,6 +514,150 @@ export const AuditEvent = baseEnvelope.extend({
 export type AuditEvent = z.infer<typeof AuditEvent>;
 
 /* ================================================================== */
+/* Encounter (PRD §9.8) — one episode of care, recorded step by step   */
+/* ================================================================== */
+/*
+ * An encounter is a header plus append-only entries. Each station saves its own
+ * step as a new `encounter_entry`; a saved entry is never changed (PRD §9.8.3),
+ * so a correction is another entry that `amends` the original. Nothing about an
+ * encounter is ever patched — it is closed by saving a closing step — which is
+ * why two devices recording the same patient can never race on one column.
+ */
+
+/** Opened when the first step is saved (PRD §9.8.1, step 2). Insert-only. */
+export const Encounter = baseEnvelope.extend({
+  type: z.literal('encounter'),
+  patientId,
+  openedOn: isoDateTime,
+  setting: Setting.default('facility'),
+});
+export type Encounter = z.infer<typeof Encounter>;
+
+export const EncounterStep = z.enum([
+  'vitals',
+  'complaint',
+  'lab_order',
+  'lab_results',
+  'diagnosis',
+  'injection',
+  'dispense',
+  'admission',
+  'follow_up',
+  /** A correction to an earlier entry, linked through `amends` (PRD §9.8.3). */
+  'amendment',
+]);
+export type EncounterStep = z.infer<typeof EncounterStep>;
+
+/** Saving one of these steps closes the encounter: as an inpatient, or sent home. */
+export const CLOSING_STEPS = ['admission', 'follow_up'] as const satisfies readonly EncounterStep[];
+
+const positive = z.number().positive();
+const text = z.string().trim().min(1);
+
+export const PrescriptionLine = z.object({
+  drug: text,
+  dose: text,
+  frequency: text.optional(),
+  duration: text.optional(),
+});
+export type PrescriptionLine = z.infer<typeof PrescriptionLine>;
+
+export const InjectionRoute = z.enum(['IM', 'IV', 'SC', 'ID']);
+export type InjectionRoute = z.infer<typeof InjectionRoute>;
+
+/** What each step records. Strict, so a field meant for another step is refused. */
+export const ENCOUNTER_STEP_VALUES = {
+  vitals: z
+    .strictObject({
+      temperatureC: positive.optional(),
+      systolicMmHg: positive.optional(),
+      diastolicMmHg: positive.optional(),
+      pulseBpm: positive.optional(),
+      weightKg: positive.optional(),
+      spo2Percent: positive.max(100).optional(),
+    })
+    .refine((vitals) => Object.values(vitals).some((value) => value !== undefined), {
+      message: 'Record at least one vital sign',
+    }),
+  complaint: z
+    .strictObject({ complaints: z.array(text).default([]), note: text.optional() })
+    .refine((complaint) => complaint.complaints.length > 0 || Boolean(complaint.note), {
+      message: 'Record a complaint or a clinical note',
+    }),
+  lab_order: z.strictObject({ tests: z.array(text).min(1) }),
+  lab_results: z.strictObject({ results: z.array(z.strictObject({ test: text, result: text })).min(1) }),
+  diagnosis: z.strictObject({
+    diagnosis: text,
+    prescription: z.array(PrescriptionLine).default([]),
+    giveInjection: z.boolean().default(false),
+    admit: z.boolean().default(false),
+  }),
+  injection: z.strictObject({
+    drug: text,
+    dose: text,
+    route: InjectionRoute,
+    site: text.optional(),
+    note: text.optional(),
+  }),
+  dispense: z.strictObject({
+    lines: z
+      .array(
+        z
+          .strictObject({ drug: text, dispensed: z.boolean(), reason: text.optional() })
+          .refine((line) => line.dispensed || Boolean(line.reason), {
+            message: 'Give a reason for anything not dispensed',
+            path: ['reason'],
+          }),
+      )
+      .min(1),
+  }),
+  admission: z.strictObject({ ward: text, bed: text.optional(), note: text.optional() }),
+  follow_up: z.strictObject({
+    /** Absent when the patient is sent home with no review booked. */
+    followUpOn: isoDate.optional(),
+    reason: text.optional(),
+    /** The appointment booked for the review (PRD §9.8.1, step 7). */
+    appointmentId: z.string().min(1).optional(),
+  }),
+  amendment: z.strictObject({ note: text }),
+} as const satisfies Record<EncounterStep, z.ZodType>;
+export type EncounterStepValues = { [Step in EncounterStep]: z.infer<(typeof ENCOUNTER_STEP_VALUES)[Step]> };
+
+/**
+ * One saved, locked step (PRD §9.8.4). The envelope's `createdBy` / `createdOn`
+ * are the actor and the system time stamped at save (PRD §9.8.5); `actorRole`
+ * records the role they held then, so the trail stays true if it later changes.
+ * `values` is checked against the step's own schema in
+ * {@link ENCOUNTER_STEP_VALUES}.
+ */
+export const EncounterEntry = baseEnvelope
+  .extend({
+    type: z.literal('encounter_entry'),
+    encounterId: z.string().min(1),
+    /** Repeated from the encounter so the patient's history is one lookup. */
+    patientId,
+    step: EncounterStep,
+    actorRole: Role,
+    /** The entry this one corrects — set for an `amendment`, and only then. */
+    amends: z.string().min(1).optional(),
+    values: z.record(z.string(), z.unknown()),
+  })
+  .superRefine((entry, context) => {
+    if ((entry.step === 'amendment') !== Boolean(entry.amends)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['amends'],
+        message: 'An amendment must name the entry it amends, and only an amendment may',
+      });
+    }
+    const values = ENCOUNTER_STEP_VALUES[entry.step].safeParse(entry.values);
+    for (const issue of values.success ? [] : values.error.issues) {
+      context.addIssue({ code: 'custom', path: ['values', ...issue.path], message: issue.message });
+    }
+  });
+export type EncounterEntry = z.infer<typeof EncounterEntry>;
+
+/* ================================================================== */
 /* Sync rejection — the records officer's reconcile queue (root §4.1)  */
 /* ================================================================== */
 
@@ -557,6 +706,12 @@ export const SyncRejection = baseEnvelope.extend({
   occurredOn: isoDateTime.optional(),
   /** Present for `conflict` only — the columns to reconcile, nothing more. */
   conflicts: z.array(ConflictingColumn).optional(),
+  /**
+   * The whole record as the device sent it, for a refused `put`. Without it a
+   * refused insert would leave nothing to recover from — e.g. a patient whose
+   * offline-minted ID another device took first (PRD §10.1).
+   */
+  refusedRecord: z.record(z.string(), z.unknown()).optional(),
   resolvedOn: isoDateTime.optional(),
   resolvedBy: z.string().optional(),
   resolution: z.string().optional(),
