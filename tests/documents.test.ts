@@ -159,6 +159,23 @@ describe('record types', () => {
     assert.equal(rejection.refusedRecord?.fullName, 'Amaka Okoro');
   });
 
+  it('keeps what a wholly refused change tried to set', () => {
+    const rejection = SyncRejection.parse({
+      ...envelope,
+      createdBy: 'system',
+      id: 'sync_rejection:3',
+      type: 'sync_rejection',
+      entityType: 'patient',
+      entityId: patient.id,
+      operation: 'patch',
+      category: 'authorization',
+      reason: 'staff:one is deactivated',
+      refusedChanges: { phone: '0803 555 0147' },
+    });
+
+    assert.deepEqual(rejection.refusedChanges, { phone: '0803 555 0147' });
+  });
+
   it('refuses an unknown type', () => {
     assert.equal(parseDocument({ ...envelope, id: 'x', type: 'prescription' }).success, false);
   });

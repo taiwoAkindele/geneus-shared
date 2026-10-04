@@ -687,8 +687,10 @@ export type ConflictingColumn = z.infer<typeof ConflictingColumn>;
 
 /**
  * Written by the server when an uploaded mutation cannot be applied, and
- * synced back down so the facility can see and resolve it. A rejected clinical
- * write is never discarded silently: this record is where it goes. Only
+ * synced back down so the facility can see and resolve it. No refused write is
+ * lost: a refused insert keeps `refusedRecord`, a refused change keeps
+ * `refusedChanges`, and it stays in the queue until a person applies it again
+ * or discards it — which `resolvedBy` / `resolution` record in their name. Only
  * `resolvedOn` / `resolvedBy` / `resolution` may be set from the device, by a
  * staff member holding `sync_rejection:resolve`.
  */
@@ -712,6 +714,12 @@ export const SyncRejection = baseEnvelope.extend({
    * offline-minted ID another device took first (PRD §10.1).
    */
   refusedRecord: z.record(z.string(), z.unknown()).optional(),
+  /**
+   * The fields a wholly refused `patch` tried to set, and their values — e.g. a
+   * phone number corrected by someone deactivated while the device was
+   * offline. A patch refused only in part keeps its clash in `conflicts`.
+   */
+  refusedChanges: z.record(z.string(), z.unknown()).optional(),
   resolvedOn: isoDateTime.optional(),
   resolvedBy: z.string().optional(),
   resolution: z.string().optional(),

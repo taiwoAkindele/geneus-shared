@@ -147,10 +147,14 @@ The server never picks a winner for clinical data. Per type:
 Anything the server will not apply becomes a **`sync_rejection`** record with a
 `category` (`identity`, `authorization`, `validation`, `conflict`), the reason, the
 attributed staff member and — for conflicts — the columns with both values. A refused
-`put` also carries the whole record as the device sent it (`refusedRecord`), so a refused
-insert can be recovered. It syncs back down to the facility so a records officer can
-resolve it (`sync_rejection:resolve`). A rejected clinical write is never discarded
-silently.
+`put` also carries the whole record as the device sent it (`refusedRecord`); a wholly
+refused `patch` carries the fields it tried to set (`refusedChanges`). It syncs back down
+to the facility so a records officer can resolve it (`sync_rejection:resolve`).
+
+**No refused write is lost.** Whatever the category, a rejection stays in the queue until a
+person either applies the write again or discards it. Either way `resolvedBy`,
+`resolvedOn` and `resolution` record who decided and what — a discard is never silent and
+never anonymous.
 
 **A Patient ID taken by another device.** Two offline devices can mint the same Patient ID
 (PRD §10.1). The second `put` is refused as a `conflict` carrying its `refusedRecord`, and
