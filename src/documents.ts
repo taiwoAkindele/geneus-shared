@@ -7,6 +7,7 @@
  * schema before it reaches PostgreSQL (see SCHEMA.md) — never hand-duplicated.
  */
 import { z } from 'zod';
+import { AssignablePermission } from './capabilities.ts';
 import {
   baseEnvelope,
   DocType,
@@ -380,8 +381,13 @@ export type StaffPermission = z.infer<typeof StaffPermission>;
 export const Staff = baseEnvelope.extend({
   type: z.literal('staff'),
   staffId: z.string().min(1),
-  fullName: z.string().min(1),
+  fullName: z.string().trim().min(1),
+  /** The role stamped on new clinical contributions. */
   role: Role,
+  additionalRoles: z.array(Role).max(Role.options.length)
+    .refine((roles) => new Set(roles).size === roles.length, 'Choose each role only once').optional(),
+  additionalPermissions: z.array(AssignablePermission).max(AssignablePermission.options.length)
+    .refine((permissions) => new Set(permissions).size === permissions.length, 'Choose each permission only once').optional(),
   permission: StaffPermission.default('read_write'),
   active: z.boolean().default(true),
 });
