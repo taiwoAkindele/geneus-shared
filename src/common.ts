@@ -68,6 +68,9 @@ export const DocType = z.enum([
   'audit_event',
   'sync_rejection',
   'pin_setup_code',
+  'fee_item',
+  'charge',
+  'payment',
 ]);
 export type DocType = z.infer<typeof DocType>;
 
@@ -90,6 +93,21 @@ export const PATIENT_ID_RE = /^[A-Z0-9]+(?:-[A-Z0-9]+)*-\d{6}-[A-Z0-9]{2}$/;
 export const patientId = z
   .string()
   .regex(PATIENT_ID_RE, 'Expected a Patient ID like OOE-PHC-000047-K2');
+
+/* ------------------------------------------------------------------ */
+/* Receipt number (PRD §9.13.7)                                        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A payment's receipt number: FACILITYCODE-R-SEQ-XX, e.g. OOE-PHC-R-000123-K2.
+ * Built like the Patient ID, and for the same reason: a cashier's device mints
+ * it offline, so the random safety code keeps two devices from printing the
+ * same number. Format only — this contract validates, it does not mint.
+ */
+export const RECEIPT_NUMBER_RE = /^[A-Z0-9]+(?:-[A-Z0-9]+)*-R-\d{6}-[A-Z0-9]{2}$/;
+export const receiptNumber = z
+  .string()
+  .regex(RECEIPT_NUMBER_RE, 'Expected a receipt number like OOE-PHC-R-000123-K2');
 
 /* ------------------------------------------------------------------ */
 /* The record envelope                                                 */
