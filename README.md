@@ -5,7 +5,7 @@ The **shared contract** for Geneus Health — everything the client
 agree on, defined once:
 
 - record shapes (Zod) and the schema version,
-- permission names, the role matrix and the offline authorization policy,
+- permission names, combined staff roles and individual grants, the role matrix and the offline authorization policy,
 - the request/response shapes of the server API.
 
 It is a **contract, not an implementation layer**: no SQL, no PowerSync configuration, no

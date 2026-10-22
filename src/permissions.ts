@@ -9,59 +9,19 @@
  * and unauthorized actions never become mutations (root §4.3, ENGINEERING.md).
  */
 import { z } from 'zod';
-import { Role, StaffPermission, type Payment } from './documents.ts';
+import { AssignablePermission, Permission } from './capabilities.ts';
+export { AssignablePermission, Permission } from './capabilities.ts';
+import { Role, StaffPermission, type Payment, type Staff } from './documents.ts';
 
 /**
  * Bump when the matrix or the policy windows change. Devices carry the version
  * they authorised against, so a stale device is visible at sync rather than
  * silently applying yesterday's rules.
+ * v5: combined staff roles and individually assigned permissions.
  * v4: billing — the cashier role, fees, charges, payments, waivers, reversals.
  */
-export const POLICY_VERSION = 4 as const;
+export const POLICY_VERSION = 5 as const;
 
-/**
- * One explicit capability per action the system can perform. Every mutation a
- * repository makes maps to exactly one of these. There is deliberately no
- * `*:delete` for any record: clinical history is retired by flag, never
- * destroyed, and the server rejects deletes outright (SCHEMA.md §6).
- */
-export const Permission = z.enum([
-  // Front desk / clinical
-  'patient:create',
-  'patient:update',
-  'appointment:create',
-  'visit:create',
-  'encounter:record',
-  'handoff:create',
-  'handoff:update',
-  'referral:create',
-  'referral:update',
-  'register_entry:create',
-  'stock_movement:create',
-  // Billing (PRD §9.13)
-  'charge:create',
-  'payment:receive',
-  'payment:waive',
-  'payment:reverse',
-  // Facility configuration
-  'register_definition:publish',
-  'unit:manage',
-  'stock_item:manage',
-  'fee_item:manage',
-  // People and access
-  'staff:manage',
-  'staff:permission',
-  'staff:deactivate',
-  'roster:assign',
-  'roster:extend',
-  'device:enroll',
-  'device:revoke',
-  // Reconciliation
-  'sync_rejection:resolve',
-  // Setting one's own PIN with a code an admin issued
-  'pin_setup_code:claim',
-]);
-export type Permission = z.infer<typeof Permission>;
 
 const CLINICAL: readonly Permission[] = [
   'patient:create',
@@ -138,6 +98,29 @@ export const paymentPermission = (payment: Pick<Payment, 'method' | 'reverses'>)
 export const permissionsFor = (role: Role, staffPermission: StaffPermission): readonly Permission[] =>
   staffPermission === 'read_only' ? [] : ROLE_PERMISSIONS[role];
 
+/** One primary role for attribution; additional duties contribute access too. */
+export type StaffRoles = Pick<Staff, 'role' | 'additionalRoles'>;
+export type StaffAccess = StaffRoles & Pick<Staff, 'permission' | 'additionalPermissions'>;
+
+export const rolesFor = (staff: StaffRoles): Role[] => [...new Set([staff.role, ...(staff.additionalRoles ?? [])])];
+export const hasRole = (staff: StaffRoles, role: Role): boolean => rolesFor(staff).includes(role);
+
+/** Read-only always wins, even when extra roles or permissions were assigned. */
+export const staffPermissions = (staff: StaffAccess): Permission[] => {
+  if (staff.permission === 'read_only') return [];
+  const assigned = (staff.additionalPermissions ?? []).filter((permission) => AssignablePermission.options.includes(permission));
+  return [...new Set([...rolesFor(staff).flatMap((role) => ROLE_PERMISSIONS[role]), ...assigned])];
+};
+
+/** A PIN reset must not let a lower-access colleague take over a more privileged account. */
+export const mayApprovePin = (approver: StaffAccess, target: StaffAccess): boolean => {
+  if (approver.permission !== 'read_write') return false;
+  const granted = staffPermissions(approver);
+  if (!hasRole(approver, 'facility_admin') && !hasRole(approver, 'supervisor') && !granted.includes('staff:manage')) return false;
+  if (hasRole(target, 'facility_admin') && !hasRole(approver, 'facility_admin')) return false;
+  return staffPermissions(target).every((permission) => granted.includes(permission));
+};
+
 /* ------------------------------------------------------------------ */
 /* Offline authorization policy (root §4.3, migration plan §19)        */
 /* ------------------------------------------------------------------ */
@@ -206,6 +189,7 @@ export const AuthorizationContext = z.object({
   facilityId: z.string().min(1),
   deviceId: z.string().min(1),
   role: Role,
+  roles: z.array(Role).optional(),
   permissions: z.array(Permission),
   policyVersion: z.number().int().positive(),
   /** Server clock at the last successful contact (see isWithinOfflineWindow). */

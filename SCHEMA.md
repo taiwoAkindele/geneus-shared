@@ -178,8 +178,15 @@ what was held; the original rejections stay as the trail.
   any type. `encounter:record` covers every encounter step for every clinical role (CHEW,
   nurse, doctor, supervisor); per-step rules wait until the facility roles that need them
   (lab, pharmacy) exist.
-- **`ROLE_PERMISSIONS`** and **`permissionsFor(role, staffPermission)`** — the matrix.
-  `read_only` staff hold no permissions at all (every permission is a mutation).
+- **`ROLE_PERMISSIONS`** and **`permissionsFor(role, staffPermission)`** — the role matrix.
+  **`staffPermissions(staff)`** combines the primary role, optional `additionalRoles`,
+  and optional `additionalPermissions`. **`rolesFor`** and **`hasRole`** describe
+  assigned duties. `role` remains the primary role stamped on new contributions.
+  `read_only` suppresses every grant. Arrays are optional so existing staff stay valid.
+  The PIN claim capability is excluded from assignable permissions. Policy version 5
+  introduces this combined-access policy; the document schema version remains 3.
+  **`mayApprovePin`** prevents a lower-access PIN approver taking over a more privileged
+  account; primary and additional administrator roles receive identical protection.
 - **Billing permissions** (§14) — `charge:create` goes with `appointment:create`, because
   booking raises the visit's fees in the same save. The `cashier` role holds only
   `payment:receive`. `payment:waive` and `payment:reverse` belong to supervisors and
