@@ -36,6 +36,9 @@ import {
   AuditEvent,
   SyncRejection,
   PinSetupCode,
+  FeeItem,
+  Charge,
+  Payment,
 } from './documents.ts';
 
 /**
@@ -65,6 +68,9 @@ export const AnyDocument = z.union([
   AuditEvent,
   SyncRejection,
   PinSetupCode,
+  FeeItem,
+  Charge,
+  Payment,
 ]);
 export type AnyDocument = z.infer<typeof AnyDocument>;
 
@@ -89,6 +95,9 @@ export const SCHEMA_BY_TYPE = {
   audit_event: AuditEvent,
   sync_rejection: SyncRejection,
   pin_setup_code: PinSetupCode,
+  fee_item: FeeItem,
+  charge: Charge,
+  payment: Payment,
 } as const;
 
 /**

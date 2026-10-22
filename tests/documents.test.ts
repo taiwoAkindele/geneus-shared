@@ -1,16 +1,22 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { AnyDocument, parseDocument, SCHEMA_BY_TYPE } from '../src/index.ts';
-import { DocType, IMMUTABLE_ENVELOPE_FIELDS, PATIENT_ID_RE, SCHEMA_VERSION } from '../src/common.ts';
+import { DocType, IMMUTABLE_ENVELOPE_FIELDS, PATIENT_ID_RE, RECEIPT_NUMBER_RE, SCHEMA_VERSION } from '../src/common.ts';
 import {
+  Appointment,
   AuditEvent,
+  Charge,
   CLOSING_STEPS,
   Device,
   Encounter,
   EncounterEntry,
+  ExemptionRule,
+  FeeItem,
+  findExemption,
   Handoff,
   normalizePinSetupCode,
   Patient,
+  Payment,
   PinSetupCode,
   RosterShift,
   rosterSignaturePayload,
@@ -308,5 +314,163 @@ describe('encounters', () => {
   it('keeps entry values in one column, as both consumers derive tables from the shape', () => {
     assert.ok('values' in EncounterEntry.shape);
     assert.ok('encounterId' in Handoff.shape);
+  });
+
+  /** Seeing a patient before they pay is allowed, and recorded with why (PRD §9.13.5). */
+  it('links the appointment it was booked as and keeps why it went ahead unpaid', () => {
+    const opened = Encounter.parse({
+      ...encounter,
+      appointmentId: 'appointment:1',
+      collectLaterReason: 'Emergency — febrile convulsion',
+    });
+
+    assert.equal(opened.appointmentId, 'appointment:1');
+    assert.equal(Encounter.safeParse({ ...encounter, collectLaterReason: '   ' }).success, false);
+  });
+});
+
+describe('appointments', () => {
+  const appointment = {
+    ...envelope,
+    id: 'appointment:1',
+    type: 'appointment',
+    patientId: patient.id,
+    reason: 'Antenatal booking',
+  };
+
+  it('records the visit type, and still reads bookings made before it existed', () => {
+    assert.equal(Appointment.parse({ ...appointment, visitType: 'antenatal' }).visitType, 'antenatal');
+    assert.equal(Appointment.safeParse(appointment).success, true);
+    assert.equal(Appointment.safeParse({ ...appointment, visitType: 'surgery' }).success, false);
+  });
+});
+
+describe('billing', () => {
+  const consultation = {
+    ...envelope,
+    id: 'fee_item:consultation',
+    type: 'fee_item',
+    name: 'Consultation',
+    category: 'consultation',
+    amountMinor: 150000,
+    currency: 'NGN',
+    chargeWhen: 'every_visit',
+    exemptions: [{ reason: 'Under-5 policy', ageUnderYears: 5 }],
+  };
+
+  const charge = {
+    ...envelope,
+    id: 'charge:1',
+    type: 'charge',
+    patientId: patient.id,
+    feeItemId: consultation.id,
+    description: 'Consultation',
+    category: 'consultation',
+    listPriceMinor: 150000,
+    amountMinor: 150000,
+    currency: 'NGN',
+    appointmentId: 'appointment:1',
+  };
+
+  const payment = {
+    ...envelope,
+    id: 'payment:1',
+    type: 'payment',
+    patientId: patient.id,
+    receiptNumber: 'OOE-PHC-R-000123-K2',
+    method: 'cash',
+    amountMinor: 150000,
+    currency: 'NGN',
+    allocations: [{ chargeId: charge.id, amountMinor: 150000 }],
+  };
+
+  it('keeps a fee in whole minor units with its currency, active unless retired', () => {
+    const fee = FeeItem.parse(consultation);
+
+    assert.equal(fee.active, true);
+    assert.equal(FeeItem.safeParse({ ...consultation, amountMinor: 1500.5 }).success, false);
+    assert.equal(FeeItem.safeParse({ ...consultation, currency: 'naira' }).success, false);
+  });
+
+  it('refuses an exemption with no condition, or one no patient could meet', () => {
+    assert.equal(ExemptionRule.safeParse({ reason: 'Free' }).success, false);
+    assert.equal(ExemptionRule.safeParse({ reason: 'Impossible', ageFromYears: 10, ageUnderYears: 5 }).success, false);
+    assert.equal(ExemptionRule.safeParse({ reason: 'Elderly', ageFromYears: 65 }).success, true);
+  });
+
+  describe('exemptions', () => {
+    const rules = [
+      ExemptionRule.parse({ reason: 'Under-5 policy', ageUnderYears: 5 }),
+      ExemptionRule.parse({ reason: 'Free antenatal care', sex: 'female', visitTypes: ['antenatal', 'postnatal'] }),
+    ];
+
+    it('finds the rule that makes a fee free', () => {
+      assert.equal(findExemption(rules, { ageYears: 3, sex: 'male' })?.reason, 'Under-5 policy');
+      assert.equal(findExemption(rules, { ageYears: 28, sex: 'female', visitType: 'antenatal' })?.reason, 'Free antenatal care');
+    });
+
+    it('needs every condition of a rule to hold', () => {
+      assert.equal(findExemption(rules, { ageYears: 28, sex: 'female', visitType: 'general' }), undefined);
+      assert.equal(findExemption(rules, { ageYears: 5, sex: 'male' }), undefined);
+    });
+
+    /** A mother must not be charged by mistake, but nobody is exempted on a guess either. */
+    it('never matches on something that was not recorded', () => {
+      assert.equal(findExemption(rules, { sex: 'male' }), undefined);
+      assert.equal(findExemption(rules, { ageYears: 28, sex: 'female' }), undefined);
+    });
+  });
+
+  it('owes the full price, or nothing when exempt — never anything in between', () => {
+    assert.equal(Charge.safeParse(charge).success, true);
+    assert.equal(Charge.safeParse({ ...charge, amountMinor: 0, exemptionReason: 'Under-5 policy' }).success, true);
+    assert.equal(Charge.safeParse({ ...charge, amountMinor: 0 }).success, false);
+    assert.equal(Charge.safeParse({ ...charge, amountMinor: 100000 }).success, false);
+    assert.equal(Charge.safeParse({ ...charge, exemptionReason: 'Under-5 policy' }).success, false);
+  });
+
+  it('takes a payment allocated to charges in full', () => {
+    assert.equal(parseDocument(payment).success, true);
+  });
+
+  it('refuses a payment whose allocations do not add up, or name a charge twice', () => {
+    const short = { ...payment, allocations: [{ chargeId: charge.id, amountMinor: 100000 }] };
+    const twice = {
+      ...payment,
+      allocations: [
+        { chargeId: charge.id, amountMinor: 75000 },
+        { chargeId: charge.id, amountMinor: 75000 },
+      ],
+    };
+
+    assert.equal(Payment.safeParse(short).success, false);
+    assert.equal(Payment.safeParse(twice).success, false);
+  });
+
+  it('asks why for a waiver or a reversal', () => {
+    const waiver = { ...payment, method: 'waiver' };
+    const reversal = { ...payment, reverses: 'payment:0' };
+
+    assert.equal(Payment.safeParse(waiver).success, false);
+    assert.equal(Payment.safeParse({ ...waiver, reason: 'Destitute — approved by supervisor' }).success, true);
+    assert.equal(Payment.safeParse(reversal).success, false);
+    assert.equal(Payment.safeParse({ ...reversal, reason: 'Entered twice' }).success, true);
+  });
+
+  it('refuses a payment without a receipt number in the facility format', () => {
+    assert.equal(Payment.safeParse({ ...payment, receiptNumber: '123' }).success, false);
+  });
+});
+
+describe('receipt numbers', () => {
+  it('reads like a Patient ID with an R before the sequence', () => {
+    assert.match('OOE-PHC-R-000123-K2', RECEIPT_NUMBER_RE);
+    assert.match('OOE-R-000123-K2', RECEIPT_NUMBER_RE);
+  });
+
+  it('refuses a number without the R, the sequence or the safety code', () => {
+    assert.doesNotMatch('OOE-PHC-000123-K2', RECEIPT_NUMBER_RE);
+    assert.doesNotMatch('OOE-PHC-R-123-K2', RECEIPT_NUMBER_RE);
+    assert.doesNotMatch('OOE-PHC-R-000123', RECEIPT_NUMBER_RE);
   });
 });

@@ -69,6 +69,8 @@ snake_case names.
 | `audit_event` | `AuditEvent` | device and server, append-only | §14 |
 | `sync_rejection` | `SyncRejection` | **server**; device may resolve | root §4.1 |
 | `pin_setup_code` | `PinSetupCode` | **server**; device may mark it used | §14.1 |
+| `fee_item` | `FeeItem` (with `exemptions`) | device | §9.13.1–2 |
+| `charge` / `payment` | `Charge` / `Payment` (§14) | device, insert-only | §9.13 |
 
 "Server-written" types are synced *down* to the facility but an upload to them is rejected.
 
@@ -88,7 +90,10 @@ the device, offline.
 - **facility / unit / staff / device** → their natural id (`code`, `unitId`, `staffId`,
   the device's own id).
 - **register_definition** → `${registerId}:v${version}`.
-- **visit / encounter / encounter_entry / handoff / register_entry / stock_movement /
+- **payment** → an event-scoped id like the rest below; its human-facing number is the
+  separate `receiptNumber` (`OOE-PHC-R-000123-K2`, `RECEIPT_NUMBER_RE`), minted on the
+  device with a safety code exactly as a Patient ID is.
+- **fee_item / charge / visit / encounter / encounter_entry / handoff / register_entry / stock_movement /
   audit_event / sync_rejection** → an event-scoped id (`<type>:<uuid>`).
 
 > Patient IDs are **generated on the device, offline** (geneus-web). This contract only
@@ -141,7 +146,8 @@ The server never picks a winner for clinical data. Per type:
 | `encounter`, `encounter_entry` | Insert-only; PATCH rejected. An `amendment` must amend an entry of the same encounter; once a closing step is saved, only amendments may be added (§13) |
 | `register_definition` | Immutable per version; a colliding version is rejected, never overwritten |
 | `patient` | Changed-column merge. If the server row and the device both changed the **same column** since the device's base, that column is a `conflict` |
-| `appointment`, `handoff`, `referral`, `stock_item` | Changed-column merge; same-column race → `conflict` |
+| `appointment`, `handoff`, `referral`, `stock_item`, `fee_item` | Changed-column merge; same-column race → `conflict` |
+| `charge`, `payment` | Insert-only; PATCH rejected. A mistake is a reversing `payment` (§14) |
 | `staff`, `roster_shift`, `unit` | Changed-column merge; a same-column administrative race applies the later upload and is audited |
 
 Anything the server will not apply becomes a **`sync_rejection`** record with a
@@ -174,6 +180,11 @@ what was held; the original rejections stay as the trail.
   (lab, pharmacy) exist.
 - **`ROLE_PERMISSIONS`** and **`permissionsFor(role, staffPermission)`** — the matrix.
   `read_only` staff hold no permissions at all (every permission is a mutation).
+- **Billing permissions** (§14) — `charge:create` goes with `appointment:create`, because
+  booking raises the visit's fees in the same save. The `cashier` role holds only
+  `payment:receive`. `payment:waive` and `payment:reverse` belong to supervisors and
+  facility admins; `fee_item:manage` to facility admins. **`paymentPermission(payment)`**
+  names which one a payment needs, so the device and the server cannot disagree.
 - **`POLICY_VERSION`** — bumped when the matrix or the windows change.
 - **`OFFLINE_AUTHORIZATION_POLICY`** — how long cached authorization stays valid:
   **7 days** in general (the existing sync-or-freeze window), **24 hours** for
@@ -306,8 +317,9 @@ mutation queued behind it. Its record is the `sync_rejection` that syncs back do
 An encounter is one episode of care, recorded station by station. It is a header plus
 append-only entries:
 
-- **`encounter`** — `patientId`, `openedOn`, `setting`. Written when the first step is
-  saved; never changed.
+- **`encounter`** — `patientId`, `openedOn`, `setting`, and optionally the
+  `appointmentId` it was booked as and a `collectLaterReason` when the patient was seen
+  before paying (PRD §9.13.5). Written when the first step is saved; never changed.
 - **`encounter_entry`** — one saved, locked step: `encounterId`, `patientId` (repeated so a
   patient's history is one lookup), `step`, `actorRole`, an optional `amends`, and
   `values`. The envelope's `createdBy` / `createdOn` are the actor and the system time
@@ -332,3 +344,45 @@ Three rules make "saved means saved" (PRD §9.8.3) a property of the data, not t
 
 A `handoff` may name the `encounterId` it moves the patient within, so the receiving unit
 opens the same encounter.
+
+## 14. Billing (PRD §9.13)
+
+Money is three records:
+
+- **`fee_item`** — the facility's fee schedule: `name`, `category` (`registration · card ·
+  consultation · laboratory · procedure · other`), `amountMinor`, `currency`, `chargeWhen`
+  (`first_visit · every_visit · when_ordered`), `exemptions[]`, `active`. The only billing
+  record that is ever patched (`fee_item:manage`); a retired fee is `active: false`.
+- **`charge`** — one fee raised against a patient. The fee's name (`description`),
+  `category` and price (`listPriceMinor`) are copied in, so a later price change never
+  alters a bill. `amountMinor` is what is owed: the full price, or `0` with an
+  `exemptionReason` — never anything in between. Optionally names the `appointmentId` that
+  raised it or the `encounterId` whose order did. Insert-only.
+- **`payment`** — money received (`cash · transfer · pos`) or owed money cancelled by hand
+  (`waiver`), with a `receiptNumber` and `allocations[]` saying how much went to each
+  charge; the allocations must add up to `amountMinor` exactly and name each charge once.
+  A payment that `reverses` another cancels it and repeats its allocations. A waiver and a
+  reversal must give a `reason`. Insert-only.
+
+Rules the shape alone cannot check, which the write path enforces on both sides: every
+allocated charge belongs to the same facility and patient and is in the payment's
+currency; a reversal names a payment of the same patient that is not already reversed.
+What the server cannot prevent — two cashiers on two offline devices paying the same
+charge — it detects as an overpayment for a supervisor to settle, never merges.
+
+**Amounts** are whole numbers in the currency's minor unit (kobo for NGN), so every sum is
+exact. The ISO 4217 `currency` travels with each amount rather than being assumed: the
+deployment's country is not the contract's business.
+
+**Nothing about payment status is stored.** A charge's balance is its `amountMinor` less
+what payments allocated to it, plus what reversals took back. An appointment is
+*confirmed* when every charge naming it has a balance of zero — including when it has no
+charges at all, which is how a facility with no fees never sees billing. Consumers derive
+this; no record holds it, so the front desk and the cashier never race on one column.
+
+**Exemptions are rules, not judgement calls.** An `ExemptionRule` is `{ reason,
+ageUnderYears?, ageFromYears?, sex?, visitTypes? }`; every condition it gives must hold,
+and a fee is exempt when any of its rules matches. **`findExemption(rules, facts)`**
+applies them, against the patient's age in whole years, their sex, and the appointment's
+`visitType` (`VisitType`, chosen at booking). A rule never matches on a fact that was not
+recorded: an unknown age is not "under 5". Patients no rule covers are waived by hand.

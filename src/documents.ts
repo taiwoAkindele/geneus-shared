@@ -13,6 +13,7 @@ import {
   isoDate,
   isoDateTime,
   patientId,
+  receiptNumber,
   Sex,
   Setting,
 } from './common.ts';
@@ -92,6 +93,26 @@ export type Handoff = z.infer<typeof Handoff>;
 export const AppointmentStatus = z.enum(['pending', 'scheduled']);
 export type AppointmentStatus = z.infer<typeof AppointmentStatus>;
 
+/**
+ * What the visit is for, chosen at booking. Exemption rules are written against
+ * it (PRD §9.13.2) — an antenatal or immunisation visit is often free by policy
+ * — so it is a fixed list both consumers and every facility's rules agree on.
+ */
+export const VisitType = z.enum([
+  'general',
+  'follow_up',
+  'antenatal',
+  'postnatal',
+  'delivery',
+  'immunisation',
+  'family_planning',
+  'child_welfare',
+  'tb_programme',
+  'hiv_programme',
+  'emergency',
+]);
+export type VisitType = z.infer<typeof VisitType>;
+
 export const Appointment = baseEnvelope
   .extend({
     type: z.literal('appointment'),
@@ -99,6 +120,8 @@ export const Appointment = baseEnvelope
     reason: z.string().min(1),
     scheduledFor: isoDateTime.optional(),
     status: AppointmentStatus.default('pending'),
+    /** Absent on bookings made before visit types existed. */
+    visitType: VisitType.optional(),
   })
   .refine((a) => a.status !== 'scheduled' || Boolean(a.scheduledFor), {
     message: 'A scheduled appointment needs scheduledFor',
@@ -336,6 +359,8 @@ export const Role = z.enum([
   'records_officer',
   'facility_admin',
   'supervisor',
+  /** Takes patients' payments (PRD §9.13.4); records no care. */
+  'cashier',
 ]);
 export type Role = z.infer<typeof Role>;
 
@@ -530,6 +555,14 @@ export const Encounter = baseEnvelope.extend({
   patientId,
   openedOn: isoDateTime,
   setting: Setting.default('facility'),
+  /** The appointment this visit was booked as, when there was one (PRD §9.8.1, step 2). */
+  appointmentId: z.string().min(1).optional(),
+  /**
+   * Why the patient was seen before their fees were paid — "See now — collect
+   * later" (PRD §9.13.5). Saved with the encounter, so the decision stays
+   * attributed to the clinician who opened it.
+   */
+  collectLaterReason: z.string().trim().min(1).optional(),
 });
 export type Encounter = z.infer<typeof Encounter>;
 
@@ -656,6 +689,199 @@ export const EncounterEntry = baseEnvelope
     }
   });
 export type EncounterEntry = z.infer<typeof EncounterEntry>;
+
+/* ================================================================== */
+/* Billing (PRD §9.13) — fees, what a patient owes, what they paid     */
+/* ================================================================== */
+/*
+ * Money is three records. The facility's price list (`fee_item`) is the only
+ * one ever edited. What a patient owes (`charge`) and what was paid against it
+ * (`payment`) are insert-only, like encounter entries: a mistake is cancelled by
+ * a reversing payment, never edited away (PRD §9.13.6). Whether an appointment
+ * is confirmed is never stored — it is worked out from its charges and the
+ * payments against them, so the front desk and the cashier never race on one
+ * column.
+ *
+ * Amounts are whole numbers in the currency's minor unit (kobo for NGN), so
+ * every sum is exact. The ISO 4217 currency travels with every amount rather
+ * than being assumed: a deployment's country is not the contract's business.
+ */
+
+/** An amount in the currency's minor unit, e.g. kobo. */
+export const minorUnits = z.number().int().nonnegative();
+
+export const currencyCode = z.string().regex(/^[A-Z]{3}$/, 'Expected an ISO 4217 currency code like NGN');
+
+export const FeeCategory = z.enum(['registration', 'card', 'consultation', 'laboratory', 'procedure', 'other']);
+export type FeeCategory = z.infer<typeof FeeCategory>;
+
+/**
+ * When a fee is raised (PRD §9.13.1): once in a patient's life at the facility
+ * (registration, card), at every booked visit (consultation), or when a
+ * clinician orders the service it pays for.
+ */
+export const ChargeWhen = z.enum(['first_visit', 'every_visit', 'when_ordered']);
+export type ChargeWhen = z.infer<typeof ChargeWhen>;
+
+/**
+ * One condition under which a fee is not charged (PRD §9.13.2), e.g.
+ * `{ reason: 'Under-5 policy', ageUnderYears: 5 }`. Every condition a rule
+ * gives must hold; a fee is exempt when any one of its rules matches.
+ */
+export const ExemptionRule = z
+  .strictObject({
+    /** Shown on the bill and in the reports: "Exempt — Under-5 policy". */
+    reason: text,
+    /** Matches a patient younger than this many whole years. */
+    ageUnderYears: z.number().int().positive().max(130).optional(),
+    /** Matches a patient this many whole years old or older. */
+    ageFromYears: z.number().int().nonnegative().max(130).optional(),
+    sex: Sex.optional(),
+    visitTypes: z.array(VisitType).min(1).optional(),
+  })
+  .refine(
+    (rule) =>
+      rule.ageUnderYears !== undefined ||
+      rule.ageFromYears !== undefined ||
+      rule.sex !== undefined ||
+      rule.visitTypes !== undefined,
+    { message: 'An exemption needs at least one condition' },
+  )
+  .refine(
+    (rule) => rule.ageUnderYears === undefined || rule.ageFromYears === undefined || rule.ageFromYears < rule.ageUnderYears,
+    { message: 'No patient can be both that old and that young', path: ['ageFromYears'] },
+  );
+export type ExemptionRule = z.infer<typeof ExemptionRule>;
+
+/** What exemption rules are checked against, known when the fee is raised. */
+export type ExemptionFacts = {
+  /** Whole years at the time of the visit; absent when it cannot be worked out. */
+  ageYears?: number;
+  sex: Sex;
+  visitType?: VisitType;
+};
+
+const matchesExemption = (rule: ExemptionRule, facts: ExemptionFacts): boolean => {
+  // A rule never matches on a fact nobody recorded — a missing age is not "under 5".
+  if (rule.ageUnderYears !== undefined && (facts.ageYears === undefined || facts.ageYears >= rule.ageUnderYears)) return false;
+  if (rule.ageFromYears !== undefined && (facts.ageYears === undefined || facts.ageYears < rule.ageFromYears)) return false;
+  if (rule.sex !== undefined && facts.sex !== rule.sex) return false;
+  if (rule.visitTypes !== undefined && (facts.visitType === undefined || !rule.visitTypes.includes(facts.visitType))) return false;
+  return true;
+};
+
+/**
+ * The rule that makes a fee free for this patient and visit, if any. Shared, so
+ * the device that raises the charge and anything that later checks it apply
+ * the facility's policy identically.
+ */
+export const findExemption = (rules: readonly ExemptionRule[], facts: ExemptionFacts): ExemptionRule | undefined =>
+  rules.find((rule) => matchesExemption(rule, facts));
+
+/** One entry in the facility's fee schedule. Edited in place; charges keep the price they were raised at. */
+export const FeeItem = baseEnvelope.extend({
+  type: z.literal('fee_item'),
+  name: text,
+  category: FeeCategory,
+  amountMinor: minorUnits,
+  currency: currencyCode,
+  chargeWhen: ChargeWhen,
+  exemptions: z.array(ExemptionRule).default([]),
+  /** Retired fees are kept so old charges still name them; they are never raised again. */
+  active: z.boolean().default(true),
+});
+export type FeeItem = z.infer<typeof FeeItem>;
+
+/**
+ * One fee raised against a patient (PRD §9.13.3). Insert-only. The fee's name,
+ * category and price are copied in when it is raised, so a later price change
+ * never alters a bill. An exempt charge is still written — at nothing owed,
+ * with the rule's reason — so the reports can show the free care given.
+ */
+export const Charge = baseEnvelope
+  .extend({
+    type: z.literal('charge'),
+    patientId,
+    feeItemId: z.string().min(1),
+    description: text,
+    category: FeeCategory,
+    /** The fee's price when this charge was raised. */
+    listPriceMinor: minorUnits,
+    /** What the patient owes: the list price, or nothing when exempt. */
+    amountMinor: minorUnits,
+    currency: currencyCode,
+    exemptionReason: text.optional(),
+    /** The booking that raised it; confirmed once every charge naming it is settled. */
+    appointmentId: z.string().min(1).optional(),
+    /** The encounter it belongs to, for fees raised by an order. */
+    encounterId: z.string().min(1).optional(),
+  })
+  .refine((charge) => charge.amountMinor === (charge.exemptionReason ? 0 : charge.listPriceMinor), {
+    message: 'A charge owes its full price, or nothing when an exemption applies',
+    path: ['amountMinor'],
+  });
+export type Charge = z.infer<typeof Charge>;
+
+/**
+ * Cash, transfer and POS are money received. A waiver is a supervisor
+ * cancelling what is owed by hand, for a patient no exemption rule covers
+ * (PRD §9.13.2); it is a payment so that it settles charges the same way and
+ * appears in the same reports.
+ */
+export const PaymentMethod = z.enum(['cash', 'transfer', 'pos', 'waiver']);
+export type PaymentMethod = z.infer<typeof PaymentMethod>;
+
+/** How much of a payment went to one charge. */
+export const PaymentAllocation = z.strictObject({
+  chargeId: z.string().min(1),
+  amountMinor: minorUnits.positive(),
+});
+export type PaymentAllocation = z.infer<typeof PaymentAllocation>;
+
+/**
+ * Money received, or waived, against a patient's charges, with its receipt
+ * (PRD §9.13.4). Insert-only. `createdBy` / `createdOn` are the cashier and the
+ * time it was taken. A payment that `reverses` another cancels it — refunded,
+ * or recorded in error (PRD §9.13.6) — and repeats the original's allocations,
+ * which it takes back; the original stays visible.
+ *
+ * Checks that span records — that each charge is this patient's, in the same
+ * currency, and not paid twice over — belong to the write path, not the shape.
+ */
+export const Payment = baseEnvelope
+  .extend({
+    type: z.literal('payment'),
+    patientId,
+    receiptNumber,
+    method: PaymentMethod,
+    amountMinor: minorUnits.positive(),
+    currency: currencyCode,
+    allocations: z.array(PaymentAllocation).min(1),
+    /** The bank transfer or POS reference, when there is one. */
+    reference: text.optional(),
+    /** Required for a waiver or a reversal: why. */
+    reason: text.optional(),
+    /** The payment this one cancels. */
+    reverses: z.string().min(1).optional(),
+  })
+  .superRefine((payment, context) => {
+    const allocated = payment.allocations.reduce((sum, allocation) => sum + allocation.amountMinor, 0);
+    if (allocated !== payment.amountMinor) {
+      context.addIssue({
+        code: 'custom',
+        path: ['allocations'],
+        message: 'A payment must be allocated to charges in full, no more and no less',
+      });
+    }
+    const chargeIds = payment.allocations.map((allocation) => allocation.chargeId);
+    if (new Set(chargeIds).size !== chargeIds.length) {
+      context.addIssue({ code: 'custom', path: ['allocations'], message: 'Allocate to each charge once' });
+    }
+    if ((payment.method === 'waiver' || payment.reverses) && !payment.reason) {
+      context.addIssue({ code: 'custom', path: ['reason'], message: 'Give a reason for a waiver or a reversal' });
+    }
+  });
+export type Payment = z.infer<typeof Payment>;
 
 /* ================================================================== */
 /* Sync rejection — the records officer's reconcile queue (root §4.1)  */

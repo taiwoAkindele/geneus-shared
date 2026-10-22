@@ -5,6 +5,7 @@ import {
   HIGH_RISK_PERMISSIONS,
   isWithinOfflineWindow,
   OFFLINE_AUTHORIZATION_POLICY,
+  paymentPermission,
   Permission,
   permissionsFor,
   ROLE_PERMISSIONS,
@@ -37,6 +38,7 @@ describe('role permissions', () => {
       assert.ok(permissionsFor(role, 'read_write').includes('encounter:record'), role);
     }
     assert.equal(permissionsFor('records_officer', 'read_write').includes('encounter:record'), false);
+    assert.equal(permissionsFor('cashier', 'read_write').includes('encounter:record'), false);
   });
 
   it('grants doctor-only actions to doctors and not to CHEWs', () => {
@@ -74,6 +76,38 @@ describe('role permissions', () => {
       const holders = Role.options.filter((role) => ROLE_PERMISSIONS[role].includes(permission));
       assert.ok(holders.length > 0, `${permission} is granted to no role`);
     }
+  });
+
+  /** The cashier takes money and records no care (PRD §9.13.4). */
+  it('lets the cashier take payments and nothing else', () => {
+    assert.deepEqual([...permissionsFor('cashier', 'read_write')], ['payment:receive']);
+  });
+
+  /** Booking raises the visit's fees in the same save, so whoever may book may raise them (PRD §9.13.3). */
+  it('lets everyone who may book an appointment raise its fees', () => {
+    for (const role of Role.options) {
+      const permissions = ROLE_PERMISSIONS[role];
+      if (permissions.includes('appointment:create')) assert.ok(permissions.includes('charge:create'), role);
+    }
+  });
+
+  it('keeps waiving and reversing payments to supervisors and admins', () => {
+    for (const permission of ['payment:waive', 'payment:reverse'] as const) {
+      const holders = Role.options.filter((role) => ROLE_PERMISSIONS[role].includes(permission));
+      assert.deepEqual(holders.sort(), ['facility_admin', 'supervisor'], permission);
+    }
+  });
+
+  it('keeps the fee schedule to the facility admin', () => {
+    const holders = Role.options.filter((role) => ROLE_PERMISSIONS[role].includes('fee_item:manage'));
+    assert.deepEqual(holders, ['facility_admin']);
+  });
+
+  it('names the permission a payment needs from what it does', () => {
+    assert.equal(paymentPermission({ method: 'cash', reverses: undefined }), 'payment:receive');
+    assert.equal(paymentPermission({ method: 'waiver', reverses: undefined }), 'payment:waive');
+    assert.equal(paymentPermission({ method: 'waiver', reverses: 'payment:1' }), 'payment:reverse');
+    assert.equal(paymentPermission({ method: 'pos', reverses: 'payment:1' }), 'payment:reverse');
   });
 
   /** Clinical history is retired by flag, never destroyed (SCHEMA.md §6). */

@@ -9,14 +9,15 @@
  * and unauthorized actions never become mutations (root §4.3, ENGINEERING.md).
  */
 import { z } from 'zod';
-import { Role, StaffPermission } from './documents.ts';
+import { Role, StaffPermission, type Payment } from './documents.ts';
 
 /**
  * Bump when the matrix or the policy windows change. Devices carry the version
  * they authorised against, so a stale device is visible at sync rather than
  * silently applying yesterday's rules.
+ * v4: billing — the cashier role, fees, charges, payments, waivers, reversals.
  */
-export const POLICY_VERSION = 3 as const;
+export const POLICY_VERSION = 4 as const;
 
 /**
  * One explicit capability per action the system can perform. Every mutation a
@@ -37,10 +38,16 @@ export const Permission = z.enum([
   'referral:update',
   'register_entry:create',
   'stock_movement:create',
+  // Billing (PRD §9.13)
+  'charge:create',
+  'payment:receive',
+  'payment:waive',
+  'payment:reverse',
   // Facility configuration
   'register_definition:publish',
   'unit:manage',
   'stock_item:manage',
+  'fee_item:manage',
   // People and access
   'staff:manage',
   'staff:permission',
@@ -67,16 +74,25 @@ const CLINICAL: readonly Permission[] = [
   'referral:create',
   'register_entry:create',
   'stock_movement:create',
+  // Booking an appointment raises its fees in the same save (PRD §9.13.3).
+  'charge:create',
 ];
 
 const FRONT_DESK: readonly Permission[] = [
   'patient:create',
   'patient:update',
   'appointment:create',
+  'charge:create',
   'register_entry:create',
   'register_definition:publish',
   'sync_rejection:resolve',
 ];
+
+/** Takes money and records no care (PRD §9.13.4). */
+const CASHIER: readonly Permission[] = ['payment:receive'];
+
+/** Cancelling what is owed, or a payment already taken, is a supervisor's decision (PRD §9.13.4). */
+const BILLING_OVERSIGHT: readonly Permission[] = ['payment:waive', 'payment:reverse'];
 
 /**
  * Granted by no role. It belongs only to the person a PIN setup code was
@@ -97,9 +113,20 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   chew: CLINICAL,
   nurse: CLINICAL,
   doctor: [...CLINICAL, 'referral:update'],
-  supervisor: [...CLINICAL, 'referral:update', 'roster:extend'],
+  supervisor: [...CLINICAL, 'referral:update', 'roster:extend', ...BILLING_OVERSIGHT],
   records_officer: FRONT_DESK,
+  cashier: CASHIER,
   facility_admin: Permission.options.filter((permission) => !CLAIM_ONLY.includes(permission)),
+};
+
+/**
+ * The permission a payment record needs, decided from what it does. Shared so
+ * the device that writes it and the server that receives it name the same one.
+ */
+export const paymentPermission = (payment: Pick<Payment, 'method' | 'reverses'>): Permission => {
+  if (payment.reverses) return 'payment:reverse';
+  if (payment.method === 'waiver') return 'payment:waive';
+  return 'payment:receive';
 };
 
 /**
