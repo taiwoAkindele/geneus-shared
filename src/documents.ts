@@ -378,6 +378,10 @@ export type Role = z.infer<typeof Role>;
 export const StaffPermission = z.enum(['read_only', 'read_write']);
 export type StaffPermission = z.infer<typeof StaffPermission>;
 
+/** Whether fresh PIN sign-in needs an active roster window. */
+export const LoginAccess = z.enum(['shift', 'always']);
+export type LoginAccess = z.infer<typeof LoginAccess>;
+
 export const Staff = baseEnvelope.extend({
   type: z.literal('staff'),
   staffId: z.string().min(1),
@@ -389,6 +393,8 @@ export const Staff = baseEnvelope.extend({
   additionalPermissions: z.array(AssignablePermission).max(AssignablePermission.options.length)
     .refine((permissions) => new Set(permissions).size === permissions.length, 'Choose each permission only once').optional(),
   permission: StaffPermission.default('read_write'),
+  /** Omitted on older staff records: scheduled shift sign-in is the default. */
+  loginAccess: LoginAccess.optional(),
   active: z.boolean().default(true),
 });
 export type Staff = z.infer<typeof Staff>;
