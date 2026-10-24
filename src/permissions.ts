@@ -17,10 +17,11 @@ import { Role, StaffPermission, type Payment, type Staff } from './documents.ts'
  * Bump when the matrix or the policy windows change. Devices carry the version
  * they authorised against, so a stale device is visible at sync rather than
  * silently applying yesterday's rules.
+ * v6: configurable around-the-clock sign-in; shift end no longer expires sessions.
  * v5: combined staff roles and individually assigned permissions.
  * v4: billing — the cashier role, fees, charges, payments, waivers, reversals.
  */
-export const POLICY_VERSION = 5 as const;
+export const POLICY_VERSION = 6 as const;
 
 
 const CLINICAL: readonly Permission[] = [

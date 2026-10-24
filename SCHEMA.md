@@ -393,3 +393,15 @@ and a fee is exempt when any of its rules matches. **`findExemption(rules, facts
 applies them, against the patient's age in whole years, their sex, and the appointment's
 `visitType` (`VisitType`, chosen at booking). A rule never matches on a fact that was not
 recorded: an unknown age is not "under 5". Patients no rule covers are waived by hand.
+
+### Staff sign-in access (policy v6)
+
+Optional Staff.loginAccess accepts shift or always. Missing values keep scheduled
+fresh sign-in; always permits around-the-clock PIN sign-in without a roster. This
+does not affect the role/permission union. Administrators retain their existing
+any-time sign-in and inactivity rule.
+
+An authenticated staff session is no longer expired by a roster end. Staff sign
+out manually; deactivation clears the session. RosterShift timestamps support
+overnight and 24-hour windows without a shape change. The field is additive, so
+SCHEMA_VERSION remains 3; POLICY_VERSION is 6.
