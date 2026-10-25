@@ -57,6 +57,7 @@ export const Patient = baseEnvelope
   .superRefine((d, ctx) => {
     const observed = d.ageObservedOn ?? d.createdOn.slice(0, 10);
     if (d.dateOfBirth && d.dateOfBirth > observed) ctx.addIssue({ code: 'custom', path: ['dateOfBirth'], message: 'Date of birth cannot be after the age observation date' });
+    if (d.dateOfBirth && yearsBetween(d.dateOfBirth, observed) > 130) ctx.addIssue({ code: 'custom', path: ['dateOfBirth'], message: 'Check the birth date; age exceeds 130 years' });
     if (d.dateOfBirth && d.ageYears !== undefined && d.ageObservedOn && yearsBetween(d.dateOfBirth, d.ageObservedOn) !== d.ageYears) ctx.addIssue({ code: 'custom', path: ['ageYears'], message: 'Age and date of birth do not agree' });
     if (d.identityEvidence === 'document_seen' && !d.identityEvidenceNote?.trim()) ctx.addIssue({ code: 'custom', path: ['identityEvidenceNote'], message: 'Describe the identity evidence checked' });
   });

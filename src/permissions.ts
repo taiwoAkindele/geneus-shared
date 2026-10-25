@@ -17,6 +17,7 @@ import { Role, StaffPermission, type Payment, type Staff } from './documents.ts'
  * Bump when the matrix or the policy windows change. Devices carry the version
  * they authorised against, so a stale device is visible at sync rather than
  * silently applying yesterday's rules.
+ * v8: patient identity review and server-confirmed resolution.
  * v7: hospital department billing and attributed discounts/waivers.
  * v6: configurable around-the-clock sign-in; shift end no longer expires sessions.
  * v5: combined staff roles and individually assigned permissions.
