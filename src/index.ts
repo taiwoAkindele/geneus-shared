@@ -15,9 +15,11 @@ export * from './common.ts';
 export * from './documents.ts';
 export * from './permissions.ts';
 export * from './api.ts';
+export * from './patientIdentity.ts';
 
 import {
   Patient,
+  PatientIdentityEvent,
   Visit,
   Encounter,
   EncounterEntry,
@@ -53,6 +55,7 @@ import {
  */
 export const AnyDocument = z.union([
   Patient,
+  PatientIdentityEvent,
   Visit,
   Encounter,
   EncounterEntry,
@@ -83,6 +86,7 @@ export type AnyDocument = z.infer<typeof AnyDocument>;
 /** Map of `type` → schema, for validating a record when its type is known. */
 export const SCHEMA_BY_TYPE = {
   patient: Patient,
+  patient_identity_event: PatientIdentityEvent,
   visit: Visit,
   encounter: Encounter,
   encounter_entry: EncounterEntry,

@@ -8,6 +8,7 @@
  */
 import { z } from 'zod';
 import { AssignablePermission } from './capabilities.ts';
+import { validCalendarDate, yearsBetween } from './patientIdentity.ts';
 import {
   baseEnvelope,
   DocType,
@@ -32,24 +33,45 @@ export const Patient = baseEnvelope
     fullName: z.string().min(1),
     address: z.string().min(1),
     sex: Sex,
-    dateOfBirth: isoDate.optional(),
+    dateOfBirth: isoDate.refine(validCalendarDate, 'Enter a valid calendar date').nullish().transform((v) => v ?? undefined).optional(),
     /** True when DOB is a best-guess (elderly patient, no records — PRD §10). */
     dobEstimated: z.boolean().default(false),
-    ageYears: z.number().int().nonnegative().max(130).optional(),
-    occupation: z.string().optional(),
-    religion: z.string().optional(),
+    ageYears: z.number().int().nonnegative().max(130).nullish().transform((v) => v ?? undefined).optional(),
+    ageObservedOn: isoDate.refine(validCalendarDate).nullish().transform((v) => v ?? undefined).optional(),
+    occupation: z.string().nullish().transform((v) => v ?? undefined).optional(),
+    religion: z.string().nullish().transform((v) => v ?? undefined).optional(),
     allergies: z.array(z.string()).default([]),
     // Strongest returning-patient signals (optional)
-    phone: z.string().optional(),
-    nin: z.string().optional(),
+    phone: z.string().nullish().transform((v) => v ?? undefined).optional(),
+    nin: z.string().nullish().transform((v) => v ?? undefined).optional(),
+    /** Evidence reported by staff, not an external identity-provider verification. */
+    identityEvidence: z.enum(['reported', 'document_seen']).optional(),
+    identityEvidenceNote: z.string().max(300).nullish().transform((v) => v ?? undefined).optional(),
     /** Old paper folder / card number captured at first digital visit (PRD §10.2). */
-    legacyPaperRef: z.string().optional(),
+    legacyPaperRef: z.string().nullish().transform((v) => v ?? undefined).optional(),
   })
   .refine((d) => Boolean(d.dateOfBirth) || d.ageYears != null, {
     message: 'Provide either dateOfBirth or ageYears',
     path: ['ageYears'],
+  })
+  .superRefine((d, ctx) => {
+    const observed = d.ageObservedOn ?? d.createdOn.slice(0, 10);
+    if (d.dateOfBirth && d.dateOfBirth > observed) ctx.addIssue({ code: 'custom', path: ['dateOfBirth'], message: 'Date of birth cannot be after the age observation date' });
+    if (d.dateOfBirth && d.ageYears !== undefined && d.ageObservedOn && yearsBetween(d.dateOfBirth, d.ageObservedOn) !== d.ageYears) ctx.addIssue({ code: 'custom', path: ['ageYears'], message: 'Age and date of birth do not agree' });
+    if (d.identityEvidence === 'document_seen' && !d.identityEvidenceNote?.trim()) ctx.addIssue({ code: 'custom', path: ['identityEvidenceNote'], message: 'Describe the identity evidence checked' });
   });
 export type Patient = z.infer<typeof Patient>;
+
+/** Append-only review history; only the server may confirm a link or its removal. */
+export const PatientIdentityEvent = baseEnvelope.extend({
+  type: z.literal('patient_identity_event'),
+  patientId,
+  otherPatientId: patientId.optional(),
+  outcome: z.enum(['existing_selected', 'registration_distinct', 'review_requested', 'linked', 'distinct', 'unlinked']),
+  reason: z.string().trim().min(3).max(1000),
+  revision: z.number().int().positive().optional(),
+}).refine((d) => d.outcome === 'existing_selected' || Boolean(d.otherPatientId && d.otherPatientId !== d.patientId), { message: 'Choose two different patient records', path: ['otherPatientId'] });
+export type PatientIdentityEvent = z.infer<typeof PatientIdentityEvent>;
 
 /* ================================================================== */
 /* Visit + Unit Handoff                                                */

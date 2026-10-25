@@ -10,6 +10,8 @@ export const Permission = z.enum([
   // Front desk / clinical
   'patient:create',
   'patient:update',
+  'patient_identity:review',
+  'patient_identity:resolve',
   'appointment:create',
   'visit:create',
   'encounter:record',
