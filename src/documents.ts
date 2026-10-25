@@ -620,6 +620,8 @@ export type EncounterStep = z.infer<typeof EncounterStep>;
 
 /** Saving one of these steps closes the encounter: as an inpatient, or sent home. */
 export const CLOSING_STEPS = ['admission', 'follow_up'] as const satisfies readonly EncounterStep[];
+/** Reassessment is a new observation/note; other saved sections are corrected by amendment. */
+export const REPEATABLE_STEPS = ['vitals', 'complaint'] as const satisfies readonly EncounterStep[];
 
 const positive = z.number().positive();
 const text = z.string().trim().min(1);
@@ -629,6 +631,8 @@ export const PrescriptionLine = z.object({
   dose: text,
   frequency: text.optional(),
   duration: text.optional(),
+  route: text.optional(),
+  quantity: z.number().positive().optional(),
 });
 export type PrescriptionLine = z.infer<typeof PrescriptionLine>;
 
@@ -645,23 +649,26 @@ export const ENCOUNTER_STEP_VALUES = {
       pulseBpm: positive.optional(),
       weightKg: positive.optional(),
       spo2Percent: positive.max(100).optional(),
+      heightCm: positive.optional(),
+      respiratoryRate: positive.optional(),
     })
     .refine((vitals) => Object.values(vitals).some((value) => value !== undefined), {
       message: 'Record at least one vital sign',
     }),
   complaint: z
-    .strictObject({ complaints: z.array(text).default([]), note: text.optional() })
-    .refine((complaint) => complaint.complaints.length > 0 || Boolean(complaint.note), {
+    .strictObject({ complaints: z.array(text).default([]), note: text.optional(), historyOfPresentIllness: text.optional(), examination: text.optional(), assessment: text.optional(), plan: text.optional() })
+    .refine((complaint) => complaint.complaints.length > 0 || Object.values(complaint).some((value) => typeof value === 'string' && value.length > 0), {
       message: 'Record a complaint or a clinical note',
     }),
   lab_order: z.strictObject({ tests: z.array(text).min(1) }),
   lab_results: z.strictObject({ results: z.array(z.strictObject({ test: text, result: text })).min(1) }),
   diagnosis: z.strictObject({
     diagnosis: text,
+    diagnoses: z.array(z.strictObject({ label: text, code: text.optional(), codingSystem: z.enum(['ICD-10', 'SNOMED CT', 'local']).optional(), certainty: z.enum(['unknown', 'suspected', 'confirmed']).default('unknown') }).refine((v) => !v.code || Boolean(v.codingSystem), 'Choose the coding system for this diagnosis code')).optional(),
     prescription: z.array(PrescriptionLine).default([]),
     giveInjection: z.boolean().default(false),
     admit: z.boolean().default(false),
-  }),
+  }).refine((v) => !v.diagnoses?.length || v.diagnoses[0].label === v.diagnosis, 'The primary structured diagnosis must match the diagnosis'),
   injection: z.strictObject({
     drug: text,
     dose: text,
@@ -684,12 +691,12 @@ export const ENCOUNTER_STEP_VALUES = {
   admission: z.strictObject({ ward: text, bed: text.optional(), note: text.optional() }),
   follow_up: z.strictObject({
     /** Absent when the patient is sent home with no review booked. */
-    followUpOn: isoDate.optional(),
+    followUpOn: isoDate.refine(validCalendarDate, 'Enter a valid review date').optional(),
     reason: text.optional(),
     /** The appointment booked for the review (PRD §9.8.1, step 7). */
     appointmentId: z.string().min(1).optional(),
   }),
-  amendment: z.strictObject({ note: text }),
+  amendment: z.strictObject({ note: text, correctedValues: z.record(z.string(), z.unknown()).optional(), previousAmendmentId: text.optional() }),
 } as const satisfies Record<EncounterStep, z.ZodType>;
 export type EncounterStepValues = { [Step in EncounterStep]: z.infer<(typeof ENCOUNTER_STEP_VALUES)[Step]> };
 

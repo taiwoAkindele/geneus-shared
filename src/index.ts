@@ -16,6 +16,9 @@ export * from './documents.ts';
 export * from './permissions.ts';
 export * from './api.ts';
 export * from './patientIdentity.ts';
+export * from './clinical.ts';
+
+import { ClinicalEvent } from './clinical.ts';
 
 import {
   Patient,
@@ -54,6 +57,7 @@ import {
  * register definition — see `validateRegisterEntry` (documents.ts).
  */
 export const AnyDocument = z.union([
+  ClinicalEvent,
   Patient,
   PatientIdentityEvent,
   Visit,
@@ -85,6 +89,7 @@ export type AnyDocument = z.infer<typeof AnyDocument>;
 
 /** Map of `type` → schema, for validating a record when its type is known. */
 export const SCHEMA_BY_TYPE = {
+  clinical_event: ClinicalEvent,
   patient: Patient,
   patient_identity_event: PatientIdentityEvent,
   visit: Visit,
