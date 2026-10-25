@@ -425,3 +425,20 @@ Unallocated receipts remain visible independently of patient bills.
 Paystack credentials and receiving-account configuration stay in private server tables;
 they are never included in the PowerSync publication. Both consumers require the new
 document types and policy v7 before enabling the updated workspace.
+
+
+## Patient identity delivery (October 2026)
+
+Patient optional demographic fields accept null input for an explicit clear and
+normalise to absence on reads. ageObservedOn anchors ageYears, falling back to
+createdOn for legacy records. Date/age estimates and staff identity evidence remain
+attributed patient facts, not external verification. Related age fields reconcile
+together on a conflict. Schema version remains 3: these fields are additive.
+
+patient_identity_event is append-only and facility-scoped. Registration observations
+and review requests may originate offline; linked/distinct/unlinked confirmations
+are server-only through preview and confirmation. PostgreSQL assigns revision; a
+device may not choose it. Alias edges change lookup, never source record ownership.
+Policy v8 adds patient_identity:review and patient_identity:resolve; records officers
+and admins resolve, clinical staff can request review. Patient portal identities
+and cross-facility consent are not implemented by this facility-local event model.
