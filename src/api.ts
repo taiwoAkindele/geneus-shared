@@ -11,7 +11,14 @@
  */
 import { z } from 'zod';
 import { DocType, isoDateTime } from './common.ts';
-import { Facility, Staff, SyncOperation, RejectionCategory } from './documents.ts';
+import { Facility, Staff, SyncOperation, RejectionCategory, Patient } from './documents.ts';
+
+export const PatientIdentityPreview = z.object({
+  revision: z.string(), canonicalPatientId: z.string(), otherRootId: z.string(),
+  records: z.array(z.object({ patient: Patient, counts: z.object({ encounters: z.number(), appointments: z.number(), charges: z.number(), payments: z.number() }) })),
+  retainedIds: z.array(z.string()), otherIds: z.array(z.string()), warning: z.string(),
+});
+export type PatientIdentityPreview = z.infer<typeof PatientIdentityPreview>;
 
 /* ------------------------------------------------------------------ */
 /* Errors                                                              */

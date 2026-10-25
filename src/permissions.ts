@@ -22,12 +22,13 @@ import { Role, StaffPermission, type Payment, type Staff } from './documents.ts'
  * v5: combined staff roles and individually assigned permissions.
  * v4: billing — the cashier role, fees, charges, payments, waivers, reversals.
  */
-export const POLICY_VERSION = 7 as const;
+export const POLICY_VERSION = 8 as const;
 
 
 const CLINICAL: readonly Permission[] = [
   'patient:create',
   'patient:update',
+  'patient_identity:review',
   'appointment:create',
   'visit:create',
   'encounter:record',
@@ -43,6 +44,8 @@ const CLINICAL: readonly Permission[] = [
 const FRONT_DESK: readonly Permission[] = [
   'patient:create',
   'patient:update',
+  'patient_identity:review',
+  'patient_identity:resolve',
   'appointment:create',
   'charge:create',
   'register_entry:create',
