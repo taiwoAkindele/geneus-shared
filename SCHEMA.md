@@ -442,3 +442,23 @@ device may not choose it. Alias edges change lookup, never source record ownersh
 Policy v8 adds patient_identity:review and patient_identity:resolve; records officers
 and admins resolve, clinical staff can request review. Patient portal identities
 and cross-facility consent are not implemented by this facility-local event model.
+
+## Longitudinal outpatient clinical records (October 2026)
+
+`clinical_event` stores patient-level problems, structured history, medications,
+allergies, care plans and specialty assessments. It is append-only. `recordId` names
+the stable clinical record; `previousId` names the exact version replaced. Patient,
+kind and record identity cannot change within a chain. A competing successor is
+reconciled, not chosen by client clock. `actorRole` preserves the role held at save.
+
+Encounter values add optional structured diagnoses, prescription frequency/duration/
+route/quantity, height/respiratory rate and structured note fields. Legacy entries
+remain valid. Amendments may include `correctedValues` and `previousAmendmentId`;
+the server validates corrections against the original section, preserves the source,
+rejects competing corrections and enforces disposition/dispensing restrictions.
+Current projections apply corrections causally. Ordinary note amendments remain valid.
+
+Structured allergy reviews supersede alerts for the same legacy patient/allergen
+without rewriting demographics. Unreviewed legacy allergies remain visible.
+These are additive contracts; schema version stays 3 and clinical writes continue
+to require `encounter:record`. See the root EMR implementation notes for rollout.
