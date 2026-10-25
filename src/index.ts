@@ -39,6 +39,9 @@ import {
   FeeItem,
   Charge,
   Payment,
+  BillingAdjustment,
+  IncomingTransfer,
+  BillingDepartment,
 } from './documents.ts';
 
 /**
@@ -71,6 +74,9 @@ export const AnyDocument = z.union([
   FeeItem,
   Charge,
   Payment,
+  BillingAdjustment,
+  IncomingTransfer,
+  BillingDepartment,
 ]);
 export type AnyDocument = z.infer<typeof AnyDocument>;
 
@@ -98,6 +104,9 @@ export const SCHEMA_BY_TYPE = {
   fee_item: FeeItem,
   charge: Charge,
   payment: Payment,
+  billing_adjustment: BillingAdjustment,
+  incoming_transfer: IncomingTransfer,
+  billing_department: BillingDepartment,
 } as const;
 
 /**

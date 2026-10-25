@@ -123,6 +123,8 @@ export const Appointment = baseEnvelope
     status: AppointmentStatus.default('pending'),
     /** Absent on bookings made before visit types existed. */
     visitType: VisitType.optional(),
+    /** Includes first-visit charges raised at registration before this booking. */
+    chargeIds: z.array(z.string().min(1)).optional(),
   })
   .refine((a) => a.status !== 'scheduled' || Boolean(a.scheduledFor), {
     message: 'A scheduled appointment needs scheduledFor',
@@ -795,6 +797,7 @@ export const FeeItem = baseEnvelope.extend({
   type: z.literal('fee_item'),
   name: text,
   category: FeeCategory,
+  departmentId: z.string().min(1).nullable().optional(),
   amountMinor: minorUnits,
   currency: currencyCode,
   chargeWhen: ChargeWhen,
@@ -817,6 +820,7 @@ export const Charge = baseEnvelope
     feeItemId: z.string().min(1),
     description: text,
     category: FeeCategory,
+    departmentId: z.string().min(1).optional(),
     /** The fee's price when this charge was raised. */
     listPriceMinor: minorUnits,
     /** What the patient owes: the list price, or nothing when exempt. */
@@ -866,6 +870,8 @@ export const Payment = baseEnvelope
     patientId,
     receiptNumber,
     method: PaymentMethod,
+    /** Set only for allocations of a server-verified incoming bank transfer. */
+    incomingTransferId: z.string().min(1).optional(),
     amountMinor: minorUnits.positive(),
     currency: currencyCode,
     allocations: z.array(PaymentAllocation).min(1),
@@ -894,6 +900,30 @@ export const Payment = baseEnvelope
     }
   });
 export type Payment = z.infer<typeof Payment>;
+
+/** Append-only reduction: original price and approval remain visible. */
+export const BillingAdjustment = baseEnvelope.extend({
+  type: z.literal('billing_adjustment'), patientId,
+  chargeId: z.string().min(1), kind: z.enum(['discount', 'waiver']),
+  amountMinor: minorUnits.positive(), reason: text,
+});
+export type BillingAdjustment = z.infer<typeof BillingAdjustment>;
+
+/** Verified provider receipt. Allocations live in payments. */
+export const IncomingTransfer = baseEnvelope.extend({
+  type: z.literal('incoming_transfer'), provider: z.literal('paystack'),
+  mode: z.enum(['test', 'live']),
+  providerReference: z.string().min(1), amountMinor: minorUnits.positive(),
+  currency: currencyCode, receivedOn: isoDateTime, payerName: text.optional(),
+  receivingAccount: text.optional(), departmentId: z.string().min(1).optional(),
+});
+export type IncomingTransfer = z.infer<typeof IncomingTransfer>;
+
+/** Receiving-account ownership and reporting group; independent of fee category. */
+export const BillingDepartment = baseEnvelope.extend({
+  type: z.literal('billing_department'), name: text, active: z.boolean().default(true),
+});
+export type BillingDepartment = z.infer<typeof BillingDepartment>;
 
 /* ================================================================== */
 /* Sync rejection — the records officer's reconcile queue (root §4.1)  */
