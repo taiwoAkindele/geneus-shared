@@ -401,7 +401,27 @@ fresh sign-in; always permits around-the-clock PIN sign-in without a roster. Thi
 does not affect the role/permission union. Administrators retain their existing
 any-time sign-in and inactivity rule.
 
-An authenticated staff session is no longer expired by a roster end. Staff sign
-out manually; deactivation clears the session. RosterShift timestamps support
+An authenticated staff session is no longer expired by a roster end. Manual sign-out,
+deactivation or 30 minutes of inactivity clears the session for every staff role. RosterShift timestamps support
 overnight and 24-hour windows without a shape change. The field is additive, so
-SCHEMA_VERSION remains 3; POLICY_VERSION is 6.
+SCHEMA_VERSION remains 3; POLICY_VERSION is 7.
+
+## Hospital billing delivery (October 2026)
+
+Billing departments are independent of fee categories and clinical room routing.
+Optional fee/charge departmentId keeps historical ownership when a price changes.
+An explicit null on fee_item.departmentId clears its assignment; charges retain snapshots.
+
+billing_adjustment is an append-only, attributed discount or waiver against one charge.
+It requires payment:waive. Amounts reduce the unpaid balance and preserve the original
+price. A percentage entered in the UI is saved as an exact minor-unit reduction.
+
+incoming_transfer is server-written from a verified Paystack transaction. Its receiving
+department is known before patient allocation. Test/live mode and provider reference
+identify the receipt; test receipts cannot settle patient bills. Payments naming an
+incomingTransferId can only be written by the server after a serialized allocation.
+Unallocated receipts remain visible independently of patient bills.
+
+Paystack credentials and receiving-account configuration stay in private server tables;
+they are never included in the PowerSync publication. Both consumers require the new
+document types and policy v7 before enabling the updated workspace.

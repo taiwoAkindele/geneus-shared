@@ -71,6 +71,9 @@ export const DocType = z.enum([
   'fee_item',
   'charge',
   'payment',
+  'billing_adjustment',
+  'incoming_transfer',
+  'billing_department',
 ]);
 export type DocType = z.infer<typeof DocType>;
 
