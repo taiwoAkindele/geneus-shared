@@ -17,13 +17,14 @@ import { Role, StaffPermission, type Payment, type Staff } from './documents.ts'
  * Bump when the matrix or the policy windows change. Devices carry the version
  * they authorised against, so a stale device is visible at sync rather than
  * silently applying yesterday's rules.
+ * v9: attributed appointment attendance, rescheduling and reactivation.
  * v8: patient identity review and server-confirmed resolution.
  * v7: hospital department billing and attributed discounts/waivers.
  * v6: configurable around-the-clock sign-in; shift end no longer expires sessions.
  * v5: combined staff roles and individually assigned permissions.
  * v4: billing — the cashier role, fees, charges, payments, waivers, reversals.
  */
-export const POLICY_VERSION = 8 as const;
+export const POLICY_VERSION = 9 as const;
 
 
 const CLINICAL: readonly Permission[] = [
@@ -31,6 +32,7 @@ const CLINICAL: readonly Permission[] = [
   'patient:update',
   'patient_identity:review',
   'appointment:create',
+  'appointment:update',
   'visit:create',
   'encounter:record',
   'handoff:create',
@@ -48,6 +50,7 @@ const FRONT_DESK: readonly Permission[] = [
   'patient_identity:review',
   'patient_identity:resolve',
   'appointment:create',
+  'appointment:update',
   'charge:create',
   'register_entry:create',
   'register_definition:publish',

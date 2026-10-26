@@ -146,7 +146,10 @@ The server never picks a winner for clinical data. Per type:
 | `encounter`, `encounter_entry` | Insert-only; PATCH rejected. An `amendment` must amend an entry of the same encounter; once a closing step is saved, only amendments may be added (§13) |
 | `register_definition` | Immutable per version; a colliding version is rejected, never overwritten |
 | `patient` | Changed-column merge. If the server row and the device both changed the **same column** since the device's base, that column is a `conflict` |
-| `appointment`, `handoff`, `referral`, `stock_item`, `fee_item` | Changed-column merge; same-column race → `conflict` |
+| `appointment` | Attendance, schedule and attributed activity are one atomic change. Append exactly one action to existing history; a competing edit is refused for review, without partial application. Linked visits freeze booking attendance. |
+| `referral`, `fee_item` | Changed-column merge for permitted updates; same-column race → `conflict` |
+| `handoff` | Only status updates are supported. Progress is forward from pending → received → done (pending → done is allowed); completed work cannot be reopened. |
+| `stock_item` | Metadata uses changed-column conflict handling. The opening quantity cannot be patched; the measurement unit cannot change after movements exist. |
 | `charge`, `payment` | Insert-only; PATCH rejected. A mistake is a reversing `payment` (§14) |
 | `staff`, `roster_shift`, `unit` | Changed-column merge; a same-column administrative race applies the later upload and is audited |
 
@@ -170,6 +173,11 @@ other patient. The records officer re-registers the patient under a new ID and r
 what was held; the original rejections stay as the trail.
 
 ## 8. Permissions and the offline policy
+
+Policy version 9 adds `appointment:update` to front desk and clinical roles.
+Cashiers retain payment access without attendance authority; read-only staff
+cannot change bookings. Existing booking/charge creation permissions are retained.
+
 
 [`src/permissions.ts`](src/permissions.ts) defines:
 
@@ -214,6 +222,25 @@ What the server can and cannot verify is stated plainly: it verifies the **devic
 **facility**, that the attributed staff member is an **active member** of that facility with
 a **role** that grants the permission. It cannot verify which human typed the offline PIN —
 attribution rests on the device's shift session (root §4.3a).
+
+### Appointment attendance
+
+`Appointment.status` remains the original pending/scheduled booking mode. Optional
+`attendance` records booked, arrived, cancelled or no_show; absence means booked.
+Optional `activity` retains each action's identity, actor, time, previous/next
+attendance, old/new scheduled time and explanation. Non-arrival actions need a
+reason. Rescheduling chooses a different future time on the same booking; reopening
+retains earlier cancellation or no-show history. No-shows are explicit and cannot
+precede the due time or follow a recorded arrival. Visit completion remains derived
+from the linked encounter's closing entry, never an editable attendance checkbox.
+
+The shared schema checks continuity and matching current state. The server verifies
+the immutable history prefix, actor, linked visit, facility and permissions under a
+booking row lock. Competing attendance edits, or visit creation racing cancellation,
+cannot silently overwrite each other. Existing fees and receipts are unchanged;
+waivers and reversals remain separate attributed billing decisions. Migration 0014
+adds nullable attendance/activity columns; generated Sync Streams include both.
+The additions are optional, so document schema version remains 3.
 
 ## 9. Versioning & migration
 
@@ -462,3 +489,26 @@ Structured allergy reviews supersede alerts for the same legacy patient/allergen
 without rewriting demographics. Unreviewed legacy allergies remain visible.
 These are additive contracts; schema version stays 3 and clinical writes continue
 to require `encounter:record`. See the root EMR implementation notes for rollout.
+
+
+## Operational inventory and register validation (26 October 2026)
+
+StockItem.quantityOnHand is the opening quantity recorded when an item is created.
+Current recorded stock is that opening quantity plus the immutable StockMovement.change
+ledger. Do not update the opening quantity when receiving or issuing stock: doing both
+would count the same movement twice and create conflicts between offline devices.
+Positive received movements add stock; dispensed and expired movements are negative.
+Adjustments and transfers require a note. A negative derived balance is a physical-count
+review item, not a reason to silently remove an already reported offline movement.
+The device prevents an intended issue beyond its known balance; the server preserves
+valid movements reported by other offline devices, including their resulting discrepancy.
+
+RegisterEntry values are validated against the exact registerId/registerVersion of a
+published RegisterDefinition, including required fields, option membership and defined
+field IDs. The device and the upload boundary both check them. A newer published version
+does not invalidate entries recorded against an older published version. Readers use the
+entry's original schema, rather than silently interpreting it against the current one.
+
+These are operational rules over existing documents; no new document fields or schema
+version were introduced for this delivery. Appointment lifecycle/capacity and automatic
+prescription-to-stock linkage still require separately defined workflows and contracts.
