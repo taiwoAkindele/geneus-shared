@@ -512,3 +512,9 @@ entry's original schema, rather than silently interpreting it against the curren
 These are operational rules over existing documents; no new document fields or schema
 version were introduced for this delivery. Appointment lifecycle/capacity and automatic
 prescription-to-stock linkage still require separately defined workflows and contracts.
+
+## Register authoring clarification (27 October 2026)
+
+An explicit draft save writes a new immutable register_definition version with status draft. Publication writes the next version with status published. The current staff form is the highest published version, independently of a newer draft used for authoring. Entry versions never migrate when drafts or new publications arrive.
+
+registerDefinitionIssues in src/registers.ts validates named snapshots, unique field IDs, consistent types, retired published identities and usable choices. Publication requires at least one question. Drafts may have no questions and incomplete choices, but canonical field labels remain non-empty. Private incomplete typing is consumer-local recovery, not a synced definition or a new document shape. Both consumers validate before persistence; the server serializes configuration versions and retains conflicting snapshots. Optional metadata, permissions and document schema version are unchanged.
