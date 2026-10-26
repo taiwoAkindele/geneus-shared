@@ -17,6 +17,7 @@ export * from './permissions.ts';
 export * from './api.ts';
 export * from './patientIdentity.ts';
 export * from './clinical.ts';
+export * from './registers.ts';
 
 import { ClinicalEvent } from './clinical.ts';
 
