@@ -117,6 +117,28 @@ export type Handoff = z.infer<typeof Handoff>;
 export const AppointmentStatus = z.enum(['pending', 'scheduled']);
 export type AppointmentStatus = z.infer<typeof AppointmentStatus>;
 
+/** Booking mode above is retained for older records; attendance is recorded separately. */
+export const AppointmentAttendance = z.enum(['booked', 'arrived', 'cancelled', 'no_show']);
+export type AppointmentAttendance = z.infer<typeof AppointmentAttendance>;
+export const AppointmentAction = z.enum(['arrived', 'cancelled', 'no_show', 'rescheduled', 'reopened']);
+export type AppointmentAction = z.infer<typeof AppointmentAction>;
+export const AppointmentActivity = z.object({
+  id: z.string().min(1),
+  action: AppointmentAction,
+  recordedBy: z.string().min(1),
+  recordedOn: isoDateTime,
+  fromAttendance: AppointmentAttendance,
+  toAttendance: AppointmentAttendance,
+  fromScheduledFor: isoDateTime.optional(),
+  toScheduledFor: isoDateTime.optional(),
+  reason: z.string().trim().min(1).optional(),
+}).strict();
+export type AppointmentActivity = z.infer<typeof AppointmentActivity>;
+export const sameAppointmentTime = (left?: string, right?: string): boolean => {
+  if (!left || !right) return left === right;
+  return Date.parse(left) === Date.parse(right);
+};
+
 /**
  * What the visit is for, chosen at booking. Exemption rules are written against
  * it (PRD §9.13.2) — an antenatal or immunisation visit is often free by policy
@@ -144,6 +166,9 @@ export const Appointment = baseEnvelope
     reason: z.string().min(1),
     scheduledFor: isoDateTime.optional(),
     status: AppointmentStatus.default('pending'),
+    attendance: AppointmentAttendance.optional(),
+    /** Append one attributed action per change; existing history cannot be replaced. */
+    activity: z.array(AppointmentActivity).optional(),
     /** Absent on bookings made before visit types existed. */
     visitType: VisitType.optional(),
     /** Includes first-visit charges raised at registration before this booking. */
@@ -152,6 +177,31 @@ export const Appointment = baseEnvelope
   .refine((a) => a.status !== 'scheduled' || Boolean(a.scheduledFor), {
     message: 'A scheduled appointment needs scheduledFor',
     path: ['scheduledFor'],
+  })
+  .superRefine((appointment, context) => {
+    const activity = appointment.activity ?? [];
+    const ids = new Set<string>();
+    for (let i = 0; i < activity.length; i++) {
+      const event = activity[i], previous = activity[i - 1];
+      const fail = (message: string) => context.addIssue({ code: z.ZodIssueCode.custom, path: ['activity', i], message });
+      if (ids.has(event.id)) fail('Each booking action needs a distinct identity');
+      ids.add(event.id);
+      if (previous && (event.fromAttendance !== previous.toAttendance || !sameAppointmentTime(event.fromScheduledFor, previous.toScheduledFor))) fail('Booking history must continue from the preceding action');
+      if (!previous && event.fromAttendance !== 'booked') fail('Booking history must begin with a booked appointment');
+      if (previous && Date.parse(event.recordedOn) < Date.parse(previous.recordedOn)) fail('Booking action dates cannot go backwards');
+      if (Date.parse(event.recordedOn) < Date.parse(appointment.createdOn)) fail('Booking actions cannot predate the booking');
+      if (event.action !== 'arrived' && !event.reason) fail('Explain this booking change');
+      const expected = event.action === 'rescheduled' || event.action === 'reopened' ? 'booked' : event.action;
+      if (event.toAttendance !== expected) fail('The action and attendance state disagree');
+      if (event.action !== 'rescheduled' && !sameAppointmentTime(event.fromScheduledFor, event.toScheduledFor)) fail('Only rescheduling can change the booking time');
+      if (event.action === 'rescheduled' && (!event.toScheduledFor || sameAppointmentTime(event.toScheduledFor, event.fromScheduledFor) || Date.parse(event.toScheduledFor) <= Date.parse(event.recordedOn))) fail('Choose a different future date and time');
+      if (event.action === 'reopened' ? !['cancelled', 'no_show'].includes(event.fromAttendance) : ['cancelled', 'no_show'].includes(event.fromAttendance) && event.action !== 'rescheduled') fail('Reopen or reschedule this inactive booking first');
+      if (event.action === event.fromAttendance) fail('This attendance state is already recorded');
+      if (event.action === 'no_show' && (event.fromAttendance !== 'booked' || Date.parse(event.fromScheduledFor ?? appointment.createdOn) > Date.parse(event.recordedOn))) fail('Only a due booking without a recorded arrival can be marked no-show');
+    }
+    const last = activity[activity.length - 1];
+    if (last && (last.toAttendance !== (appointment.attendance ?? 'booked') || !sameAppointmentTime(last.toScheduledFor, appointment.scheduledFor))) context.addIssue({ code: z.ZodIssueCode.custom, path: ['activity'], message: 'The booking must match its latest action' });
+    if (!last && appointment.attendance && appointment.attendance !== 'booked') context.addIssue({ code: z.ZodIssueCode.custom, path: ['activity'], message: 'Attendance needs an attributed action' });
   });
 export type Appointment = z.infer<typeof Appointment>;
 

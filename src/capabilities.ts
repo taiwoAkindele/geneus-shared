@@ -13,6 +13,7 @@ export const Permission = z.enum([
   'patient_identity:review',
   'patient_identity:resolve',
   'appointment:create',
+  'appointment:update',
   'visit:create',
   'encounter:record',
   'handoff:create',
