@@ -32,6 +32,27 @@ export const Permission = z.enum([
   'unit:manage',
   'stock_item:manage',
   'fee_item:manage',
+  'location:manage',
+  'service:manage',
+  'practitioner:manage',
+  'credential:manage',
+  'credential:read',
+  'clinical_capability:review',
+  'staff_assignment:manage',
+  'service_session:manage',
+  'service_session:operate',
+  'work_ownership:claim',
+  'work_ownership:manage',
+  'clinical:assess',
+  'clinical:diagnose',
+  'clinical:prescribe',
+  'clinical:collect_specimen',
+  'clinical:perform_test',
+  'clinical:record_result',
+  'clinical:verify_result',
+  'clinical:release_result',
+  'clinical:dispense',
+  'clinical:administer',
   // People and access
   'staff:manage',
   'staff:permission',
@@ -48,5 +69,5 @@ export const Permission = z.enum([
 export type Permission = z.infer<typeof Permission>;
 
 /** The PIN-code claim is never a permission an admin can assign. */
-export const AssignablePermission = Permission.exclude(['pin_setup_code:claim']);
+export const AssignablePermission = Permission.exclude(['pin_setup_code:claim', 'clinical_capability:review']);
 export type AssignablePermission = z.infer<typeof AssignablePermission>;

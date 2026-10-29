@@ -7,6 +7,7 @@ import {
   OFFLINE_AUTHORIZATION_POLICY,
   paymentPermission,
   Permission,
+  PROTECTED_PERMISSIONS,
   permissionsFor,
   ROLE_PERMISSIONS,
 } from '../src/permissions.ts';
@@ -54,7 +55,7 @@ describe('role permissions', () => {
   });
 
   it('gives the facility admin every role-granted permission, so a facility can configure itself alone', () => {
-    const roleGranted = Permission.options.filter((permission) => permission !== 'pin_setup_code:claim');
+    const roleGranted = Permission.options.filter((permission) => !PROTECTED_PERMISSIONS.includes(permission));
     assert.deepEqual([...ROLE_PERMISSIONS.facility_admin].sort(), [...roleGranted].sort());
   });
 
@@ -72,7 +73,7 @@ describe('role permissions', () => {
   });
 
   it('grants every other permission to at least one role, so none is unreachable', () => {
-    for (const permission of Permission.options.filter((candidate) => candidate !== 'pin_setup_code:claim')) {
+    for (const permission of Permission.options.filter((candidate) => !PROTECTED_PERMISSIONS.includes(candidate))) {
       const holders = Role.options.filter((role) => ROLE_PERMISSIONS[role].includes(permission));
       assert.ok(holders.length > 0, `${permission} is granted to no role`);
     }
@@ -117,7 +118,7 @@ describe('role permissions', () => {
 
   it('marks only access-changing actions as high risk', () => {
     for (const permission of HIGH_RISK_PERMISSIONS) {
-      assert.match(permission, /^(staff|device):/);
+      assert.match(permission, /^(staff|device|practitioner|credential|clinical_capability|staff_assignment):/);
     }
     assert.equal(HIGH_RISK_PERMISSIONS.includes('patient:update'), false);
   });

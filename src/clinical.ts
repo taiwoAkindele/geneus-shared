@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ClinicalActorContext } from './facilityTypes.ts';
 import { baseEnvelope, isoDate, patientId } from './common.ts';
 import { ENCOUNTER_STEP_VALUES, Role, type EncounterEntry, type Patient } from './documents.ts';
 
@@ -45,6 +46,7 @@ export type ClinicalValues = { [K in ClinicalKind]: z.infer<(typeof CLINICAL_VAL
 export const ClinicalEvent = baseEnvelope.extend({
   type: z.literal('clinical_event'), patientId, encounterId: text.optional(),
   recordId: text, previousId: text.optional(), kind: ClinicalKind, actorRole: Role,
+  actorContext: ClinicalActorContext.optional(),
   values: z.record(z.string(), z.unknown()),
 }).superRefine((event, context) => {
   if (event.previousId === event.id) context.addIssue({ code: 'custom', path: ['previousId'], message: 'A revision cannot replace itself' });

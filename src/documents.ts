@@ -7,6 +7,7 @@
  * schema before it reaches PostgreSQL (see SCHEMA.md) — never hand-duplicated.
  */
 import { z } from 'zod';
+import { AppointmentAllocation, ClinicalActorContext, FacilityDependency, FacilityTimeZone, FacilityWorkforcePolicy, OrganizationKind, RESTRICTED_FACILITY_DOCUMENT_TYPES, distinctRefs, facilityIdRef } from './facilityTypes.ts';
 import { AssignablePermission } from './capabilities.ts';
 import { validCalendarDate, yearsBetween } from './patientIdentity.ts';
 import {
@@ -173,12 +174,15 @@ export const Appointment = baseEnvelope
     visitType: VisitType.optional(),
     /** Includes first-visit charges raised at registration before this booking. */
     chargeIds: z.array(z.string().min(1)).optional(),
+    /** Optional v4 resource proposal; a server reservation confirms it separately. */
+    allocation: AppointmentAllocation.optional(),
   })
   .refine((a) => a.status !== 'scheduled' || Boolean(a.scheduledFor), {
     message: 'A scheduled appointment needs scheduledFor',
     path: ['scheduledFor'],
   })
   .superRefine((appointment, context) => {
+    if (appointment.allocation && (!appointment.scheduledFor || Date.parse(appointment.allocation.endsAt) <= Date.parse(appointment.scheduledFor))) context.addIssue({ code: z.ZodIssueCode.custom, path: ['allocation'], message: 'A resource allocation needs a start and a later end' });
     const activity = appointment.activity ?? [];
     const ids = new Set<string>();
     for (let i = 0; i < activity.length; i++) {
@@ -413,6 +417,9 @@ export const Facility = baseEnvelope.extend({
   name: z.string().min(1),
   lga: z.string().min(1),
   state: z.string().min(1),
+  timeZone: FacilityTimeZone.optional(),
+  /** Server-owned after readiness/mixed-client checks; never inferred from a legacy role. */
+  workforcePolicy: FacilityWorkforcePolicy.optional(),
   level: z
     .enum(['chc', 'phc', 'general_hospital', 'teaching_hospital', 'specialist'])
     .default('phc'),
@@ -425,6 +432,14 @@ export const Unit = baseEnvelope.extend({
   unitId: z.string().min(1),
   name: z.string().min(1), // Registration, Consultation, Injection Room...
   active: z.boolean().default(true),
+  /** Omitted on legacy units; resolve as a routable unit, never an inferred room. */
+  kind: OrganizationKind.optional(),
+  parentId: facilityIdRef.optional(),
+  routingEnabled: z.boolean().optional(),
+  revision: z.number().int().positive().optional(),
+}).superRefine((unit, context) => {
+  if (unit.parentId === unit.id || unit.parentId === unit.unitId) context.addIssue({ code: 'custom', path: ['parentId'], message: 'A unit cannot contain itself' });
+  if (unit.kind === 'department' && unit.routingEnabled === true) context.addIssue({ code: 'custom', path: ['routingEnabled'], message: 'Route care to a service unit, not a department' });
 });
 export type Unit = z.infer<typeof Unit>;
 
@@ -437,6 +452,9 @@ export const Role = z.enum([
   'supervisor',
   /** Takes patients' payments (PRD §9.13.4); records no care. */
   'cashier',
+  /** Access duties only; neither role establishes a professional qualification. */
+  'laboratory_staff',
+  'pharmacy_staff',
 ]);
 export type Role = z.infer<typeof Role>;
 
@@ -765,6 +783,7 @@ export const EncounterEntry = baseEnvelope
     patientId,
     step: EncounterStep,
     actorRole: Role,
+    actorContext: ClinicalActorContext.optional(),
     /** The entry this one corrects — set for an `amendment`, and only then. */
     amends: z.string().min(1).optional(),
     values: z.record(z.string(), z.unknown()),
@@ -1002,6 +1021,9 @@ export type IncomingTransfer = z.infer<typeof IncomingTransfer>;
 /** Receiving-account ownership and reporting group; independent of fee category. */
 export const BillingDepartment = baseEnvelope.extend({
   type: z.literal('billing_department'), name: text, active: z.boolean().default(true),
+  /** Preserve the financial id while linking the canonical accountable organization. */
+  organizationUnitId: facilityIdRef.optional(),
+  revision: z.number().int().positive().optional(),
 });
 export type BillingDepartment = z.infer<typeof BillingDepartment>;
 
@@ -1014,6 +1036,8 @@ export type SyncOperation = z.infer<typeof SyncOperation>;
 
 /** Why the server would not apply a mutation. Drives the queue's grouping. */
 export const RejectionCategory = z.enum([
+  /** Referenced configuration has not been accepted; retain a linked reconciliation item. */
+  'dependency',
   /** The device, facility or staff identity did not check out. */
   'identity',
   /** The attributed staff member may not perform this action. */
@@ -1048,6 +1072,10 @@ export const SyncRejection = baseEnvelope.extend({
   entityId: z.string().min(1),
   operation: SyncOperation,
   category: RejectionCategory,
+  dependencies: z.array(FacilityDependency).min(1).optional(),
+  /** Evidence refusals must not leak their payload through the general reconcile stream. Server-owned. */
+  visibility: z.enum(['facility', 'restricted']).optional(),
+  visibleToStaffIds: distinctRefs.optional(),
   /** Human-readable, e.g. "staff:manage is not granted to role nurse". */
   reason: z.string().min(1),
   /** Staff the rejected mutation was attributed to (its createdBy/updatedBy). */
@@ -1071,5 +1099,9 @@ export const SyncRejection = baseEnvelope.extend({
   resolvedOn: isoDateTime.optional(),
   resolvedBy: z.string().optional(),
   resolution: z.string().optional(),
+}).superRefine((record, context) => {
+  if ((RESTRICTED_FACILITY_DOCUMENT_TYPES.some((type) => type === record.entityType) || record.visibility === 'restricted')
+    && (record.visibility !== 'restricted' || !record.visibleToStaffIds?.length)) context.addIssue({ code: 'custom', message: 'Restricted refusals require an explicit restricted delivery audience' });
+  if (record.category === 'dependency' && (!record.dependencies?.length || !(record.refusedRecord || record.refusedChanges))) context.addIssue({ code: 'custom', message: 'A dependency refusal must retain its references and original submitted payload' });
 });
 export type SyncRejection = z.infer<typeof SyncRejection>;
