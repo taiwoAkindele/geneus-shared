@@ -12,6 +12,9 @@
 import { z } from 'zod';
 import { DocType, isoDateTime } from './common.ts';
 import { Facility, Staff, SyncOperation, RejectionCategory, Patient } from './documents.ts';
+import { FACILITY_CONTRACT_VERSION, FacilityDependency } from './facilityTypes.ts';
+import { FacilityFeatureSupport } from './facilityPolicy.ts';
+import { requiresFacilityContract } from './facilitySync.ts';
 
 export const PatientIdentityPreview = z.object({
   revision: z.string(), canonicalPatientId: z.string(), otherRootId: z.string(),
@@ -221,6 +224,8 @@ export const SyncTokenResponse = z.object({
   syncEndpoint: z.url(),
   /** Server clock at issue — the device records it as lastServerContactOn. */
   serverTime: isoDateTime,
+  /** Omitted until the server has implemented/migrated this feature. Never infer support from a version alone. */
+  facilityFeature: FacilityFeatureSupport.optional(),
 });
 export type SyncTokenResponse = z.infer<typeof SyncTokenResponse>;
 
@@ -257,6 +262,9 @@ export const UploadMutation = z.object({
    * from "only I changed column X" (SCHEMA.md §7).
    */
   previous: z.record(z.string(), z.unknown()).optional(),
+  expectedRevision: z.number().int().positive().optional(),
+  /** Null means create a new stream; a string must still be the current accepted head. */
+  expectedPreviousId: z.string().min(1).nullable().optional(),
 });
 export type UploadMutation = z.infer<typeof UploadMutation>;
 
@@ -264,6 +272,11 @@ export const UploadRequest = z.object({
   /** PowerSync's local transaction id; null when the write was not transactional. */
   transactionId: z.number().int().nonnegative().nullable(),
   mutations: z.array(UploadMutation).min(1),
+  facilityContractVersion: z.literal(FACILITY_CONTRACT_VERSION).optional(),
+  schemaVersion: z.number().int().positive().optional(),
+  policyVersion: z.number().int().positive().optional(),
+}).superRefine((request, context) => {
+  if (request.mutations.some(requiresFacilityContract) && (request.facilityContractVersion !== 1 || (request.schemaVersion ?? 0) < 4 || (request.policyVersion ?? 0) < 10)) context.addIssue({ code: 'custom', message: 'Facility writes require the negotiated v1 contract, schema 4 and policy 10' });
 });
 export type UploadRequest = z.infer<typeof UploadRequest>;
 
@@ -280,6 +293,9 @@ export const UploadRejection = z.object({
   id: z.string().min(1),
   category: RejectionCategory,
   reason: z.string().min(1),
+  dependencies: z.array(FacilityDependency).min(1).optional(),
+}).superRefine((record, context) => {
+  if (record.category === 'dependency' && !record.dependencies?.length) context.addIssue({ code: 'custom', message: 'Dependency refusals must name the unaccepted references' });
 });
 export type UploadRejection = z.infer<typeof UploadRejection>;
 
@@ -289,6 +305,11 @@ export const UploadResponse = z.object({
   duplicates: z.number().int().nonnegative(),
   rejected: z.array(UploadRejection),
   serverTime: isoDateTime,
+  facilityContractVersion: z.literal(FACILITY_CONTRACT_VERSION).optional(),
+}).superRefine((response, context) => {
+  if (response.rejected.some((r) => r.category === 'dependency') && response.facilityContractVersion !== 1) context.addIssue({ code: 'custom', message: 'Dependency reconciliation requires the negotiated v1 connector' });
+  const ids = response.rejected.map((item) => item.clientId);
+  if (new Set(ids).size !== ids.length) context.addIssue({ code: 'custom', message: 'A mutation cannot have duplicate or contradictory outcomes' });
 });
 export type UploadResponse = z.infer<typeof UploadResponse>;
 

@@ -16,11 +16,15 @@ This is a **plain git-submodule folder**: just TypeScript + Zod, **no `package.j
 build step**. The consuming repo supplies `zod` and its own tsconfig.
 
 - **Schema reference (read this):** [SCHEMA.md](SCHEMA.md)
+- **Facility/workforce v4 integration:** [FACILITY-CONTRACT.md](FACILITY-CONTRACT.md)
 - **The contract:** [`src/`](src/)
   - `common.ts` — the record envelope, enums, ids, `SCHEMA_VERSION`
   - `documents.ts` — every record type
   - `permissions.ts` — `Permission`, `ROLE_PERMISSIONS`, the offline policy, `decide`
   - `api.ts` — the server API's request/response shapes
+  - `facilityTypes.ts` / `facility.ts` — organization, service, professional authority, assignments, sessions and handover vocabulary
+  - `facilityValidation.ts` / `facilityAuthorization.ts` — pure cross-record and activity rules shared by both consumers
+  - `facilityPolicy.ts` / `facilitySync.ts` / `facilityProjection.ts` — ownership/privacy metadata, compatibility and accepted authority projection
   - `index.ts` — public entry point, `AnyDocument`, `parseDocument`
 - **Tests:** [`tests/`](tests/) — `node:test` suites pinning the matrix, the envelope and
   the API shapes. They run inside each consumer's test run (see below).

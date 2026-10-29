@@ -244,10 +244,12 @@ The additions are optional, so document schema version remains 3.
 
 ## 9. Versioning & migration
 
+- **Current: schema 4, policy 10, facility contract 1** (29 October 2026). The facility/workforce release expands record/role/rejection enums, introduces protected clinical-action policy and requires a coordinated consumer rollout. [FACILITY-CONTRACT.md](FACILITY-CONTRACT.md) specifies the complete shared boundary. Earlier dated statements about version 3 describe those earlier changes, not the current release.
 - `SCHEMA_VERSION` in [`src/common.ts`](src/common.ts) is bumped on any breaking change.
   **v3** replaced the CouchDB `_id`/`_rev` envelope with `id`, renamed `device_enrollment`
   to `device`, added `sync_rejection`, gave `audit_event` an outcome, and made
   `roster_shift.signature` optional until the server signs it.
+- **v4** adds organization/location/service/authority/assignment/session/ownership records, new laboratory/pharmacy access duties, dependency reconciliation, and the signed-authority contract. Legacy records with explicit schema 3 remain readable. New facility-specific records require schema 4; feature writes also negotiate contract 1 and policy 10.
 - Every record stores the `schemaVersion` it was written against, so old offline records
   can be **up-migrated on read** rather than requiring a flag-day.
 - Additive, optional fields do **not** require a version bump; removing/renaming/retyping
@@ -518,3 +520,19 @@ prescription-to-stock linkage still require separately defined workflows and con
 An explicit draft save writes a new immutable register_definition version with status draft. Publication writes the next version with status published. The current staff form is the highest published version, independently of a newer draft used for authoring. Entry versions never migrate when drafts or new publications arrive.
 
 registerDefinitionIssues in src/registers.ts validates named snapshots, unique field IDs, consistent types, retired published identities and usable choices. Publication requires at least one question. Drafts may have no questions and incomplete choices, but canonical field labels remain non-empty. Private incomplete typing is consumer-local recovery, not a synced definition or a new document shape. Both consumers validate before persistence; the server serializes configuration versions and retains conflicting snapshots. Optional metadata, permissions and document schema version are unchanged.
+
+## Facility services, structure and staff assignments (29 October 2026)
+
+The schema 4 shared stage is implemented in the canonical `facility*.ts` modules and exported from `src/index.ts`. It serves PHCs and hospitals through the same vocabulary. It does not create SQL tables, streams, migrations, signing keys, routes or screens by importing it.
+
+Organizational `Unit` gains optional `kind`, `parentId`, `routingEnabled` and `revision`. Legacy omissions resolve to a routable organizational unit. Physical/virtual/mobile locations are separate records. Service definitions describe reusable coded concepts; offerings attach them to accountable teams and actual places. BillingDepartment gains optional `organizationUnitId` and `revision`, preserving its original financial identity.
+
+Staff access roles remain separate from professional profiles, restricted evidence and approved clinical scope. Laboratory/pharmacy duties grant software access only. Administrators use an explicit permission list; no role or individually assigned permission grants `clinical_capability:review`. Accepted signed reviewer authority supplies that protected permission. Activity gates cover existing encounter/longitudinal content and full-content amendments, including prescribing within a diagnosis.
+
+Credential and authority decisions retain independent provenance and causal revisions. Bootstrap and external-review operations are server-owned. Minimal signed authority contains action/service scope and bounded validity, without raw credential identifiers or attachments. New protected PIN-reset and last-administrator rules prevent account maintenance bypasses. Consumers must enforce these rules at every corresponding boundary.
+
+Assignments, finite session occurrences, actual intake events and source-linked ownership are distinct from roster sign-in and attendance. Transfers preserve the outgoing owner until the named recipient accepts. Appointment allocation is a proposal; a server reservation must match its complete canonical fingerprint. Shared capacity checks support aggregate pooled usage, exclusive resources, parent session quotas, and competing practitioner bookings. Retirement/replanning helpers expose affected work instead of silently cancelling it.
+
+Missing parents use a durable `dependency` SyncRejection naming the unaccepted references and retaining submitted content, followed by the existing reconciliation/resubmission path. Refused credential/governance payloads additionally require `visibility: restricted` and an explicit `visibleToStaffIds` audience. Delivery restrictions must apply to the rejection payload as well as the original record.
+
+New upload metadata and optional sync-token feature support prevent clients from assuming a server understands this feature. Facility.workforcePolicy is an optional, server-owned preparation/enforcement marker with an explicit effective instant. Absence never activates the new authority gates. See the integration guide for the mandatory server/client adoption sequence and trusted-input requirements.

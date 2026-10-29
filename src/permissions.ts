@@ -12,11 +12,13 @@ import { z } from 'zod';
 import { AssignablePermission, Permission } from './capabilities.ts';
 export { AssignablePermission, Permission } from './capabilities.ts';
 import { Role, StaffPermission, type Payment, type Staff } from './documents.ts';
+import { type ClinicalAction } from './facilityTypes.ts';
 
 /**
  * Bump when the matrix or the policy windows change. Devices carry the version
  * they authorised against, so a stale device is visible at sync rather than
  * silently applying yesterday's rules.
+ * v10: facility/workforce, explicit administrative grants, protected clinical review and activity gates.
  * v9: attributed appointment attendance, rescheduling and reactivation.
  * v8: patient identity review and server-confirmed resolution.
  * v7: hospital department billing and attributed discounts/waivers.
@@ -24,7 +26,14 @@ import { Role, StaffPermission, type Payment, type Staff } from './documents.ts'
  * v5: combined staff roles and individually assigned permissions.
  * v4: billing — the cashier role, fees, charges, payments, waivers, reversals.
  */
-export const POLICY_VERSION = 9 as const;
+export const POLICY_VERSION = 10 as const;
+
+/** Software actions are only one gate; approved clinical authority is checked separately. */
+export const CLINICAL_ACTION_PERMISSIONS = {
+  assess: 'clinical:assess', diagnose: 'clinical:diagnose', prescribe: 'clinical:prescribe',
+  collect_specimen: 'clinical:collect_specimen', perform_test: 'clinical:perform_test', record_result: 'clinical:record_result',
+  verify_result: 'clinical:verify_result', release_result: 'clinical:release_result', dispense: 'clinical:dispense', administer: 'clinical:administer',
+} as const satisfies Record<ClinicalAction, Permission>;
 
 
 const CLINICAL: readonly Permission[] = [
@@ -42,6 +51,9 @@ const CLINICAL: readonly Permission[] = [
   'stock_movement:create',
   // Booking an appointment raises its fees in the same save (PRD §9.13.3).
   'charge:create',
+  'work_ownership:claim',
+  'service_session:operate',
+  ...Object.values(CLINICAL_ACTION_PERMISSIONS),
 ];
 
 const FRONT_DESK: readonly Permission[] = [
@@ -64,17 +76,15 @@ const CASHIER: readonly Permission[] = ['payment:receive'];
 const BILLING_OVERSIGHT: readonly Permission[] = ['payment:waive', 'payment:reverse'];
 
 /**
- * Granted by no role. It belongs only to the person a PIN setup code was
- * issued for, before they have a PIN to sign in with: the device builds a
- * context holding just this permission for that claim, and the server accepts
- * the claim only from the code's own staff member.
+ * Granted by no role and never individually assignable. PIN claims use the
+ * claim context; clinical review uses accepted scoped reviewer authority.
  */
-const CLAIM_ONLY: readonly Permission[] = ['pin_setup_code:claim'];
+export const PROTECTED_PERMISSIONS: readonly Permission[] = ['pin_setup_code:claim', 'clinical_capability:review'];
 
 /**
  * What each role may do. Roles are the PRD's job titles (§7.1, §14.1); the
  * matrix is the smallest one that covers what the app persists today.
- * `facility_admin` holds every role-granted permission — a facility must be
+ * `facility_admin` holds an explicit administrative set — a facility must be
  * able to configure itself with no one else's help (<60-minute onboarding,
  * PRD §8).
  */
@@ -85,7 +95,17 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   supervisor: [...CLINICAL, 'referral:update', 'roster:extend', ...BILLING_OVERSIGHT],
   records_officer: FRONT_DESK,
   cashier: CASHIER,
-  facility_admin: Permission.options.filter((permission) => !CLAIM_ONLY.includes(permission)),
+  // Explicitly reviewed v10 list: future permission additions must not auto-escalate administrators.
+  facility_admin: [...new Set<Permission>([
+    ...CLINICAL, ...FRONT_DESK, ...CASHIER, ...BILLING_OVERSIGHT,
+    'referral:update', 'unit:manage', 'location:manage', 'service:manage', 'practitioner:manage', 'credential:manage', 'credential:read',
+    'staff_assignment:manage', 'service_session:manage', 'work_ownership:manage',
+    'stock_item:manage', 'fee_item:manage', 'staff:manage', 'staff:permission', 'staff:deactivate',
+    'roster:assign', 'roster:extend', 'device:enroll', 'device:revoke',
+  ])],
+  laboratory_staff: ['patient:update', 'encounter:record', 'handoff:update', 'work_ownership:claim', 'service_session:operate',
+    'clinical:collect_specimen', 'clinical:perform_test', 'clinical:record_result', 'clinical:verify_result', 'clinical:release_result'],
+  pharmacy_staff: ['encounter:record', 'handoff:update', 'work_ownership:claim', 'service_session:operate', 'clinical:dispense'],
 };
 
 /**
@@ -164,6 +184,10 @@ export const HIGH_RISK_PERMISSIONS: readonly Permission[] = [
   'staff:deactivate',
   'device:enroll',
   'device:revoke',
+  'practitioner:manage',
+  'credential:manage',
+  'clinical_capability:review',
+  'staff_assignment:manage',
 ];
 
 export const isHighRisk = (permission: Permission): boolean => HIGH_RISK_PERMISSIONS.includes(permission);

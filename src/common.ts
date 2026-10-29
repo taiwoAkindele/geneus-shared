@@ -18,7 +18,8 @@ import { z } from 'zod';
  *     became `device`; `sync_rejection` added; audit events carry an outcome;
  *     roster signatures are optional until the server signs them.
  */
-export const SCHEMA_VERSION = 3 as const;
+// v4: facility/workforce vocabulary, protected authority and revised policy.
+export const SCHEMA_VERSION = 4 as const;
 
 /* ------------------------------------------------------------------ */
 /* Primitive helpers                                                   */
@@ -76,6 +77,21 @@ export const DocType = z.enum([
   'billing_adjustment',
   'incoming_transfer',
   'billing_department',
+  'location',
+  'service_definition',
+  'service_offering',
+  'practitioner_profile',
+  'credential',
+  'capability_decision',
+  'reviewer_delegation',
+  'clinical_authority_bootstrap',
+  'external_clinical_reviewer',
+  'authority_snapshot',
+  'staff_assignment',
+  'service_session',
+  'session_event',
+  'work_ownership_event',
+  'appointment_reservation',
 ]);
 export type DocType = z.infer<typeof DocType>;
 

@@ -10,6 +10,7 @@
  * type stripping in geneus-server. See README.md.
  */
 import { z } from 'zod';
+import type { DocType } from './common.ts';
 
 export * from './common.ts';
 export * from './documents.ts';
@@ -18,6 +19,17 @@ export * from './api.ts';
 export * from './patientIdentity.ts';
 export * from './clinical.ts';
 export * from './registers.ts';
+export * from './facilityTypes.ts';
+export * from './facility.ts';
+export * from './facilityPolicy.ts';
+export * from './facilitySync.ts';
+export * from './facilityValidation.ts';
+export * from './facilityAuthorization.ts';
+export * from './facilityProjection.ts';
+
+import { Location, ServiceDefinition, ServiceOffering, PractitionerProfile, Credential, CapabilityDecision,
+  ReviewerDelegation, ClinicalAuthorityBootstrap, ExternalClinicalReviewer, AuthoritySnapshot,
+  StaffAssignment, ServiceSession, SessionEvent, WorkOwnershipEvent, AppointmentReservation } from './facility.ts';
 
 import { ClinicalEvent } from './clinical.ts';
 
@@ -58,6 +70,9 @@ import {
  * register definition — see `validateRegisterEntry` (documents.ts).
  */
 export const AnyDocument = z.union([
+  Location, ServiceDefinition, ServiceOffering, PractitionerProfile, Credential, CapabilityDecision,
+  ReviewerDelegation, ClinicalAuthorityBootstrap, ExternalClinicalReviewer, AuthoritySnapshot,
+  StaffAssignment, ServiceSession, SessionEvent, WorkOwnershipEvent, AppointmentReservation,
   ClinicalEvent,
   Patient,
   PatientIdentityEvent,
@@ -90,6 +105,12 @@ export type AnyDocument = z.infer<typeof AnyDocument>;
 
 /** Map of `type` → schema, for validating a record when its type is known. */
 export const SCHEMA_BY_TYPE = {
+  location: Location, service_definition: ServiceDefinition, service_offering: ServiceOffering,
+  practitioner_profile: PractitionerProfile, credential: Credential, capability_decision: CapabilityDecision,
+  reviewer_delegation: ReviewerDelegation, clinical_authority_bootstrap: ClinicalAuthorityBootstrap,
+  external_clinical_reviewer: ExternalClinicalReviewer, authority_snapshot: AuthoritySnapshot,
+  staff_assignment: StaffAssignment, service_session: ServiceSession, session_event: SessionEvent,
+  work_ownership_event: WorkOwnershipEvent, appointment_reservation: AppointmentReservation,
   clinical_event: ClinicalEvent,
   patient: Patient,
   patient_identity_event: PatientIdentityEvent,
@@ -117,7 +138,7 @@ export const SCHEMA_BY_TYPE = {
   billing_adjustment: BillingAdjustment,
   incoming_transfer: IncomingTransfer,
   billing_department: BillingDepartment,
-} as const;
+} as const satisfies Record<DocType, z.ZodType>;
 
 /**
  * Validate an unknown value as a record. If it carries a known `type`, the
@@ -131,7 +152,7 @@ export const SCHEMA_BY_TYPE = {
  */
 export function parseDocument(input: unknown) {
   const type = (input as { type?: unknown })?.type;
-  if (typeof type === 'string' && type in SCHEMA_BY_TYPE) {
+  if (typeof type === 'string' && Object.hasOwn(SCHEMA_BY_TYPE, type)) {
     return SCHEMA_BY_TYPE[type as keyof typeof SCHEMA_BY_TYPE].safeParse(input);
   }
   return AnyDocument.safeParse(input);
