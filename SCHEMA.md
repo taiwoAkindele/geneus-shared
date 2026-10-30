@@ -273,6 +273,13 @@ The additions are optional, so document schema version remains 3.
   holds). The first admin sets their PIN with no approval, straight after registering
   the facility, because nobody else exists yet. On site, only a facility admin may
   approve a facility admin's PIN — whoever approves could choose the PIN themselves.
+  Additional facility registration may reuse the existing administrator's PIN record
+  on that same device after an authorized, source-bound bootstrap creates their new
+  admin membership. Ordinary staff provisioning does not approve PIN initialization.
+  An online switch may continue a session only when the server links the same person,
+  the destination already trusts the exact same unlocked PIN record, and destination
+  sign-in rules pass. A different or reset PIN requires destination sign-in; it is
+  never overwritten by a switch. PIN records remain outside the shared documents.
 - **Admin recovery by email.** A facility admin's email is proven with a 6-digit code at
   registration (or added later by the admin) and kept on the server only — never a record,
   never synced to a phone. Replacing one already on file also needs a code sent to that
@@ -536,3 +543,11 @@ Assignments, finite session occurrences, actual intake events and source-linked 
 Missing parents use a durable `dependency` SyncRejection naming the unaccepted references and retaining submitted content, followed by the existing reconciliation/resubmission path. Refused credential/governance payloads additionally require `visibility: restricted` and an explicit `visibleToStaffIds` audience. Delivery restrictions must apply to the rejection payload as well as the original record.
 
 New upload metadata and optional sync-token feature support prevent clients from assuming a server understands this feature. Facility.workforcePolicy is an optional, server-owned preparation/enforcement marker with an explicit effective instant. Absence never activates the new authority gates. See the integration guide for the mandatory server/client adoption sequence and trusted-input requirements.
+
+## Independent care workflow v1 (30 October 2026)
+
+Additive schema-4 contracts in careWorkflow.ts define catalogue order items, explicit investigation decisions, disposition, organization API requests and causal disposition transitions. New encounter/entry headers stamp workflowVersion=1; uploads negotiate clinicalWorkflowVersion=1. Diagnosis retains legacy fields for historical reads, while new writes persist prescriptions and injection orders in separate steps. Observation is not closure: use closesEncounter(entry), not membership in CLOSING_STEPS alone. Lab results reference order item IDs, clinical result review references result entry IDs, and fulfilment may follow consultation closure. InboundReferral is server-created in the destination facility, with an explicit optional local patient/encounter link; it never aliases the sender patient into the receiving database. FeeItem.priceVersion identifies server-owned immutable pricing evidence. Staff.personId links independent memberships and is server-owned. See [architecture](../docs/CLINICAL-FACILITY-WORKSPACES.md).
+
+## Organization facility creation and navigation (30 October 2026)
+
+FacilityDetails is shared by primary and additional registration. OrganizationFacilityRegistration replaces a platform invitation and new email challenge with an authenticated local administrator, expected organization identity (or initial organization name), stable request ID and device enrollment proof. The server derives administrator details from its verified records. OrganizationFacilityDefaults exposes only a masked verified address. OrganizationFacilityDirectory carries organization/facility metadata and access/setup flags, never patient records or a combined workforce. OrganizationFacilityAccess identifies the independently provisioned destination membership; enrollment remains separately authorized. These are additive online API contracts and do not change schema version 4 or expand the device's facility-scoped sync claims.

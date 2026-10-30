@@ -308,7 +308,7 @@ describe('encounters', () => {
   });
 
   it('closes on admission or follow-up, and a follow-up need not book a review', () => {
-    assert.deepEqual([...CLOSING_STEPS], ['admission', 'follow_up']);
+    assert.deepEqual([...CLOSING_STEPS], ['admission', 'follow_up', 'disposition']);
     assert.equal(EncounterEntry.safeParse(entry('follow_up', {})).success, true);
   });
 

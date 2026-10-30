@@ -61,6 +61,7 @@ export const DocType = z.enum([
   'register_definition',
   'register_entry',
   'referral',
+  'inbound_referral',
   'stock_item',
   'stock_movement',
   'facility',

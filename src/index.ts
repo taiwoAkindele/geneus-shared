@@ -13,6 +13,7 @@ import { z } from 'zod';
 import type { DocType } from './common.ts';
 
 export * from './common.ts';
+export * from './careWorkflow.ts';
 export * from './documents.ts';
 export * from './permissions.ts';
 export * from './api.ts';
@@ -43,7 +44,7 @@ import {
   Appointment,
   RegisterDefinition,
   RegisterEntry,
-  Referral,
+  Referral, InboundReferral,
   StockItem,
   StockMovement,
   Facility,
@@ -83,7 +84,7 @@ export const AnyDocument = z.union([
   Appointment,
   RegisterDefinition,
   RegisterEntry,
-  Referral,
+  Referral, InboundReferral,
   StockItem,
   StockMovement,
   Facility,
@@ -122,6 +123,7 @@ export const SCHEMA_BY_TYPE = {
   register_definition: RegisterDefinition,
   register_entry: RegisterEntry,
   referral: Referral,
+  inbound_referral: InboundReferral,
   stock_item: StockItem,
   stock_movement: StockMovement,
   facility: Facility,

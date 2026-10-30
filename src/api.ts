@@ -102,6 +102,47 @@ export const FacilityRegistrationResult = z.object({
 });
 export type FacilityRegistrationResult = z.infer<typeof FacilityRegistrationResult>;
 
+/** The same facility details are collected for primary and additional facilities. */
+export const FacilityDetails = FacilityRegistration.pick({ code: true, name: true, state: true, lga: true, level: true });
+export type FacilityDetails = z.infer<typeof FacilityDetails>;
+
+/** Reuses the authenticated administrator's verified contact, never a client-supplied email. */
+export const OrganizationFacilityRegistration = FacilityDetails.extend({
+  actorStaffId: z.string().min(1),
+  organizationId: z.string().min(1).optional(),
+  organizationName: z.string().trim().min(1).max(200).optional(),
+  requestId: z.uuid(),
+  deviceId: z.uuid(),
+  deviceLabel: z.string().max(200).optional(),
+  /** Client-generated 256-bit enrollment secret permits safe retries after a lost response. */
+  deviceSecret: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
+}).refine((value) => Boolean(value.organizationId || value.organizationName), { path: ['organizationName'], message: 'Enter the organization name' });
+export type OrganizationFacilityRegistration = z.infer<typeof OrganizationFacilityRegistration>;
+
+export const OrganizationFacilityDefaults = z.object({
+  organization: z.object({ id: z.string(), name: z.string() }).nullable(),
+  administrator: z.object({ staffId: z.string(), fullName: z.string(), verifiedEmail: z.string().nullable() }),
+});
+export type OrganizationFacilityDefaults = z.infer<typeof OrganizationFacilityDefaults>;
+
+export const OrganizationFacilityResult = FacilityRegistrationResult.extend({ organization: z.object({ id: z.string(), name: z.string() }) });
+export type OrganizationFacilityResult = z.infer<typeof OrganizationFacilityResult>;
+
+export const OrganizationFacilityDirectory = z.object({
+  organization: z.object({ id: z.string(), name: z.string() }).nullable(),
+  canCreateFacility: z.boolean(),
+  facilities: z.array(z.object({ id: z.string(), name: z.string(), accessible: z.boolean(), canEnrollDevice: z.boolean() })),
+});
+export type OrganizationFacilityDirectory = z.infer<typeof OrganizationFacilityDirectory>;
+
+export const OrganizationFacilityOpen = z.object({ actorStaffId: z.string().min(1), facilityId: z.string().min(1), deviceId: z.string().min(1).max(200), deviceSecret: OrganizationFacilityRegistration.shape.deviceSecret.optional() });
+export type OrganizationFacilityOpen = z.infer<typeof OrganizationFacilityOpen>;
+export const OrganizationFacilityAccess = z.object({
+  facilityId: z.string(), staffId: z.string(), personId: z.string(),
+  device: DeviceCredential.optional(),
+});
+export type OrganizationFacilityAccess = z.infer<typeof OrganizationFacilityAccess>;
+
 /* ------------------------------------------------------------------ */
 /* Device enrollment — POST /devices/codes · POST /devices · POST /devices/:id/revoke */
 /* ------------------------------------------------------------------ */
@@ -236,6 +277,8 @@ export const SyncTokenClaims = z.object({
   iat: z.number().int(),
   exp: z.number().int(),
   facility_id: z.string().min(1),
+  facility_contract: z.literal(1).optional(),
+  clinical_workflow: z.literal(1).optional(),
 });
 export type SyncTokenClaims = z.infer<typeof SyncTokenClaims>;
 
@@ -269,6 +312,7 @@ export const UploadMutation = z.object({
 export type UploadMutation = z.infer<typeof UploadMutation>;
 
 export const UploadRequest = z.object({
+  clinicalWorkflowVersion: z.literal(1).optional(),
   /** PowerSync's local transaction id; null when the write was not transactional. */
   transactionId: z.number().int().nonnegative().nullable(),
   mutations: z.array(UploadMutation).min(1),
@@ -276,6 +320,8 @@ export const UploadRequest = z.object({
   schemaVersion: z.number().int().positive().optional(),
   policyVersion: z.number().int().positive().optional(),
 }).superRefine((request, context) => {
+  if (request.clinicalWorkflowVersion === 1 && (request.facilityContractVersion !== 1 || (request.schemaVersion ?? 0) < 4 || (request.policyVersion ?? 0) < 10)) context.addIssue({ code: 'custom', message: 'Clinical workflow v1 requires facility contract 1, schema 4 and policy 10' });
+  if (request.mutations.some((m) => m.table === 'encounter_entry' && (m.data.workflowVersion === 1 || ['investigation_review','result_review','prescription','injection_order','disposition'].includes(String(m.data.step)))) && request.clinicalWorkflowVersion !== 1) context.addIssue({ code: 'custom', message: 'New care entries require clinical workflow version one' });
   if (request.mutations.some(requiresFacilityContract) && (request.facilityContractVersion !== 1 || (request.schemaVersion ?? 0) < 4 || (request.policyVersion ?? 0) < 10)) context.addIssue({ code: 'custom', message: 'Facility writes require the negotiated v1 contract, schema 4 and policy 10' });
 });
 export type UploadRequest = z.infer<typeof UploadRequest>;
