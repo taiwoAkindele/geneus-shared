@@ -145,6 +145,8 @@ export const encounterClinicalActions = (entry: EncounterEntry, original?: Encou
   }
   switch (entry.step) {
     case 'diagnosis': return (Array.isArray(entry.values.prescription) && entry.values.prescription.length > 0) || entry.values.giveInjection === true ? ['diagnose', 'prescribe'] : ['diagnose'];
+    case 'prescription': return entry.values.decision === 'prescribed' ? ['prescribe'] : ['assess'];
+    case 'injection_order': return entry.values.required ? ['prescribe'] : ['assess'];
     case 'lab_results': return ['record_result'];
     case 'injection': return ['administer'];
     case 'dispense': return ['dispense'];

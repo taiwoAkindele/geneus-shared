@@ -29,11 +29,13 @@ export type Location = z.infer<typeof Location>;
 
 export const ServiceDefinition = record({
   type: z.literal('service_definition'), name: text, category: ServiceCategory,
+  investigation: z.strictObject({ specimen: text, department: text, aliases: z.array(text).max(50).default([]) }).optional(),
   concept: CodedConcept, orderable: z.boolean().default(false), active: z.boolean().default(true), revision: version.default(1),
 });
 export type ServiceDefinition = z.infer<typeof ServiceDefinition>;
 export const ServiceOffering = record({
   type: z.literal('service_offering'), serviceDefinitionId: ref, unitId: ref, name: text,
+  feeItemId: ref.optional(),
   locationIds: distinctRefs, delivery: z.enum(['physical', 'mobile', 'virtual']),
   requiredActions: z.array(ClinicalAction).max(ClinicalAction.options.length).default([])
     .refine((v) => new Set(v).size === v.length, 'Choose each action only once'),

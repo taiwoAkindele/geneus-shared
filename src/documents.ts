@@ -1,3 +1,4 @@
+import { Disposition, InvestigationItem, InvestigationReview } from './careWorkflow.ts';
 /**
  * Geneus Health — shared contract: the document schemas.
  *
@@ -379,6 +380,13 @@ export const Referral = baseEnvelope.extend({
   notYetArrivedFlagged: z.boolean().default(false),
 });
 export type Referral = z.infer<typeof Referral>;
+export const InboundReferral = baseEnvelope.extend({
+  type: z.literal('inbound_referral'), sourceReferralId: z.string().min(1), fromFacilityId: z.string().min(1), senderPatientId: patientId,
+  tier1: Tier1Payload, sentOn: isoDateTime, status: z.enum(['received', 'arrived', 'closed']).default('received'),
+  localPatientId: patientId.optional(), localEncounterId: z.string().min(1).optional(), arrivedOn: isoDateTime.optional(), closedOn: isoDateTime.optional(),
+}).refine((v) => v.status === 'received' || Boolean(v.localPatientId && v.arrivedOn), 'Arrival requires a local patient and time')
+  .refine((v) => v.status !== 'closed' || Boolean(v.closedOn), 'Closing requires a time');
+export type InboundReferral = z.infer<typeof InboundReferral>;
 
 /* ================================================================== */
 /* Inventory (PRD §9.1, §9.6)                                          */
@@ -412,6 +420,7 @@ export type StockMovement = z.infer<typeof StockMovement>;
 /* ================================================================== */
 
 export const Facility = baseEnvelope.extend({
+  allowCustomInvestigations: z.boolean().optional(),
   type: z.literal('facility'),
   code: z.string().min(1), // e.g. OOE-PHC (PRD §10.1)
   name: z.string().min(1),
@@ -476,6 +485,7 @@ export const LoginAccess = z.enum(['shift', 'always']);
 export type LoginAccess = z.infer<typeof LoginAccess>;
 
 export const Staff = baseEnvelope.extend({
+  personId: z.string().min(1).optional(),
   type: z.literal('staff'),
   staffId: z.string().min(1),
   fullName: z.string().trim().min(1),
@@ -656,6 +666,7 @@ export type AuditEvent = z.infer<typeof AuditEvent>;
 
 /** Opened when the first step is saved (PRD §9.8.1, step 2). Insert-only. */
 export const Encounter = baseEnvelope.extend({
+  workflowVersion: z.literal(1).optional(),
   type: z.literal('encounter'),
   patientId,
   openedOn: isoDateTime,
@@ -675,6 +686,11 @@ export const EncounterStep = z.enum([
   'vitals',
   'complaint',
   'lab_order',
+  'investigation_review',
+  'result_review',
+  'prescription',
+  'injection_order',
+  'disposition',
   'lab_results',
   'diagnosis',
   'injection',
@@ -687,9 +703,9 @@ export const EncounterStep = z.enum([
 export type EncounterStep = z.infer<typeof EncounterStep>;
 
 /** Saving one of these steps closes the encounter: as an inpatient, or sent home. */
-export const CLOSING_STEPS = ['admission', 'follow_up'] as const satisfies readonly EncounterStep[];
+export const CLOSING_STEPS = ['admission', 'follow_up', 'disposition'] as const satisfies readonly EncounterStep[];
 /** Reassessment is a new observation/note; other saved sections are corrected by amendment. */
-export const REPEATABLE_STEPS = ['vitals', 'complaint'] as const satisfies readonly EncounterStep[];
+export const REPEATABLE_STEPS = ['vitals', 'complaint', 'disposition', 'lab_results', 'result_review'] as const satisfies readonly EncounterStep[];
 
 const positive = z.number().positive();
 const text = z.string().trim().min(1);
@@ -728,8 +744,13 @@ export const ENCOUNTER_STEP_VALUES = {
     .refine((complaint) => complaint.complaints.length > 0 || Object.values(complaint).some((value) => typeof value === 'string' && value.length > 0), {
       message: 'Record a complaint or a clinical note',
     }),
-  lab_order: z.strictObject({ tests: z.array(text).min(1) }),
-  lab_results: z.strictObject({ results: z.array(z.strictObject({ test: text, result: text })).min(1) }),
+  lab_order: z.strictObject({ tests: z.array(text).min(1), items: z.array(InvestigationItem).min(1).optional(), reason: text.optional() }).refine((v) => !v.items || (new Set(v.items.map((i) => i.id)).size === v.items.length && v.items.length === v.tests.length && v.items.every((i, n) => i.name === v.tests[n])), 'Order item identities must be unique and match the requested tests'),
+  investigation_review: InvestigationReview,
+  result_review: z.strictObject({ resultEntryIds: z.array(text).min(1).refine((ids) => new Set(ids).size === ids.length, 'Review each result entry once'), note: text.optional() }),
+  prescription: z.strictObject({ decision: z.enum(['none_required', 'prescribed']), prescription: z.array(PrescriptionLine) }).refine((v) => v.decision === 'prescribed' ? v.prescription.length > 0 : v.prescription.length === 0, 'Record medications or explicitly select none required'),
+  injection_order: z.strictObject({ required: z.boolean(), drug: text.optional(), dose: text.optional(), route: InjectionRoute.optional(), instructions: text.optional() }).refine((v) => !v.required || Boolean(v.drug && v.dose && v.route), 'An injection order needs drug, dose and route'),
+  disposition: Disposition,
+  lab_results: z.strictObject({ results: z.array(z.strictObject({ test: text, result: text, orderItemId: text.optional() })).min(1) }),
   diagnosis: z.strictObject({
     diagnosis: text,
     diagnoses: z.array(z.strictObject({ label: text, code: text.optional(), codingSystem: z.enum(['ICD-10', 'SNOMED CT', 'local']).optional(), certainty: z.enum(['unknown', 'suspected', 'confirmed']).default('unknown') }).refine((v) => !v.code || Boolean(v.codingSystem), 'Choose the coding system for this diagnosis code')).optional(),
@@ -777,6 +798,7 @@ export type EncounterStepValues = { [Step in EncounterStep]: z.infer<(typeof ENC
  */
 export const EncounterEntry = baseEnvelope
   .extend({
+    workflowVersion: z.literal(1).optional(),
     type: z.literal('encounter_entry'),
     encounterId: z.string().min(1),
     /** Repeated from the encounter so the patient's history is one lookup. */
@@ -893,6 +915,7 @@ export const findExemption = (rules: readonly ExemptionRule[], facts: ExemptionF
 
 /** One entry in the facility's fee schedule. Edited in place; charges keep the price they were raised at. */
 export const FeeItem = baseEnvelope.extend({
+  priceVersion: z.string().min(1).optional(),
   type: z.literal('fee_item'),
   name: text,
   category: FeeCategory,
@@ -914,6 +937,8 @@ export type FeeItem = z.infer<typeof FeeItem>;
  */
 export const Charge = baseEnvelope
   .extend({
+    orderItemId: z.string().min(1).optional(),
+    orderEntryId: z.string().min(1).optional(),
     type: z.literal('charge'),
     patientId,
     feeItemId: z.string().min(1),
