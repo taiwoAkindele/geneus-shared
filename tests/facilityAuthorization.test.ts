@@ -26,15 +26,16 @@ describe('protected clinical authority', () => {
     assert.equal(withReviewerAuthority(context, reviewer, proofFor(reviewer), NOW).permissions.includes('clinical_capability:review'), false);
     assert.deepEqual(reviewerDecisionIssues(reviewer, context, reviewProof(), decision, NOW), []);
   });
-  it('requires exact subject/facility/current policy, trusted proof and a bounded trusted clock', () => {
+  it('requires exact subject/facility, a supported policy, trusted proof and a bounded trusted clock', () => {
     const context = contextFor(worker), proof = proofFor();
     assert.deepEqual(clinicalActivityIssues(worker, context, proof, { action: 'diagnose', offeringId: offering.id }, NOW), []);
     for (const modified of [
       { ...proof, signatureVerified: false }, { ...proof, currentRevision: 2 },
       { ...proof, snapshot: { ...proof.snapshot, staffId: reviewer.staffId } },
       { ...proof, snapshot: { ...proof.snapshot, facilityId: 'OTHER' } },
-      { ...proof, snapshot: { ...proof.snapshot, policyVersion: 11 } },
+      { ...proof, snapshot: { ...proof.snapshot, policyVersion: 12 } },
     ]) assert.ok(authorityProofIssues(context, modified, NOW).length);
+    assert.deepEqual(authorityProofIssues({ ...context, policyVersion: 11 }, proof, NOW), []);
     assert.ok(authorityProofIssues(context, proof, Date.parse(proof.snapshot.expiresOn)).length);
     assert.ok(authorityProofIssues(context, proof, Date.parse(proof.snapshot.issuedOn) - 1).length);
     assert.ok(authorityProofIssues(context, proof, NaN).length);

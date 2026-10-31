@@ -56,6 +56,7 @@ snake_case names.
 | `patient` | `Patient` | device | §10 (NASADOR) |
 | `visit` | `Visit` | device — superseded by `encounter`, kept readable | §9.1 |
 | `encounter` / `encounter_entry` | `Encounter` / `EncounterEntry` (values per step, §13) | device, insert-only | §9.8 |
+| `inpatient_event` / `bed_ready_event` | `InpatientEvent` / `BedReadyEvent` (Inpatient operations v1 below) | device, insert-only | admission/ward foundation |
 | `handoff` | `Handoff` (optionally within an encounter) | device | §9.7 |
 | `appointment` | `Appointment` | device | §9.8 |
 | `register_definition` | `RegisterDefinition` | device | §9.4 |
@@ -555,3 +556,7 @@ Additive schema-4 contracts in careWorkflow.ts define catalogue order items, exp
 ## Organization facility creation and navigation (30 October 2026)
 
 FacilityDetails is shared by primary and additional registration. OrganizationFacilityRegistration replaces a platform invitation and new email challenge with an authenticated local administrator, expected organization identity (or initial organization name), stable request ID and device enrollment proof. The server derives administrator details from its verified records. OrganizationFacilityDefaults exposes only a masked verified address. OrganizationFacilityDirectory carries organization/facility metadata and access/setup flags, never patient records or a combined workforce. OrganizationFacilityAccess identifies the independently provisioned destination membership; enrollment remains separately authorized. These are additive online API contracts and do not change schema version 4 or expand the device's facility-scoped sync claims.
+
+## Inpatient operations v1 (31 October 2026)
+
+Additive schema-5 types `inpatient_event` and `bed_ready_event` preserve the existing patient and encounter. Confirmation references its signed admission request and starts an active stay awaiting a bed. Reservation and arrival are separate; readiness retains occupancy, actual departure/transfer releases the previous bed for cleaning, and a bed-readiness event names the exact release it clears. Event chains require an exact predecessor and retain original provenance. Shared validation/projection lives in `src/inpatient.ts`; callers supply local locked or accepted server state. Policy 11 adds `admission:manage`; policy 10's signed clinical scope remains supported and unchanged. Uploads require inpatient workflow 1, facility contract 1, schema 5 and policy 11; the signed `inpatient_workflow` token claim gates the new streams. See [foundation scope](../docs/INPATIENT-FOUNDATION.md).
