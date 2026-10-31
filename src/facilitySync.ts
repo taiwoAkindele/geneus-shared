@@ -1,4 +1,5 @@
 import { Permission } from './capabilities.ts';
+import { SCHEMA_VERSION } from './common.ts';
 import { FACILITY_DOCUMENT_TYPES } from './facilityTypes.ts';
 import { FACILITY_DOCUMENT_POLICY, configurationRevisionIssues, type FacilityFeatureSupport } from './facilityPolicy.ts';
 
@@ -28,14 +29,14 @@ export const facilityCompatibilityIssues = (request: {
   const required = authorityCutoverActive || request.mutations.some(requiresFacilityContract);
   if (!required) return [];
   if (!serverSupport) return ['Server has not enabled the facility contract; preserve queued writes and require an upgrade'];
-  return request.facilityContractVersion === serverSupport.contractVersion && request.schemaVersion === serverSupport.minimumSchemaVersion
+  return request.facilityContractVersion === serverSupport.contractVersion && (request.schemaVersion ?? 0) >= serverSupport.minimumSchemaVersion && (request.schemaVersion ?? Infinity) <= SCHEMA_VERSION
     && request.policyVersion === serverSupport.minimumPolicyVersion ? [] : ['Client schema/policy/feature contract is incompatible; preserve its queued writes'];
 };
 
 /** Complements shape/permission validation. Database CAS/serialization remains mandatory. */
 export const facilityMutationIssues = (mutation: FacilityMutation, current?: { revision?: number; id: string }): string[] => {
   if (mutation.table === 'facility' && ['workforcePolicy', 'timeZone'].some((key) => has(mutation.data, key))) return ['Facility cutover and authoritative timezone are server-owned'];
-  if (requiresFacilityContract(mutation) && mutation.data.schemaVersion !== 4) return ['New facility writes must stamp schema version 4 on the merged record'];
+  if (requiresFacilityContract(mutation) && (typeof mutation.data.schemaVersion !== 'number' || mutation.data.schemaVersion < 4 || mutation.data.schemaVersion > SCHEMA_VERSION)) return ['New facility writes require a supported schema version, from 4 through the current schema'];
   const legacyConfiguration = ['unit', 'billing_department'].includes(mutation.table) && requiresFacilityContract(mutation);
   const policy = legacyConfiguration ? { writer: 'device', change: 'revision' } : Object.hasOwn(FACILITY_DOCUMENT_POLICY, mutation.table)
     ? FACILITY_DOCUMENT_POLICY[mutation.table as keyof typeof FACILITY_DOCUMENT_POLICY] : undefined;

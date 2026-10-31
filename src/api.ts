@@ -279,6 +279,7 @@ export const SyncTokenClaims = z.object({
   facility_id: z.string().min(1),
   facility_contract: z.literal(1).optional(),
   clinical_workflow: z.literal(1).optional(),
+  patient_registration: z.literal(1).optional(),
 });
 export type SyncTokenClaims = z.infer<typeof SyncTokenClaims>;
 

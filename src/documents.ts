@@ -10,7 +10,7 @@ import { Disposition, InvestigationItem, InvestigationReview } from './careWorkf
 import { z } from 'zod';
 import { AppointmentAllocation, ClinicalActorContext, FacilityDependency, FacilityTimeZone, FacilityWorkforcePolicy, OrganizationKind, RESTRICTED_FACILITY_DOCUMENT_TYPES, distinctRefs, facilityIdRef } from './facilityTypes.ts';
 import { AssignablePermission } from './capabilities.ts';
-import { validCalendarDate, yearsBetween } from './patientIdentity.ts';
+import { provisionalPatientName, validCalendarDate, yearsBetween } from './patientIdentity.ts';
 import {
   baseEnvelope,
   DocType,
@@ -33,8 +33,19 @@ export const Patient = baseEnvelope
     patientId,
     // NASADOR
     fullName: z.string().min(1),
-    address: z.string().min(1),
-    sex: Sex,
+    address: z.string().trim().min(1).nullish().transform((v) => v ?? undefined).optional(),
+    sex: Sex.nullish().transform((v) => v ?? undefined).optional(),
+    identityStatus: z.enum(['identified', 'provisional']).default('identified'),
+    /** Original circumstances are retained after later identification. */
+    provisionalReason: z.string().trim().min(3).max(500).nullish().transform((v) => v ?? undefined).optional(),
+    identifiedBy: z.string().min(1).nullish().transform((v) => v ?? undefined).optional(),
+    identifiedOn: isoDateTime.nullish().transform((v) => v ?? undefined).optional(),
+    identificationNote: z.string().trim().min(3).max(500).nullish().transform((v) => v ?? undefined).optional(),
+    /** Exact provisional demographics reviewed when completing identification. */
+    identificationBase: z.strictObject({ fullName: z.string(), sex: Sex.nullable(), address: z.string().nullable(),
+      dateOfBirth: isoDate.nullable(), ageYears: z.number().int().nullable(), ageObservedOn: isoDate.nullable(),
+      phone: z.string().nullable(), nin: z.string().nullable(), legacyPaperRef: z.string().nullable(),
+    }).nullish().transform((v) => v ?? undefined).optional(),
     dateOfBirth: isoDate.refine(validCalendarDate, 'Enter a valid calendar date').nullish().transform((v) => v ?? undefined).optional(),
     /** True when DOB is a best-guess (elderly patient, no records — PRD §10). */
     dobEstimated: z.boolean().default(false),
@@ -52,11 +63,22 @@ export const Patient = baseEnvelope
     /** Old paper folder / card number captured at first digital visit (PRD §10.2). */
     legacyPaperRef: z.string().nullish().transform((v) => v ?? undefined).optional(),
   })
-  .refine((d) => Boolean(d.dateOfBirth) || d.ageYears != null, {
+  .refine((d) => d.identityStatus === 'provisional' || Boolean(d.dateOfBirth) || d.ageYears != null, {
     message: 'Provide either dateOfBirth or ageYears',
     path: ['ageYears'],
   })
   .superRefine((d, ctx) => {
+    if (d.identityStatus === 'identified') {
+      if (!d.sex) ctx.addIssue({ code: 'custom', path: ['sex'], message: 'Record sex for an identified patient' });
+      if (!d.address) ctx.addIssue({ code: 'custom', path: ['address'], message: 'Record an address for an identified patient' });
+      if (d.provisionalReason && (!d.identifiedBy || !d.identifiedOn || !d.identificationNote || !d.identificationBase)) ctx.addIssue({ code: 'custom', path: ['identificationNote'], message: 'Later identification requires an attributed explanation and the reviewed provisional details' });
+      if (!d.provisionalReason && (d.identifiedBy || d.identifiedOn || d.identificationNote || d.identificationBase)) ctx.addIssue({ code: 'custom', path: ['provisionalReason'], message: 'Identification history requires an original provisional registration' });
+    } else {
+      if (d.schemaVersion < 5) ctx.addIssue({ code: 'custom', path: ['schemaVersion'], message: 'Provisional registration requires schema 5' });
+      if (!d.provisionalReason) ctx.addIssue({ code: 'custom', path: ['provisionalReason'], message: 'Explain why identity is not yet known' });
+      if (d.fullName !== provisionalPatientName(d.patientId)) ctx.addIssue({ code: 'custom', path: ['fullName'], message: 'Use the distinct provisional patient label' });
+      if (d.identifiedBy || d.identifiedOn || d.identificationNote || d.identificationBase) ctx.addIssue({ code: 'custom', path: ['identifiedOn'], message: 'An unidentified patient cannot have a completed identification' });
+    }
     const observed = d.ageObservedOn ?? d.createdOn.slice(0, 10);
     if (d.dateOfBirth && d.dateOfBirth > observed) ctx.addIssue({ code: 'custom', path: ['dateOfBirth'], message: 'Date of birth cannot be after the age observation date' });
     if (d.dateOfBirth && yearsBetween(d.dateOfBirth, observed) > 130) ctx.addIssue({ code: 'custom', path: ['dateOfBirth'], message: 'Check the birth date; age exceeds 130 years' });
@@ -355,7 +377,7 @@ export const Tier1Payload = z.object({
   fullName: z.string().min(1),
   ageYears: z.number().int().nonnegative().optional(),
   dateOfBirth: isoDate.optional(),
-  sex: Sex,
+  sex: Sex.optional(),
   allergies: z.array(z.string()).default([]),
   currentMedications: z.array(z.string()).default([]),
   reason: z.string().min(1),
@@ -892,7 +914,7 @@ export type ExemptionRule = z.infer<typeof ExemptionRule>;
 export type ExemptionFacts = {
   /** Whole years at the time of the visit; absent when it cannot be worked out. */
   ageYears?: number;
-  sex: Sex;
+  sex?: Sex;
   visitType?: VisitType;
 };
 
