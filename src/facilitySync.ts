@@ -1,5 +1,6 @@
 import { Permission } from './capabilities.ts';
 import { SCHEMA_VERSION } from './common.ts';
+import { POLICY_VERSION } from './permissions.ts';
 import { FACILITY_DOCUMENT_TYPES } from './facilityTypes.ts';
 import { FACILITY_DOCUMENT_POLICY, configurationRevisionIssues, type FacilityFeatureSupport } from './facilityPolicy.ts';
 
@@ -30,7 +31,7 @@ export const facilityCompatibilityIssues = (request: {
   if (!required) return [];
   if (!serverSupport) return ['Server has not enabled the facility contract; preserve queued writes and require an upgrade'];
   return request.facilityContractVersion === serverSupport.contractVersion && (request.schemaVersion ?? 0) >= serverSupport.minimumSchemaVersion && (request.schemaVersion ?? Infinity) <= SCHEMA_VERSION
-    && request.policyVersion === serverSupport.minimumPolicyVersion ? [] : ['Client schema/policy/feature contract is incompatible; preserve its queued writes'];
+    && (request.policyVersion ?? 0) >= serverSupport.minimumPolicyVersion && (request.policyVersion ?? Infinity) <= POLICY_VERSION ? [] : ['Client schema/policy/feature contract is incompatible; preserve its queued writes'];
 };
 
 /** Complements shape/permission validation. Database CAS/serialization remains mandatory. */

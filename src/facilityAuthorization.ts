@@ -1,7 +1,7 @@
 import { ENCOUNTER_STEP_VALUES, type Staff, type EncounterEntry } from './documents.ts';
 import type { ClinicalEvent } from './clinical.ts';
 import type { AuthoritySnapshot, CapabilityDecision, Credential, ExternalClinicalReviewer, ReviewerDelegation } from './facility.ts';
-import { intervalContains, scopeAllows, scopeContains, type ClinicalAction } from './facilityTypes.ts';
+import { intervalContains, scopeAllows, scopeContains, FACILITY_MIN_POLICY_VERSION, type ClinicalAction } from './facilityTypes.ts';
 import { CLINICAL_ACTION_PERMISSIONS, POLICY_VERSION, decide, isWithinOfflineWindow, mayApprovePin, rolesFor, type AuthorizationContext } from './permissions.ts';
 import type { Permission } from './capabilities.ts';
 import type { ServiceOffering, ServiceSession, StaffAssignment } from './facility.ts';
@@ -13,10 +13,12 @@ export type AuthorityProof = {
   /** Highest accepted revision known locally; server always re-derives current authority. */
   currentRevision: number;
 };
+// Policy 11 adds admission operations; it does not change signed clinical scope.
+const supportedClinicalPolicy = (version: number) => version >= FACILITY_MIN_POLICY_VERSION && version <= POLICY_VERSION;
 export const authorityProofIssues = (context: AuthorizationContext, proof: AuthorityProof | undefined, now: number): string[] => {
   if (!proof || !proof.signatureVerified) return ['Trusted server-signed clinical authority is required'];
   const snapshot = proof.snapshot;
-  if (context.policyVersion !== POLICY_VERSION || snapshot.policyVersion !== POLICY_VERSION) return ['Clinical authority policy is incompatible'];
+  if (!supportedClinicalPolicy(context.policyVersion) || !supportedClinicalPolicy(snapshot.policyVersion)) return ['Clinical authority policy is incompatible'];
   if (snapshot.staffId !== context.userId || snapshot.facilityId !== context.facilityId || snapshot.revision !== proof.currentRevision) return ['Clinical authority does not match the current worker, facility or revision'];
   if (!Number.isFinite(now) || now < Date.parse(snapshot.issuedOn) || now >= Date.parse(snapshot.expiresOn)) return ['Clinical authority is expired or the trusted time is invalid'];
   return [];
@@ -68,7 +70,7 @@ export const mayApproveWorkforcePin = (approver: Staff, context: AuthorizationCo
   target: Staff, targetAuthority: AuthoritySnapshot, now: number): boolean => {
   if (!approver.active || !target.active || approver.staffId !== context.userId || approver.facilityId !== context.facilityId || target.facilityId !== context.facilityId
     || !isWithinOfflineWindow('staff:manage', context.lastServerContactOn, now) || !mayApprovePin(approver, target)
-    || targetAuthority.staffId !== target.staffId || targetAuthority.facilityId !== target.facilityId || targetAuthority.policyVersion !== POLICY_VERSION
+    || targetAuthority.staffId !== target.staffId || targetAuthority.facilityId !== target.facilityId || !supportedClinicalPolicy(targetAuthority.policyVersion)
     || now < Date.parse(targetAuthority.issuedOn) || now >= Date.parse(targetAuthority.expiresOn)) return false;
   const protectedScopes = [...targetAuthority.reviewScopes, ...targetAuthority.grants].filter((g) => intervalContains(g, now));
   if (!protectedScopes.length) return true;

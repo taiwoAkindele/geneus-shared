@@ -18,6 +18,7 @@ import { type ClinicalAction } from './facilityTypes.ts';
  * Bump when the matrix or the policy windows change. Devices carry the version
  * they authorised against, so a stale device is visible at sync rather than
  * silently applying yesterday's rules.
+ * v11: explicit admission/bed-management permission for hospital clinical staff.
  * v10: facility/workforce, explicit administrative grants, protected clinical review and activity gates.
  * v9: attributed appointment attendance, rescheduling and reactivation.
  * v8: patient identity review and server-confirmed resolution.
@@ -26,7 +27,7 @@ import { type ClinicalAction } from './facilityTypes.ts';
  * v5: combined staff roles and individually assigned permissions.
  * v4: billing — the cashier role, fees, charges, payments, waivers, reversals.
  */
-export const POLICY_VERSION = 10 as const;
+export const POLICY_VERSION = 11 as const;
 
 /** Software actions are only one gate; approved clinical authority is checked separately. */
 export const CLINICAL_ACTION_PERMISSIONS = {
@@ -90,15 +91,15 @@ export const PROTECTED_PERMISSIONS: readonly Permission[] = ['pin_setup_code:cla
  */
 export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   chew: CLINICAL,
-  nurse: CLINICAL,
-  doctor: [...CLINICAL, 'referral:update'],
-  supervisor: [...CLINICAL, 'referral:update', 'roster:extend', ...BILLING_OVERSIGHT],
+  nurse: [...CLINICAL, 'admission:manage'],
+  doctor: [...CLINICAL, 'admission:manage', 'referral:update'],
+  supervisor: [...CLINICAL, 'admission:manage', 'referral:update', 'roster:extend', ...BILLING_OVERSIGHT],
   records_officer: FRONT_DESK,
   cashier: CASHIER,
   // Explicitly reviewed v10 list: future permission additions must not auto-escalate administrators.
   facility_admin: [...new Set<Permission>([
     ...CLINICAL, ...FRONT_DESK, ...CASHIER, ...BILLING_OVERSIGHT,
-    'referral:update', 'unit:manage', 'location:manage', 'service:manage', 'practitioner:manage', 'credential:manage', 'credential:read',
+    'admission:manage', 'referral:update', 'unit:manage', 'location:manage', 'service:manage', 'practitioner:manage', 'credential:manage', 'credential:read',
     'staff_assignment:manage', 'service_session:manage', 'work_ownership:manage',
     'stock_item:manage', 'fee_item:manage', 'staff:manage', 'staff:permission', 'staff:deactivate',
     'roster:assign', 'roster:extend', 'device:enroll', 'device:revoke',
