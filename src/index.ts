@@ -20,6 +20,7 @@ export * from './api.ts';
 export * from './patientIdentity.ts';
 export * from './clinical.ts';
 export * from './inpatient.ts';
+export * from './clinicalDocuments.ts';
 export * from './registers.ts';
 export * from './facilityTypes.ts';
 export * from './facility.ts';
@@ -35,6 +36,7 @@ import { Location, ServiceDefinition, ServiceOffering, PractitionerProfile, Cred
 
 import { ClinicalEvent } from './clinical.ts';
 import { InpatientEvent, BedReadyEvent } from './inpatient.ts';
+import { LibraryDocument, VisitDocument } from './clinicalDocuments.ts';
 
 import {
   Patient,
@@ -78,6 +80,7 @@ export const AnyDocument = z.union([
   StaffAssignment, ServiceSession, SessionEvent, WorkOwnershipEvent, AppointmentReservation,
   ClinicalEvent,
   InpatientEvent, BedReadyEvent,
+  LibraryDocument, VisitDocument,
   Patient,
   PatientIdentityEvent,
   Visit,
@@ -117,6 +120,7 @@ export const SCHEMA_BY_TYPE = {
   work_ownership_event: WorkOwnershipEvent, appointment_reservation: AppointmentReservation,
   clinical_event: ClinicalEvent,
   inpatient_event: InpatientEvent, bed_ready_event: BedReadyEvent,
+  library_document: LibraryDocument, visit_document: VisitDocument,
   patient: Patient,
   patient_identity_event: PatientIdentityEvent,
   visit: Visit,
