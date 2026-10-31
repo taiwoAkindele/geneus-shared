@@ -19,7 +19,8 @@ import { z } from 'zod';
  *     roster signatures are optional until the server signs them.
  */
 // v4: facility/workforce vocabulary, protected authority and revised policy.
-export const SCHEMA_VERSION = 4 as const;
+// v5: explicit provisional patient identities may omit unknown demographics.
+export const SCHEMA_VERSION = 5 as const;
 
 /* ------------------------------------------------------------------ */
 /* Primitive helpers                                                   */

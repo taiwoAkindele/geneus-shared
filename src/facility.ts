@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { baseEnvelope, patientId } from './common.ts';
+import { baseEnvelope, patientId, SCHEMA_VERSION } from './common.ts';
 import {
   CodedConcept, ClinicalAction, ClinicalActions, ClinicalScope, FacilityDate, FacilityInstant,
   FacilityTimeZone, Interval, LocationKind, ServiceCategory, distinctRefs, facilityIdRef as ref,
@@ -9,7 +9,7 @@ import {
 const version = z.number().int().positive();
 const revisionFields = { version, previousId: ref.optional() };
 const intervalFields = { startsAt: FacilityInstant, endsAt: FacilityInstant.optional() };
-const record = <T extends z.ZodRawShape>(shape: T) => z.strictObject({ ...baseEnvelope.shape, schemaVersion: z.literal(4).default(4), ...shape });
+const record = <T extends z.ZodRawShape>(shape: T) => z.strictObject({ ...baseEnvelope.shape, schemaVersion: z.number().int().min(4).max(SCHEMA_VERSION).default(SCHEMA_VERSION), ...shape });
 const checkInterval = (v: { startsAt: string; endsAt?: string }, ctx: z.RefinementCtx) => {
   if (v.endsAt && Date.parse(v.endsAt) <= Date.parse(v.startsAt)) ctx.addIssue({ code: 'custom', path: ['endsAt'], message: 'End must be after start' });
 };

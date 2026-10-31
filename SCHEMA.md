@@ -143,7 +143,7 @@ The server never picks a winner for clinical data. Per type:
 | Type(s) | Rule |
 | --- | --- |
 | `register_entry`, `stock_movement`, `audit_event` | Append-only; PATCH rejected |
-| `encounter`, `encounter_entry` | Insert-only; PATCH rejected. An `amendment` must amend an entry of the same encounter; once a closing step is saved, only amendments may be added (§13) |
+| `encounter`, `encounter_entry` | Insert-only; PATCH rejected. An `amendment` must amend an entry of the same encounter; consultation closure permits fulfillment, result review and amendments, while refusing new assessments (§13) |
 | `register_definition` | Immutable per version; a colliding version is rejected, never overwritten |
 | `patient` | Changed-column merge. If the server row and the device both changed the **same column** since the device's base, that column is a `conflict` |
 | `appointment` | Attendance, schedule and attributed activity are one atomic change. Append exactly one action to existing history; a competing edit is refused for review, without partial application. Linked visits freeze booking attendance. |
@@ -244,12 +244,13 @@ The additions are optional, so document schema version remains 3.
 
 ## 9. Versioning & migration
 
-- **Current: schema 4, policy 10, facility contract 1** (29 October 2026). The facility/workforce release expands record/role/rejection enums, introduces protected clinical-action policy and requires a coordinated consumer rollout. [FACILITY-CONTRACT.md](FACILITY-CONTRACT.md) specifies the complete shared boundary. Earlier dated statements about version 3 describe those earlier changes, not the current release.
+- **Current: schema 5, policy 10, facility contract 1** (31 October 2026). Provisional patients explicitly permit unknown demographics and require coordinated consumer adoption. The facility/workforce contract remains compatible with schema 4 and 5, bounded by the current supported version. [FACILITY-CONTRACT.md](FACILITY-CONTRACT.md) specifies the facility boundary. Earlier dated version statements describe those releases.
 - `SCHEMA_VERSION` in [`src/common.ts`](src/common.ts) is bumped on any breaking change.
   **v3** replaced the CouchDB `_id`/`_rev` envelope with `id`, renamed `device_enrollment`
   to `device`, added `sync_rejection`, gave `audit_event` an outcome, and made
   `roster_shift.signature` optional until the server signs it.
 - **v4** adds organization/location/service/authority/assignment/session/ownership records, new laboratory/pharmacy access duties, dependency reconciliation, and the signed-authority contract. Legacy records with explicit schema 3 remain readable. New facility-specific records require schema 4; feature writes also negotiate contract 1 and policy 10.
+- **v5** adds explicit provisional patient identity. Known patients retain name/sex/address/age requirements. Unknown patients receive a distinct temporary label tied to their stable patient ID and a registration reason; unknown sex, address and age are absent. Later identification records its author, time, explanation and exact reviewed demographic snapshot. Original circumstances and completed identification history are immutable. Existing identity linking remains a separate, reviewed server operation that preserves original records.
 - Every record stores the `schemaVersion` it was written against, so old offline records
   can be **up-migrated on read** rather than requiring a flag-day.
 - Additive, optional fields do **not** require a version bump; removing/renaming/retyping
@@ -381,9 +382,12 @@ Three rules make "saved means saved" (PRD §9.8.3) a property of the data, not t
    column.
 2. **Corrections are amendments.** An `amendment` entry names the entry it corrects in
    `amends`; only an amendment may set it. Both stay visible.
-3. **Closing is a step.** Saving `admission` (inpatient) or `follow_up` (sent home, with or
-   without a review booked) closes the encounter (`CLOSING_STEPS`). An encounter is open
-   while it has no closing entry; after one, only amendments are accepted.
+3. **Closing is a step.** Legacy `admission` or `follow_up` entries close the consultation.
+   New encounters record an independent disposition: home care, referral and admission
+   complete the consultation; observation remains open (`closesEncounter`, rather than
+   membership in `CLOSING_STEPS`). After closure, outstanding laboratory results,
+   clinical result review, dispensing, injection administration and amendments remain
+   accepted. New assessments or orders require the appropriate correction or new visit.
 
 A `handoff` may name the `encounterId` it moves the patient within, so the receiving unit
 opens the same encounter.
