@@ -21,7 +21,7 @@ describe('independent clinical workflow contract', () => {
     const next = source('entry:next', 'disposition', { kind: 'observation', previousEntryId: first.id });
     assert.deepEqual(dispositionHeads([next, first]).map((e) => e.id), [next.id]);
     const fork = source('entry:fork', 'disposition', { kind: 'observation', previousEntryId: first.id });
-    const prerequisites = [source('dx', 'diagnosis', { diagnosis: 'Assessment' }), source('review', 'investigation_review', { decision: 'none_required' })];
+    const prerequisites = [source('dx', 'diagnosis', { diagnosis: 'Assessment' }), source('review', 'investigation_review', { decision: 'none_required' }), source('rx', 'prescription', { decision: 'none_required', prescription: [] }), source('injection', 'injection_order', { required: false })];
     assert.match(careEntryIssues(source('entry:new', 'disposition', { kind: 'home_care', previousEntryId: next.id }), [...prerequisites, first, next, fork])[0], /Competing dispositions/);
   });
   it('requires stable catalogue identities and coherent price snapshots', () => {

@@ -37,11 +37,39 @@ export const dispositionHeads = (entries: readonly EncounterEntry[]) => {
   return dispositions.filter((e) => !replaced.has(e.id));
 };
 
-/** Local repositories and the server run the same cross-entry rules. */
+/**
+ * Tests ordered in this visit that have no result, and result entries not yet
+ * reviewed by a clinician. Both must be empty before a diagnosis, unless the
+ * clinician records why they are continuing without results.
+ */
+export const outstandingResults = (prior: readonly EncounterEntry[]) => {
+  const order = [...prior].reverse().find((p) => p.step === 'lab_order');
+  if (!order) return { pending: [] as string[], unreviewed: [] as string[] };
+  const tests = order.values.tests as string[], items = order.values.items as InvestigationItem[] | undefined;
+  const results = prior.filter((p) => p.step === 'lab_results');
+  const done = new Set(results.flatMap((p) => (p.values.results as { test: string; orderItemId?: string }[]).map((r) => r.orderItemId ?? r.test)));
+  const reviewed = new Set(prior.filter((p) => p.step === 'result_review').flatMap((p) => p.values.resultEntryIds as string[]));
+  return { pending: tests.filter((test, index) => !done.has(items?.[index]?.id ?? test)), unreviewed: results.filter((p) => !reviewed.has(p.id)).map((p) => p.id) };
+};
+
+/**
+ * Local repositories and the server run the same cross-entry rules. A visit runs in
+ * one order: vitals, complaint, testing decision and order, results and their
+ * review, diagnosis, medication and injection decisions, then disposition.
+ */
 export const careEntryIssues = (entry: Pick<EncounterEntry, 'step' | 'values'> & { workflowVersion?: 1 }, prior: readonly EncounterEntry[]): string[] => {
   const latest = (step: string) => [...prior].reverse().find((p) => p.step === step);
-  if (entry.workflowVersion === 1 && ['admission', 'follow_up'].includes(entry.step)) return ['Record an explicit disposition for this consultation'];
-  if (entry.workflowVersion === 1 && entry.step === 'diagnosis' && ((entry.values.prescription as unknown[] | undefined)?.length || entry.values.giveInjection || entry.values.admit)) return ['Record medication, injection orders and disposition independently of diagnosis'];
+  if (['admission', 'follow_up'].includes(entry.step)) return ['Record an explicit disposition for this consultation'];
+  if (entry.step === 'complaint' && !latest('vitals')) return ['Record at least one vital sign before the complaint'];
+  if (['investigation_review', 'lab_order'].includes(entry.step) && !latest('complaint')) return ['Record the complaint and clinical note before deciding on tests'];
+  if (entry.step === 'diagnosis') {
+    if (!latest('investigation_review') && !latest('lab_order')) return ['Record the testing decision before the diagnosis'];
+    const { pending, unreviewed } = outstandingResults(prior);
+    if ((pending.length || unreviewed.length) && !entry.values.pendingResultsReason) return ['Review every ordered test result before the diagnosis, or record why you are continuing without them'];
+  }
+  if (['prescription', 'injection_order'].includes(entry.step) && !latest('diagnosis')) return ['Record the diagnosis before treatment decisions'];
+  if (entry.step === 'disposition' && (!latest('prescription') || !latest('injection_order'))) return ['Record the medication and injection decisions before disposition'];
+  if (entry.step === 'diagnosis' && ((entry.values.prescription as unknown[] | undefined)?.length || entry.values.giveInjection || entry.values.admit)) return ['Record medication, injection orders and disposition independently of diagnosis'];
   if (entry.step === 'disposition') {
     if (!latest('diagnosis') || !latest('investigation_review')) return ['Sign the assessment and investigation decision before recording disposition'];
     const heads = dispositionHeads(prior);
