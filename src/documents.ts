@@ -779,6 +779,8 @@ export const ENCOUNTER_STEP_VALUES = {
     prescription: z.array(PrescriptionLine).default([]),
     giveInjection: z.boolean().default(false),
     admit: z.boolean().default(false),
+    /** Why the clinician diagnosed before every ordered result was back and reviewed. */
+    pendingResultsReason: text.max(500).optional(),
   }).refine((v) => !v.diagnoses?.length || v.diagnoses[0].label === v.diagnosis, 'The primary structured diagnosis must match the diagnosis'),
   injection: z.strictObject({
     drug: text,
