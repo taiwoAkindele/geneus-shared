@@ -60,8 +60,7 @@ export const documentHeads = <T extends {id:string;previousId?:string}>(records:
   const replaced=new Set(records.map((record)=>record.previousId));return records.filter((record)=>!replaced.has(record.id));
 };
 /** Matches existing Clinical Services duties; no document-specific permission settings. */
-export const clinicalDocumentAccess = (context:Pick<AuthorizationContext,'role'|'roles'|'permissions'>):boolean =>
-  (context.roles??[context.role]).some((role)=>['doctor','nurse','chew','supervisor','facility_admin','laboratory_staff','pharmacy_staff'].includes(role)) || context.permissions.some((permission)=>permission==='encounter:record'||permission==='admission:manage');
+export const clinicalDocumentAccess = (context:Pick<AuthorizationContext,'role'|'roles'|'permissions'>):boolean => context.permissions.includes('patient_chart:read');
 export const staffDocumentAccess = (staff:StaffAccess) => clinicalDocumentAccess({role:staff.role,roles:rolesFor(staff),permissions:staffPermissions(staff)});
 export const libraryDocumentIssues = (record:LibraryDocument,records:readonly LibraryDocument[]):string[] => {
   const existing=records.filter((item)=>item.documentId===record.documentId && item.facilityId===record.facilityId);

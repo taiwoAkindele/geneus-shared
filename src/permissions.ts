@@ -18,6 +18,7 @@ import { type ClinicalAction } from './facilityTypes.ts';
  * Bump when the matrix or the policy windows change. Devices carry the version
  * they authorised against, so a stale device is visible at sync rather than
  * silently applying yesterday's rules.
+ * v12: explicit medical-history read access, separate from patient details and writes.
  * v11: explicit admission/bed-management permission for hospital clinical staff.
  * v10: facility/workforce, explicit administrative grants, protected clinical review and activity gates.
  * v9: attributed appointment attendance, rescheduling and reactivation.
@@ -27,7 +28,9 @@ import { type ClinicalAction } from './facilityTypes.ts';
  * v5: combined staff roles and individually assigned permissions.
  * v4: billing — the cashier role, fees, charges, payments, waivers, reversals.
  */
-export const POLICY_VERSION = 11 as const;
+export const POLICY_VERSION = 12 as const;
+export const READ_PERMISSIONS: readonly Permission[] = ['patient_chart:read'];
+export const canReadPatientChart = (context: Pick<AuthorizationContext, 'permissions'>): boolean => context.permissions.includes('patient_chart:read');
 
 /** Software actions are only one gate; approved clinical authority is checked separately. */
 export const CLINICAL_ACTION_PERMISSIONS = {
@@ -38,6 +41,7 @@ export const CLINICAL_ACTION_PERMISSIONS = {
 
 
 const CLINICAL: readonly Permission[] = [
+  'patient_chart:read',
   'patient:create',
   'patient:update',
   'patient_identity:review',
@@ -104,9 +108,9 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'stock_item:manage', 'fee_item:manage', 'staff:manage', 'staff:permission', 'staff:deactivate',
     'roster:assign', 'roster:extend', 'device:enroll', 'device:revoke',
   ])],
-  laboratory_staff: ['patient:update', 'encounter:record', 'handoff:update', 'work_ownership:claim', 'service_session:operate',
+  laboratory_staff: ['patient_chart:read', 'patient:update', 'encounter:record', 'handoff:update', 'work_ownership:claim', 'service_session:operate',
     'clinical:collect_specimen', 'clinical:perform_test', 'clinical:record_result', 'clinical:verify_result', 'clinical:release_result'],
-  pharmacy_staff: ['encounter:record', 'handoff:update', 'work_ownership:claim', 'service_session:operate', 'clinical:dispense'],
+  pharmacy_staff: ['patient_chart:read', 'encounter:record', 'handoff:update', 'work_ownership:claim', 'service_session:operate', 'clinical:dispense'],
 };
 
 /**
@@ -120,13 +124,12 @@ export const paymentPermission = (payment: Pick<Payment, 'method' | 'reverses'>)
 };
 
 /**
- * The permissions a member of staff actually holds: the role's set, emptied
- * entirely for `read_only` staff. Every permission here is a mutation, so
- * read-only means "none of them" — the same rule `assertCanWrite` enforced
+ * The permissions a member of staff actually holds. Read permissions remain usable;
+ * read-only removes mutation grants — the same rule `assertCanWrite` enforced
  * before v3, now expressed per capability.
  */
 export const permissionsFor = (role: Role, staffPermission: StaffPermission): readonly Permission[] =>
-  staffPermission === 'read_only' ? [] : ROLE_PERMISSIONS[role];
+  staffPermission === 'read_only' ? ROLE_PERMISSIONS[role].filter(permission => READ_PERMISSIONS.includes(permission)) : ROLE_PERMISSIONS[role];
 
 /** One primary role for attribution; additional duties contribute access too. */
 export type StaffRoles = Pick<Staff, 'role' | 'additionalRoles'>;
@@ -135,11 +138,11 @@ export type StaffAccess = StaffRoles & Pick<Staff, 'permission' | 'additionalPer
 export const rolesFor = (staff: StaffRoles): Role[] => [...new Set([staff.role, ...(staff.additionalRoles ?? [])])];
 export const hasRole = (staff: StaffRoles, role: Role): boolean => rolesFor(staff).includes(role);
 
-/** Read-only always wins, even when extra roles or permissions were assigned. */
+/** Read-only removes mutations while preserving explicitly granted read access. */
 export const staffPermissions = (staff: StaffAccess): Permission[] => {
-  if (staff.permission === 'read_only') return [];
   const assigned = (staff.additionalPermissions ?? []).filter((permission) => AssignablePermission.options.includes(permission));
-  return [...new Set([...rolesFor(staff).flatMap((role) => ROLE_PERMISSIONS[role]), ...assigned])];
+  const granted = [...new Set([...rolesFor(staff).flatMap((role) => ROLE_PERMISSIONS[role]), ...assigned])];
+  return staff.permission === 'read_only' ? granted.filter(permission => READ_PERMISSIONS.includes(permission)) : granted;
 };
 
 /** A PIN reset must not let a lower-access colleague take over a more privileged account. */

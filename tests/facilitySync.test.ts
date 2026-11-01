@@ -19,7 +19,7 @@ describe('facility compatibility and synchronized mutations', () => {
     assert.ok(facilityCompatibilityIssues(request, undefined).length);
     assert.ok(facilityCompatibilityIssues({ ...request, policyVersion: 9 }, support).length);
     assert.deepEqual(facilityCompatibilityIssues({ ...request, policyVersion: 11 }, support), []);
-    assert.ok(facilityCompatibilityIssues({ ...request, policyVersion: 12 }, support).length);
+    assert.ok(facilityCompatibilityIssues({ ...request, policyVersion: 13 }, support).length);
     assert.deepEqual(facilityCompatibilityIssues({ ...request, schemaVersion: 5 }, support), []);
     assert.ok(facilityCompatibilityIssues({ ...request, schemaVersion: 6 }, support).length);
     assert.ok(facilityCompatibilityIssues(legacy, support, true).length);

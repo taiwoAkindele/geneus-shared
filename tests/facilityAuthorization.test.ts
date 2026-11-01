@@ -33,7 +33,7 @@ describe('protected clinical authority', () => {
       { ...proof, signatureVerified: false }, { ...proof, currentRevision: 2 },
       { ...proof, snapshot: { ...proof.snapshot, staffId: reviewer.staffId } },
       { ...proof, snapshot: { ...proof.snapshot, facilityId: 'OTHER' } },
-      { ...proof, snapshot: { ...proof.snapshot, policyVersion: 12 } },
+      { ...proof, snapshot: { ...proof.snapshot, policyVersion: 13 } },
     ]) assert.ok(authorityProofIssues(context, modified, NOW).length);
     assert.deepEqual(authorityProofIssues({ ...context, policyVersion: 11 }, proof, NOW), []);
     assert.ok(authorityProofIssues(context, proof, Date.parse(proof.snapshot.expiresOn)).length);
