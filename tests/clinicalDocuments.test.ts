@@ -69,8 +69,8 @@ describe('hospital documents contract',()=>{
     assert.deepEqual(usableDocumentVersions([original,next],new Set([original.id])),[]);
   });
   it('uses existing Clinical Services access, including read-only clinical roles, without new document grants',()=>{
-    assert.equal(clinicalDocumentAccess({role:'nurse',permissions:[]}),true);
+    assert.equal(clinicalDocumentAccess({role:'nurse',permissions:['patient_chart:read']}),true);
     assert.equal(clinicalDocumentAccess({role:'cashier',permissions:[]}),false);
-    assert.equal(clinicalDocumentAccess({role:'records_officer',permissions:['admission:manage']}),true);
+    assert.equal(clinicalDocumentAccess({role:'records_officer',permissions:['patient_chart:read']}),true);
   });
 });

@@ -9,6 +9,12 @@ const member = (extra: Partial<Staff> = {}): Staff => Staff.parse({
 });
 
 describe('combined staff access', () => {
+  it('separates front-desk duties, medical-history reading and clinical writes', () => {
+    assert.equal(staffPermissions(member({role:'records_officer'})).includes('patient_chart:read'),false);
+    const reader=staffPermissions(member({role:'records_officer',permission:'read_only',additionalPermissions:['patient_chart:read','encounter:record']}));
+    assert.deepEqual(reader,['patient_chart:read']);
+    assert.ok(staffPermissions(member({permission:'read_only'})).includes('patient_chart:read'));
+  });
   it('keeps legacy single-role staff valid', () => {
     const staff = member();
     assert.deepEqual(rolesFor(staff), ['nurse']);
@@ -23,7 +29,7 @@ describe('combined staff access', () => {
     assert.equal(permissions.includes('staff:permission'), false);
   });
   it('makes read-only override all roles and grants', () => {
-    assert.deepEqual(staffPermissions(member({ permission: 'read_only', additionalRoles: ['facility_admin'], additionalPermissions: ['payment:receive'] })), []);
+    assert.deepEqual(staffPermissions(member({ permission: 'read_only', additionalRoles: ['facility_admin'], additionalPermissions: ['payment:receive'] })), ['patient_chart:read']);
   });
   it('rejects unknown roles, duplicate grants and the private PIN claim capability', () => {
     for (const extra of [

@@ -66,9 +66,9 @@ describe('role permissions', () => {
     }
   });
 
-  it('strips every permission from read-only staff, whatever their role', () => {
+  it('preserves only medical-history read access for read-only staff', () => {
     for (const role of Role.options) {
-      assert.deepEqual(permissionsFor(role, 'read_only'), [], role);
+      assert.deepEqual(permissionsFor(role, 'read_only'), ROLE_PERMISSIONS[role].filter(permission => permission === 'patient_chart:read'), role);
     }
   });
 
