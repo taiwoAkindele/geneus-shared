@@ -4,8 +4,8 @@
  * A result template lists the parts a lab enters for a test (Haemoglobin, an
  * answer from a list, a culture, a report section, images), and one template
  * can serve many tests. Templates, the shared parts library and answer lists are
- * written by the server only; devices receive them read-only so results can be
- * entered offline. Every saved template revision is kept, and a published result
+ * edited on any device, offline included, and checked by the server when they
+ * sync (`resultTemplateIssues`). Every accepted template revision is kept, and a published result
  * names the revision it was entered against, so later edits never change it.
  *
  * Ranges are chosen for the patient's sex and age, but the system never flags a
@@ -15,12 +15,14 @@ import { z } from 'zod';
 import { baseEnvelope, Sex } from './common.ts';
 import { DocumentFile } from './documentFiles.ts';
 import { patientAge } from './patientIdentity.ts';
+import { CodedConcept } from './facilityTypes.ts';
+import type { ServiceDefinition } from './facility.ts';
 
 const text = z.string().trim().min(1);
 const name = text.max(160);
 const ref = text.max(200);
 const revision = z.number().int().positive();
-/** Settings records carry the current envelope; only the server writes them. */
+/** Settings records carry the current envelope. */
 const record = <T extends z.ZodRawShape>(shape: T) => z.strictObject({ ...baseEnvelope.shape, schemaVersion: z.literal(5).default(5), ...shape });
 const distinct = (max: number, what: string) => z.array(text.max(120)).max(max).refine((v) => new Set(v).size === v.length, `List each ${what} only once`);
 
@@ -134,6 +136,112 @@ export const templateForTest = <T extends Pick<ResultTemplate, 'status' | 'servi
   serviceDefinitionId ? templates.find((template) => template.status === 'active' && template.serviceDefinitionIds.includes(serviceDefinitionId)) : undefined;
 
 /* ------------------------------------------------------------------ */
+/* Standard lists, downloaded to every facility                        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The server's standard tests and templates, written by the server into every
+ * facility so they can be adopted offline. A device copies from them; the server
+ * checks on upload that an adopted entry matches its own list exactly.
+ */
+export const StandardTest = record({
+  type: z.literal('standard_test'), key: text.max(80), name, specimen: text.max(200), classification: text.max(200),
+  aliases: z.array(text.max(200)).max(50), concept: CodedConcept,
+});
+export type StandardTest = z.infer<typeof StandardTest>;
+export const StandardTemplate = record({
+  type: z.literal('standard_template'), key: text.max(80), name,
+  /** Keys of the standard tests this template serves. */
+  tests: z.array(text.max(80)).max(50), parts: z.array(ResultPart).min(1).max(80),
+});
+export type StandardTemplate = z.infer<typeof StandardTemplate>;
+
+/** Names compare without case or repeated spaces, so "FBC" and "fbc " are the same test. */
+export const labTestKey = (name: string) => name.trim().replace(/\s+/g, ' ').toLowerCase();
+type LabDefinition = Pick<ServiceDefinition, 'id' | 'name' | 'active' | 'investigation' | 'concept'>;
+const sameConcept = (a: { system: string; code: string }, b: { system: string; code: string }) => a.system === b.system && a.code === b.code;
+const sameList = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((value, i) => value === b[i]);
+
+/**
+ * A lab test as it may be added: a standard test copied exactly from the facility's
+ * standard list, or an own test with a local code naming itself, whose name and
+ * other names no other active test already uses. Pass `standards` only when the
+ * test is new: a test already in the catalogue may later be renamed.
+ */
+export const labTestIssues = (test: LabDefinition, existing: readonly LabDefinition[], standards?: readonly StandardTest[]): string[] => {
+  if (!test.investigation) return [];
+  const issues: string[] = [];
+  if (!standards) { /* An edit keeps its original code; the caller refuses a recode. */ }
+  else if (test.concept.system === 'local') {
+    if (test.concept.code !== test.id) issues.push('An own test is coded with its own identity');
+  } else {
+    const standard = standards.find((s) => sameConcept(s.concept, test.concept));
+    if (!standard) issues.push('This standard test is not on the standard list');
+    else if (test.name !== standard.name || test.investigation.specimen !== standard.specimen || test.investigation.department !== standard.classification || !sameList(test.investigation.aliases, standard.aliases) || test.concept.label !== standard.concept.label)
+      issues.push(`${standard.name} must be added exactly as the standard list describes it`);
+  }
+  if (test.active) {
+    const taken = new Set(existing.filter((d) => d.id !== test.id && d.active && d.investigation).flatMap((d) => [d.name, ...(d.investigation?.aliases ?? [])].map(labTestKey)));
+    const clash = [test.name, ...test.investigation.aliases].find((n) => taken.has(labTestKey(n)));
+    if (clash) issues.push(`Another test is already called “${clash.trim()}”`);
+  }
+  return issues;
+};
+
+/** Parts as one comparable string, keys in schema order whichever way they were built. */
+export const canonicalParts = (parts: readonly ResultPart[]) => JSON.stringify(parts.map((part) => ResultPart.parse(part)));
+type Library = { parts: readonly ResultPartDefinition[]; lists: readonly AnswerList[] };
+/**
+ * Parts linked to the shared library carry the library's current content; the
+ * template keeps only its own key and whether the part is required. Answers linked
+ * to a shared list are copied from it the same way. Unavailable links are named.
+ */
+export const resolveLibraryParts = (parts: readonly ResultPart[], library: Library): { parts: ResultPart[]; issues: string[] } => {
+  const issues: string[] = [];
+  const resolved = parts.map((part) => {
+    let next = part;
+    if (part.libraryPartId) {
+      const shared = library.parts.find((p) => p.id === part.libraryPartId);
+      if (!shared?.active) { issues.push(`${part.label}: this shared part is no longer available`); return part; }
+      next = { ...shared.part, key: part.key, required: part.required, libraryPartId: shared.id };
+    }
+    if (next.kind === 'choice' && next.answerListId) {
+      const list = library.lists.find((l) => l.id === (next as { answerListId?: string }).answerListId);
+      if (!list?.active) { issues.push(`${next.label}: this answer list is no longer available`); return next; }
+      next = { ...next, answers: list.answers };
+    }
+    return next;
+  });
+  return { parts: resolved, issues };
+};
+
+/**
+ * What the server checks when a template revision arrives from a device: its tests
+ * are this facility's active lab tests and use no other template, its shared parts
+ * match the library, and a newly adopted standard template matches the standard list.
+ */
+export const resultTemplateIssues = (template: ResultTemplate, context: { templates: readonly ResultTemplate[]; tests: readonly LabDefinition[]; library: Library; standards: readonly StandardTemplate[] }): string[] => {
+  const issues: string[] = [];
+  const tests = new Map(context.tests.filter((t) => t.active && t.investigation).map((t) => [t.id, t]));
+  if (template.serviceDefinitionIds.some((id) => !tests.has(id))) issues.push('One or more linked tests are not active tests in this catalogue');
+  if (template.status === 'active') for (const other of context.templates) {
+    if (other.id === template.id || other.status !== 'active') continue;
+    const taken = template.serviceDefinitionIds.filter((id) => other.serviceDefinitionIds.includes(id));
+    if (taken.length) issues.push(`${taken.map((id) => tests.get(id)?.name ?? id).join(', ')} already ${taken.length === 1 ? 'uses' : 'use'} the template “${other.name}”`);
+  }
+  const resolved = resolveLibraryParts(template.parts, context.library);
+  issues.push(...resolved.issues);
+  if (!resolved.issues.length && canonicalParts(resolved.parts) !== canonicalParts(template.parts)) issues.push('A shared part or answer list changed. Reopen the template to use its current version');
+  if (template.source === 'standard') {
+    const standard = context.standards.find((s) => s.key === template.standardKey);
+    if (!standard) issues.push('This standard template is not on the standard list');
+    else if (template.revision === 1 && (template.name !== standard.name || canonicalParts(template.parts) !== canonicalParts(standard.parts))) issues.push(`${standard.name} must be added exactly as the standard list describes it`);
+    if (context.templates.some((t) => t.id !== template.id && t.standardKey === template.standardKey)) issues.push(`${standard?.name ?? 'This standard template'} is already added`);
+  } else if (template.standardKey) issues.push('Only an adopted standard template names a standard key');
+  return issues;
+};
+
+/* ------------------------------------------------------------------ */
 /* Structured results                                                  */
 /* ------------------------------------------------------------------ */
 
@@ -146,20 +254,25 @@ export const RESULT_FLAG_LABELS = {
 } as const satisfies Record<ResultFlag, string>;
 const flag = ResultFlag.optional();
 
+/**
+ * Each value keeps its part's label (and a number its unit) as published, so a
+ * result reads the same on every device whatever later revisions change.
+ */
+const valueBase = { key: PartKey, label: name };
 export const ReportValue = z.discriminatedUnion('kind', [
   /** `range` is the row shown for this patient, kept with the value; absent when no range fits. */
-  z.strictObject({ kind: z.literal('number'), key: PartKey, value: z.number(), range: ReferenceRange.optional(), flag }),
-  z.strictObject({ kind: z.literal('choice'), key: PartKey, answer: text.max(120), flag }),
-  z.strictObject({ kind: z.literal('text'), key: PartKey, text: text.max(4000), flag }),
-  z.strictObject({ kind: z.literal('section'), key: PartKey, text: text.max(20000) }),
+  z.strictObject({ kind: z.literal('number'), ...valueBase, value: z.number(), unit: text.max(40).optional(), range: ReferenceRange.optional(), flag }),
+  z.strictObject({ kind: z.literal('choice'), ...valueBase, answer: text.max(120), flag }),
+  z.strictObject({ kind: z.literal('text'), ...valueBase, text: text.max(4000), flag }),
+  z.strictObject({ kind: z.literal('section'), ...valueBase, text: text.max(20000) }),
   z.strictObject({
-    kind: z.literal('culture'), key: PartKey, growth: z.enum(['no_growth', 'growth']), flag,
+    kind: z.literal('culture'), ...valueBase, growth: z.enum(['no_growth', 'growth']), flag,
     organisms: z.array(z.strictObject({
       name: text.max(200), count: text.max(120).optional(),
       susceptibility: z.array(z.strictObject({ antibiotic: text.max(120), result: z.enum(['S', 'I', 'R']) })).max(80).default([]),
     })).max(10).default([]),
   }).refine((v) => (v.growth === 'growth') === (v.organisms.length > 0), 'Name each organism grown, or record no growth'),
-  z.strictObject({ kind: z.literal('images'), key: PartKey, files: z.array(DocumentFile).min(1).max(12) }),
+  z.strictObject({ kind: z.literal('images'), ...valueBase, files: z.array(DocumentFile).min(1).max(12) }),
 ]);
 export type ReportValue = z.infer<typeof ReportValue>;
 
@@ -241,7 +354,9 @@ const valueIssue = (values: readonly ReportValue[], parts: readonly ResultPart[]
   for (const value of values) {
     const part = parts.find((p) => p.key === value.key);
     if (!part || part.kind !== value.kind) return 'A recorded value is not part of this template';
+    if (value.label !== part.label) return `${part.label}: the recorded name does not match the template`;
     if (part.kind === 'number' && value.kind === 'number') {
+      if (value.unit !== part.unit) return `${part.label}: the recorded unit does not match the template`;
       if (Number(value.value.toFixed(part.decimals)) !== value.value) return `${part.label}: use ${part.decimals} decimal places at most`;
       if (!sameRange(value.range, rangeFor(part, facts))) return `${part.label}: the normal range shown does not match this patient`;
     }

@@ -38,7 +38,7 @@ import { Location, ServiceDefinition, ServiceOffering, PractitionerProfile, Cred
 import { ClinicalEvent } from './clinical.ts';
 import { InpatientEvent, BedReadyEvent } from './inpatient.ts';
 import { LibraryDocument, VisitDocument } from './clinicalDocuments.ts';
-import { ResultTemplate, ResultPartDefinition, AnswerList } from './resultTemplates.ts';
+import { ResultTemplate, ResultPartDefinition, AnswerList, StandardTest, StandardTemplate } from './resultTemplates.ts';
 
 import {
   Patient,
@@ -83,7 +83,7 @@ export const AnyDocument = z.union([
   ClinicalEvent,
   InpatientEvent, BedReadyEvent,
   LibraryDocument, VisitDocument,
-  ResultTemplate, ResultPartDefinition, AnswerList,
+  ResultTemplate, ResultPartDefinition, AnswerList, StandardTest, StandardTemplate,
   Patient,
   PatientIdentityEvent,
   Visit,
@@ -125,6 +125,7 @@ export const SCHEMA_BY_TYPE = {
   inpatient_event: InpatientEvent, bed_ready_event: BedReadyEvent,
   library_document: LibraryDocument, visit_document: VisitDocument,
   result_template: ResultTemplate, result_part: ResultPartDefinition, answer_list: AnswerList,
+  standard_test: StandardTest, standard_template: StandardTemplate,
   patient: Patient,
   patient_identity_event: PatientIdentityEvent,
   visit: Visit,

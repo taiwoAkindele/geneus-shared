@@ -101,6 +101,8 @@ export const DocType = z.enum([
   'result_template',
   'result_part',
   'answer_list',
+  'standard_test',
+  'standard_template',
 ]);
 export type DocType = z.infer<typeof DocType>;
 

@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  AssignablePermission, EncounterEntry, NumberPart, ROLE_PERMISSIONS, ResultTemplate, ResultTemplateDraft, TEXT_RESULT_PART, UploadRequest,
+  AssignablePermission, EncounterEntry, FACILITY_DOCUMENT_POLICY, NumberPart, ROLE_PERMISSIONS, ResultPartDefinition, ResultTemplate, ResultTemplateDraft, StandardTemplate, StandardTest, TEXT_RESULT_PART, UploadRequest, labTestIssues, resultTemplateIssues,
   hasCriticalFlag, labItemSummary, labPatientFacts, labReportIssues, parseDocument, rangeFor, templateForTest, templateResultType,
   type LabReport, type LabReportContext, type ResultPart,
 } from '../src/index.ts';
@@ -22,7 +22,7 @@ const context = (facts = woman): LabReportContext => ({
 });
 const report = (hb: number, extra: Partial<LabReport['items'][number]> = {}): LabReport => ({ patient: woman, items: [{
   test: 'Full blood count', orderItemId: 'item:fbc', template: { id: template.id, revision: 2 },
-  values: [{ kind: 'number', key: 'hb', value: hb, range: rangeFor(haemoglobin, woman), flag: 'low' }], ...extra,
+  values: [{ kind: 'number', key: 'hb', label: 'Haemoglobin', unit: 'g/dL', value: hb, range: rangeFor(haemoglobin, woman), flag: 'low' }], ...extra,
 }] });
 const rows = (r: LabReport) => r.items.map((item) => ({ test: item.test, orderItemId: item.orderItemId, result: labItemSummary(item, item.template ? template.parts : [TEXT_RESULT_PART]) }));
 
@@ -80,11 +80,13 @@ describe('structured lab results', () => {
     assert.match(labReportIssues(rows(r), r, context({ sex: 'male', age: woman.age }))[0], /sex or age/);
     const precise = report(10.85);
     assert.match(labReportIssues(rows(precise), precise, context())[0], /decimal/);
+    const relabelled = report(10.8); (relabelled.items[0].values[0] as { unit?: string }).unit = 'mmol/L';
+    assert.match(labReportIssues(rows(relabelled), relabelled, context())[0], /unit does not match/);
   });
   it('refuses parts the template lacks, missing required parts, and a template not in use for the test', () => {
-    const extra = report(10.8, { values: [{ kind: 'number', key: 'hb', value: 10.8, range: rangeFor(haemoglobin, woman) }, { kind: 'text', key: 'other', text: 'x' }] });
+    const extra = report(10.8, { values: [{ kind: 'number', key: 'hb', label: 'Haemoglobin', unit: 'g/dL', value: 10.8, range: rangeFor(haemoglobin, woman) }, { kind: 'text', key: 'other', label: 'Other', text: 'x' }] });
     assert.match(labReportIssues(rows(extra), extra, context())[0], /not part of this template/);
-    const missing = report(10.8, { values: [{ kind: 'text', key: 'film', text: 'Normocytic' }] });
+    const missing = report(10.8, { values: [{ kind: 'text', key: 'film', label: 'Film comment', text: 'Normocytic' }] });
     assert.match(labReportIssues(rows(missing), missing, context())[0], /Haemoglobin is required/);
     const unlisted = report(10.8, { orderItemId: 'item:custom' });
     assert.match(labReportIssues(rows(unlisted), unlisted, context())[0], /not in use for this test/);
@@ -92,7 +94,7 @@ describe('structured lab results', () => {
     assert.match(labReportIssues(rows(missingVersion), missingVersion, context())[0], /version is not available/);
   });
   it('keeps a test with no template as one free-text result', () => {
-    const plain: LabReport = { patient: woman, items: [{ test: 'Synthetic test', values: [{ kind: 'text', key: 'result', text: 'Negative' }] }] };
+    const plain: LabReport = { patient: woman, items: [{ test: 'Synthetic test', values: [{ kind: 'text', key: 'result', label: 'Result', text: 'Negative' }] }] };
     assert.deepEqual(labReportIssues(rows(plain), plain, context()), []);
     assert.equal(rows(plain)[0].result, 'Negative');
   });
@@ -110,5 +112,51 @@ describe('structured lab results', () => {
     const base = { transactionId: 1, clinicalWorkflowVersion: 1, facilityContractVersion: 1, schemaVersion: 5, policyVersion: 13, mutations: [mutation] };
     assert.equal(UploadRequest.safeParse(base).success, false);
     assert.equal(UploadRequest.safeParse({ ...base, resultTemplateWorkflowVersion: 1 }).success, true);
+  });
+});
+
+describe('offline catalogue and template edits, checked on sync', () => {
+  const env = { facilityId: 'A', deviceId: 'device:A', createdBy: 'staff:A', createdOn: '2026-11-02T09:00:00Z' };
+  const loinc = { system: 'http://loinc.org', code: '58410-2', label: 'Full blood count' };
+  const standardFbc = StandardTest.parse({ ...env, id: 'standard_test:A:fbc', type: 'standard_test', key: 'fbc', name: 'Full blood count', specimen: 'Whole blood (EDTA)', classification: 'Haematology', aliases: ['FBC'], concept: loinc });
+  const definition = (id: string, name: string, extra: Record<string, unknown> = {}) => ({ id, name, active: true, concept: { system: 'local', code: id, label: name }, investigation: { specimen: 'Blood', department: 'Haematology', aliases: [] as string[] }, ...extra });
+  it('accepts a standard test copied exactly, and refuses a forged or altered one', () => {
+    const adopted = definition('service_definition:1', 'Full blood count', { concept: loinc, investigation: { specimen: 'Whole blood (EDTA)', department: 'Haematology', aliases: ['FBC'] } });
+    assert.deepEqual(labTestIssues(adopted, [], [standardFbc]), []);
+    assert.match(labTestIssues({ ...adopted, name: 'FBC (edited)' }, [], [standardFbc])[0], /exactly as the standard list/);
+    assert.match(labTestIssues({ ...adopted, concept: { ...loinc, code: '718-7' } }, [], [standardFbc])[0], /not on the standard list/);
+    assert.match(labTestIssues(definition('service_definition:2', 'Ferritin', { concept: { system: 'local', code: 'other', label: 'Ferritin' } }), [], [])[0], /own identity/);
+  });
+  it('refuses a test whose name or other name another active test already uses', () => {
+    const existing = [definition('service_definition:1', 'Widal test', { investigation: { specimen: 'Serum', department: 'Microbiology', aliases: ['Widal'] } })];
+    assert.match(labTestIssues(definition('service_definition:2', ' widal '), existing, [])[0], /already called/);
+    assert.deepEqual(labTestIssues(definition('service_definition:1', 'Widal test'), existing, []), [], 'a test does not clash with itself');
+    assert.deepEqual(labTestIssues(definition('service_definition:3', 'Widal'), [{ ...existing[0], active: false }], []), []);
+  });
+  it('checks a template revision from a device: tests, one template per test, current library parts, and an exact standard copy', () => {
+    const tests = [definition('service_definition:fbc', 'Full blood count')];
+    const shared = ResultPartDefinition.parse({ ...env, id: 'result_part:hb', type: 'result_part', part: haemoglobin, revision: 2 });
+    const linked = { ...haemoglobin, key: 'hb', required: true, libraryPartId: shared.id };
+    const library = { parts: [shared], lists: [] };
+    const fbc = ResultTemplate.parse({ ...template, parts: [linked], revision: 1, serviceDefinitionIds: ['service_definition:fbc'] });
+    const standards = [StandardTemplate.parse({ ...env, id: 'standard_template:A:fbc', type: 'standard_template', key: 'fbc', name: 'Full blood count', tests: ['fbc'], parts: [linked] })];
+    const context = { templates: [], tests, library, standards };
+    assert.deepEqual(resultTemplateIssues(fbc, context), []);
+    const other = ResultTemplate.parse({ ...fbc, id: 'result_template:other', name: 'Other', source: 'own', standardKey: undefined });
+    assert.match(resultTemplateIssues(other, { ...context, templates: [fbc] })[0], /already uses the template “Full blood count”/);
+    assert.match(resultTemplateIssues(ResultTemplate.parse({ ...fbc, serviceDefinitionIds: ['service_definition:gone'] }), context)[0], /not active tests/);
+    const stale = { ...library, parts: [{ ...shared, part: { ...haemoglobin, unit: 'mmol/L' } }] };
+    assert.match(resultTemplateIssues(fbc, { ...context, library: stale }).join(' '), /changed\. Reopen/);
+    assert.match(resultTemplateIssues(ResultTemplate.parse({ ...fbc, name: 'FBC' }), context)[0], /exactly as the standard list/);
+    assert.deepEqual(resultTemplateIssues(ResultTemplate.parse({ ...fbc, name: 'FBC', revision: 2 }), context), [], 'a later revision may differ from the standard');
+    assert.match(resultTemplateIssues(ResultTemplate.parse({ ...fbc, id: 'result_template:again' }), { ...context, templates: [fbc] }).join(' '), /already added/);
+  });
+  it('lets devices write templates but not the standard lists, and needs the template workflow to upload them', () => {
+    assert.equal(FACILITY_DOCUMENT_POLICY.result_template.writer, 'device');
+    assert.equal(FACILITY_DOCUMENT_POLICY.standard_test.writer, 'server');
+    const mutation = { clientId: 1, op: 'put', table: 'answer_list', id: 'answer_list:1', data: { ...env, id: 'answer_list:1', type: 'answer_list', name: 'Reactivity', answers: ['Non-reactive', 'Reactive'], revision: 1, schemaVersion: 5 } };
+    const request = { transactionId: 1, clinicalWorkflowVersion: 1, facilityContractVersion: 1, schemaVersion: 5, policyVersion: 13, mutations: [mutation] };
+    assert.equal(UploadRequest.safeParse(request).success, false);
+    assert.equal(UploadRequest.safeParse({ ...request, resultTemplateWorkflowVersion: 1 }).success, true);
   });
 });
