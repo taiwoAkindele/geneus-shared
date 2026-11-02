@@ -18,6 +18,7 @@ import { type ClinicalAction } from './facilityTypes.ts';
  * Bump when the matrix or the policy windows change. Devices carry the version
  * they authorised against, so a stale device is visible at sync rather than
  * silently applying yesterday's rules.
+ * v13: managing lab result templates, granted to administrators and assignable to lab staff.
  * v12: explicit medical-history read access, separate from patient details and writes.
  * v11: explicit admission/bed-management permission for hospital clinical staff.
  * v10: facility/workforce, explicit administrative grants, protected clinical review and activity gates.
@@ -28,7 +29,7 @@ import { type ClinicalAction } from './facilityTypes.ts';
  * v5: combined staff roles and individually assigned permissions.
  * v4: billing — the cashier role, fees, charges, payments, waivers, reversals.
  */
-export const POLICY_VERSION = 12 as const;
+export const POLICY_VERSION = 13 as const;
 export const READ_PERMISSIONS: readonly Permission[] = ['patient_chart:read'];
 export const canReadPatientChart = (context: Pick<AuthorizationContext, 'permissions'>): boolean => context.permissions.includes('patient_chart:read');
 
@@ -103,7 +104,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   // Explicitly reviewed v10 list: future permission additions must not auto-escalate administrators.
   facility_admin: [...new Set<Permission>([
     ...CLINICAL, ...FRONT_DESK, ...CASHIER, ...BILLING_OVERSIGHT,
-    'admission:manage', 'referral:update', 'unit:manage', 'location:manage', 'service:manage', 'practitioner:manage', 'credential:manage', 'credential:read',
+    'admission:manage', 'referral:update', 'unit:manage', 'location:manage', 'service:manage', 'result_template:manage', 'practitioner:manage', 'credential:manage', 'credential:read',
     'staff_assignment:manage', 'service_session:manage', 'work_ownership:manage',
     'stock_item:manage', 'fee_item:manage', 'staff:manage', 'staff:permission', 'staff:deactivate',
     'roster:assign', 'roster:extend', 'device:enroll', 'device:revoke',

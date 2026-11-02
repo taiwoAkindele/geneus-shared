@@ -98,6 +98,9 @@ export const DocType = z.enum([
   'session_event',
   'work_ownership_event',
   'appointment_reservation',
+  'result_template',
+  'result_part',
+  'answer_list',
 ]);
 export type DocType = z.infer<typeof DocType>;
 

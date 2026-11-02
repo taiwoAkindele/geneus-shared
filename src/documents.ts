@@ -11,6 +11,7 @@ import { z } from 'zod';
 import { AppointmentAllocation, ClinicalActorContext, FacilityDependency, FacilityTimeZone, FacilityWorkforcePolicy, OrganizationKind, RESTRICTED_FACILITY_DOCUMENT_TYPES, distinctRefs, facilityIdRef } from './facilityTypes.ts';
 import { AssignablePermission } from './capabilities.ts';
 import { provisionalPatientName, validCalendarDate, yearsBetween } from './patientIdentity.ts';
+import { LabReport } from './resultTemplates.ts';
 import {
   baseEnvelope,
   DocType,
@@ -833,6 +834,12 @@ export const EncounterEntry = baseEnvelope
     /** The entry this one corrects — set for an `amendment`, and only then. */
     amends: z.string().min(1).optional(),
     values: z.record(z.string(), z.unknown()),
+    /**
+     * The structured result behind a `lab_results` entry (or a correction of one),
+     * kept beside `values` so devices that predate result templates still read
+     * the plain summary in `values`.
+     */
+    labReport: LabReport.optional(),
   })
   .superRefine((entry, context) => {
     if ((entry.step === 'amendment') !== Boolean(entry.amends)) {
@@ -841,6 +848,9 @@ export const EncounterEntry = baseEnvelope
         path: ['amends'],
         message: 'An amendment must name the entry it amends, and only an amendment may',
       });
+    }
+    if (entry.labReport && entry.step !== 'lab_results' && !(entry.step === 'amendment' && entry.values.correctedValues)) {
+      context.addIssue({ code: 'custom', path: ['labReport'], message: 'A structured result belongs to a lab result or its correction' });
     }
     const values = ENCOUNTER_STEP_VALUES[entry.step].safeParse(entry.values);
     for (const issue of values.success ? [] : values.error.issues) {
