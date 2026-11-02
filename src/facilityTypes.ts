@@ -77,6 +77,7 @@ export const FACILITY_DOCUMENT_TYPES = [
   'location', 'service_definition', 'service_offering', 'practitioner_profile', 'credential',
   'capability_decision', 'reviewer_delegation', 'clinical_authority_bootstrap', 'authority_snapshot', 'external_clinical_reviewer',
   'staff_assignment', 'service_session', 'session_event', 'work_ownership_event', 'appointment_reservation',
+  'result_template', 'result_part', 'answer_list', 'standard_test', 'standard_template',
 ] as const;
 export type FacilityDocumentType = (typeof FACILITY_DOCUMENT_TYPES)[number];
 export const RESTRICTED_FACILITY_DOCUMENT_TYPES = ['credential', 'capability_decision', 'reviewer_delegation', 'clinical_authority_bootstrap', 'external_clinical_reviewer'] as const;

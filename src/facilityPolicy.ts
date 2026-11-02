@@ -25,6 +25,13 @@ export const FACILITY_DOCUMENT_POLICY = {
   session_event: { writer: 'device', change: 'append_only', visibility: 'operational', permission: 'service_session:operate' },
   work_ownership_event: { writer: 'device', change: 'append_only', visibility: 'operational', permission: 'work_ownership:claim' },
   appointment_reservation: { writer: 'server', change: 'server_projection', visibility: 'operational' },
+  // Edited on any device, offline included; the server checks each revision when it syncs.
+  result_template: { writer: 'device', change: 'revision', visibility: 'operational', permission: 'result_template:manage' },
+  result_part: { writer: 'device', change: 'revision', visibility: 'operational', permission: 'result_template:manage' },
+  answer_list: { writer: 'device', change: 'revision', visibility: 'operational', permission: 'result_template:manage' },
+  // The server's standard lists, copied into every facility so they can be adopted offline.
+  standard_test: { writer: 'server', change: 'server_projection', visibility: 'operational' },
+  standard_template: { writer: 'server', change: 'server_projection', visibility: 'operational' },
 } as const satisfies Record<FacilityDocumentType, DocumentPolicy>;
 
 export const FacilityFeatureSupport = z.strictObject({
