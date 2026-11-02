@@ -146,20 +146,25 @@ export const RESULT_FLAG_LABELS = {
 } as const satisfies Record<ResultFlag, string>;
 const flag = ResultFlag.optional();
 
+/**
+ * Each value keeps its part's label (and a number its unit) as published, so a
+ * result reads the same on every device whatever later revisions change.
+ */
+const valueBase = { key: PartKey, label: name };
 export const ReportValue = z.discriminatedUnion('kind', [
   /** `range` is the row shown for this patient, kept with the value; absent when no range fits. */
-  z.strictObject({ kind: z.literal('number'), key: PartKey, value: z.number(), range: ReferenceRange.optional(), flag }),
-  z.strictObject({ kind: z.literal('choice'), key: PartKey, answer: text.max(120), flag }),
-  z.strictObject({ kind: z.literal('text'), key: PartKey, text: text.max(4000), flag }),
-  z.strictObject({ kind: z.literal('section'), key: PartKey, text: text.max(20000) }),
+  z.strictObject({ kind: z.literal('number'), ...valueBase, value: z.number(), unit: text.max(40).optional(), range: ReferenceRange.optional(), flag }),
+  z.strictObject({ kind: z.literal('choice'), ...valueBase, answer: text.max(120), flag }),
+  z.strictObject({ kind: z.literal('text'), ...valueBase, text: text.max(4000), flag }),
+  z.strictObject({ kind: z.literal('section'), ...valueBase, text: text.max(20000) }),
   z.strictObject({
-    kind: z.literal('culture'), key: PartKey, growth: z.enum(['no_growth', 'growth']), flag,
+    kind: z.literal('culture'), ...valueBase, growth: z.enum(['no_growth', 'growth']), flag,
     organisms: z.array(z.strictObject({
       name: text.max(200), count: text.max(120).optional(),
       susceptibility: z.array(z.strictObject({ antibiotic: text.max(120), result: z.enum(['S', 'I', 'R']) })).max(80).default([]),
     })).max(10).default([]),
   }).refine((v) => (v.growth === 'growth') === (v.organisms.length > 0), 'Name each organism grown, or record no growth'),
-  z.strictObject({ kind: z.literal('images'), key: PartKey, files: z.array(DocumentFile).min(1).max(12) }),
+  z.strictObject({ kind: z.literal('images'), ...valueBase, files: z.array(DocumentFile).min(1).max(12) }),
 ]);
 export type ReportValue = z.infer<typeof ReportValue>;
 
@@ -241,7 +246,9 @@ const valueIssue = (values: readonly ReportValue[], parts: readonly ResultPart[]
   for (const value of values) {
     const part = parts.find((p) => p.key === value.key);
     if (!part || part.kind !== value.kind) return 'A recorded value is not part of this template';
+    if (value.label !== part.label) return `${part.label}: the recorded name does not match the template`;
     if (part.kind === 'number' && value.kind === 'number') {
+      if (value.unit !== part.unit) return `${part.label}: the recorded unit does not match the template`;
       if (Number(value.value.toFixed(part.decimals)) !== value.value) return `${part.label}: use ${part.decimals} decimal places at most`;
       if (!sameRange(value.range, rangeFor(part, facts))) return `${part.label}: the normal range shown does not match this patient`;
     }

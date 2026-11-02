@@ -22,7 +22,7 @@ const context = (facts = woman): LabReportContext => ({
 });
 const report = (hb: number, extra: Partial<LabReport['items'][number]> = {}): LabReport => ({ patient: woman, items: [{
   test: 'Full blood count', orderItemId: 'item:fbc', template: { id: template.id, revision: 2 },
-  values: [{ kind: 'number', key: 'hb', value: hb, range: rangeFor(haemoglobin, woman), flag: 'low' }], ...extra,
+  values: [{ kind: 'number', key: 'hb', label: 'Haemoglobin', unit: 'g/dL', value: hb, range: rangeFor(haemoglobin, woman), flag: 'low' }], ...extra,
 }] });
 const rows = (r: LabReport) => r.items.map((item) => ({ test: item.test, orderItemId: item.orderItemId, result: labItemSummary(item, item.template ? template.parts : [TEXT_RESULT_PART]) }));
 
@@ -80,11 +80,13 @@ describe('structured lab results', () => {
     assert.match(labReportIssues(rows(r), r, context({ sex: 'male', age: woman.age }))[0], /sex or age/);
     const precise = report(10.85);
     assert.match(labReportIssues(rows(precise), precise, context())[0], /decimal/);
+    const relabelled = report(10.8); (relabelled.items[0].values[0] as { unit?: string }).unit = 'mmol/L';
+    assert.match(labReportIssues(rows(relabelled), relabelled, context())[0], /unit does not match/);
   });
   it('refuses parts the template lacks, missing required parts, and a template not in use for the test', () => {
-    const extra = report(10.8, { values: [{ kind: 'number', key: 'hb', value: 10.8, range: rangeFor(haemoglobin, woman) }, { kind: 'text', key: 'other', text: 'x' }] });
+    const extra = report(10.8, { values: [{ kind: 'number', key: 'hb', label: 'Haemoglobin', unit: 'g/dL', value: 10.8, range: rangeFor(haemoglobin, woman) }, { kind: 'text', key: 'other', label: 'Other', text: 'x' }] });
     assert.match(labReportIssues(rows(extra), extra, context())[0], /not part of this template/);
-    const missing = report(10.8, { values: [{ kind: 'text', key: 'film', text: 'Normocytic' }] });
+    const missing = report(10.8, { values: [{ kind: 'text', key: 'film', label: 'Film comment', text: 'Normocytic' }] });
     assert.match(labReportIssues(rows(missing), missing, context())[0], /Haemoglobin is required/);
     const unlisted = report(10.8, { orderItemId: 'item:custom' });
     assert.match(labReportIssues(rows(unlisted), unlisted, context())[0], /not in use for this test/);
@@ -92,7 +94,7 @@ describe('structured lab results', () => {
     assert.match(labReportIssues(rows(missingVersion), missingVersion, context())[0], /version is not available/);
   });
   it('keeps a test with no template as one free-text result', () => {
-    const plain: LabReport = { patient: woman, items: [{ test: 'Synthetic test', values: [{ kind: 'text', key: 'result', text: 'Negative' }] }] };
+    const plain: LabReport = { patient: woman, items: [{ test: 'Synthetic test', values: [{ kind: 'text', key: 'result', label: 'Result', text: 'Negative' }] }] };
     assert.deepEqual(labReportIssues(rows(plain), plain, context()), []);
     assert.equal(rows(plain)[0].result, 'Negative');
   });
