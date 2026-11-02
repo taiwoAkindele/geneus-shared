@@ -36,6 +36,7 @@ export const Permission = z.enum([
   'fee_item:manage',
   'location:manage',
   'service:manage',
+  'result_template:manage',
   'practitioner:manage',
   'credential:manage',
   'credential:read',

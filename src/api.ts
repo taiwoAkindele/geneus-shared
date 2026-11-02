@@ -269,6 +269,7 @@ export const SyncTokenResponse = z.object({
   facilityFeature: FacilityFeatureSupport.optional(),
   inpatientWorkflowVersion: z.literal(1).optional(),
   documentWorkflowVersion: z.literal(1).optional(),
+  resultTemplateWorkflowVersion: z.literal(1).optional(),
 });
 export type SyncTokenResponse = z.infer<typeof SyncTokenResponse>;
 
@@ -284,6 +285,7 @@ export const SyncTokenClaims = z.object({
   patient_registration: z.literal(1).optional(),
   inpatient_workflow: z.literal(1).optional(),
   document_workflow: z.literal(1).optional(),
+  result_template_workflow: z.literal(1).optional(),
 });
 export type SyncTokenClaims = z.infer<typeof SyncTokenClaims>;
 
@@ -317,6 +319,7 @@ export const UploadMutation = z.object({
 export type UploadMutation = z.infer<typeof UploadMutation>;
 
 export const UploadRequest = z.object({
+  resultTemplateWorkflowVersion: z.literal(1).optional(),
   documentWorkflowVersion: z.literal(1).optional(),
   inpatientWorkflowVersion: z.literal(1).optional(),
   clinicalWorkflowVersion: z.literal(1).optional(),
@@ -329,6 +332,7 @@ export const UploadRequest = z.object({
 }).superRefine((request, context) => {
   if(request.mutations.some((mutation)=>['library_document','visit_document'].includes(mutation.table)) && (request.documentWorkflowVersion!==1 || request.facilityContractVersion!==1 || (request.schemaVersion??0)<5 || (request.policyVersion??0)<11)) context.addIssue({code:'custom',message:'Document writes require document workflow 1, facility contract 1, schema 5 and policy 11'});
   if (request.mutations.some((mutation) => ['inpatient_event', 'bed_ready_event'].includes(mutation.table) || (mutation.table === 'staff' && Array.isArray(mutation.data.additionalPermissions) && mutation.data.additionalPermissions.includes('admission:manage'))) && (request.inpatientWorkflowVersion !== 1 || request.facilityContractVersion !== 1 || (request.schemaVersion ?? 0) < 5 || (request.policyVersion ?? 0) < 11)) context.addIssue({ code: 'custom', message: 'Inpatient writes require inpatient workflow 1, facility contract 1, schema 5 and policy 11' });
+  if (request.mutations.some((m) => (m.table === 'encounter_entry' && m.data.labReport !== undefined) || (m.table === 'staff' && Array.isArray(m.data.additionalPermissions) && m.data.additionalPermissions.includes('result_template:manage'))) && (request.resultTemplateWorkflowVersion !== 1 || request.clinicalWorkflowVersion !== 1 || (request.policyVersion ?? 0) < 13)) context.addIssue({ code: 'custom', message: 'Structured lab results and template access require result template workflow 1, clinical workflow 1 and policy 13' });
   if (request.clinicalWorkflowVersion === 1 && (request.facilityContractVersion !== 1 || (request.schemaVersion ?? 0) < 4 || (request.policyVersion ?? 0) < 10)) context.addIssue({ code: 'custom', message: 'Clinical workflow v1 requires facility contract 1, schema 4 and policy 10' });
   if (request.mutations.some((m) => m.table === 'encounter_entry' && (m.data.workflowVersion === 1 || ['investigation_review','result_review','prescription','injection_order','disposition'].includes(String(m.data.step)))) && request.clinicalWorkflowVersion !== 1) context.addIssue({ code: 'custom', message: 'New care entries require clinical workflow version one' });
   if (request.mutations.some(requiresFacilityContract) && (request.facilityContractVersion !== 1 || (request.schemaVersion ?? 0) < 4 || (request.policyVersion ?? 0) < 10)) context.addIssue({ code: 'custom', message: 'Facility writes require the negotiated v1 contract, schema 4 and policy 10' });
