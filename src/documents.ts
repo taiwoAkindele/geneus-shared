@@ -262,6 +262,7 @@ export const VisitFact = z.enum([
   'visit_date', 'patient_name', 'patient_id', 'age', 'sex', 'address', 'phone', 'new_or_revisit',
   'weight', 'temperature', 'blood_pressure', 'complaints', 'diagnoses', 'tests', 'results',
   'medicines_prescribed', 'medicines_dispensed', 'outcome', 'follow_up_date', 'seen_by',
+  'visit_type', 'injections',
 ]);
 export type VisitFact = z.infer<typeof VisitFact>;
 
@@ -286,14 +287,16 @@ export const RegisterFieldDef = z.object({
 export type RegisterFieldDef = z.infer<typeof RegisterFieldDef>;
 
 /**
- * A register that fills itself from visits: every visit, or the visits whose
+ * A register that fills itself from visits: every visit; the visits whose
  * diagnoses, tests or results mention one of `words` or carry a diagnosis code
- * starting with one of `codes` (for example ICD-10 "B50").
+ * starting with one of `codes` (for example ICD-10 "B50"); or the visits of
+ * one of `visitTypes` (an antenatal register takes antenatal visits).
  */
 export const RegisterVisitLink = z.strictObject({
-  visits: z.enum(['every', 'matching']),
+  visits: z.enum(['every', 'matching', 'visit_types']),
   words: registerWords.default([]),
   codes: z.array(z.string().trim().min(1).max(12)).max(40).default([]),
+  visitTypes: z.array(VisitType).max(VisitType.options.length).default([]),
 });
 export type RegisterVisitLink = z.infer<typeof RegisterVisitLink>;
 
@@ -736,6 +739,11 @@ export const Encounter = baseEnvelope.extend({
    * attributed to the clinician who opened it.
    */
   collectLaterReason: z.string().trim().min(1).optional(),
+  /**
+   * What the visit is for, chosen when it starts (an appointment's type by
+   * default). Absent on visits recorded before visit types reached visits.
+   */
+  visitType: VisitType.optional(),
 });
 export type Encounter = z.infer<typeof Encounter>;
 

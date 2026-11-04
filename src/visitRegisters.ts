@@ -1,6 +1,6 @@
 import { dispositionHeads } from './careWorkflow.ts';
 import { effectiveEncounterEntries } from './clinical.ts';
-import { ENCOUNTER_STEP_VALUES, type Encounter, type EncounterEntry, type Patient, type RegisterDefinition, type RegisterEntry, type RegisterEntryValue, type RegisterVisitLink, type VisitFact } from './documents.ts';
+import { ENCOUNTER_STEP_VALUES, type Appointment, type Encounter, type EncounterEntry, type Patient, type RegisterDefinition, type RegisterEntry, type RegisterEntryValue, type RegisterVisitLink, type VisitFact, type VisitType } from './documents.ts';
 import { labPatientFacts } from './resultTemplates.ts';
 
 /**
@@ -14,6 +14,8 @@ export type VisitRegisterInput = {
   encounters: readonly Encounter[];
   entries: readonly EncounterEntry[];
   patients: readonly Patient[];
+  /** Read for the type of a visit saved before visits kept their own. */
+  appointments?: readonly Pick<Appointment, 'id' | 'visitType'>[];
   /** This register's entries; those naming a visit complete its row. */
   completions?: readonly RegisterEntry[];
   staffNames?: ReadonlyMap<string, string>;
@@ -39,7 +41,13 @@ export const VISIT_FACT_LABELS: Record<VisitFact, string> = {
   address: 'Address', phone: 'Phone', new_or_revisit: 'New or revisit', weight: 'Weight', temperature: 'Temperature',
   blood_pressure: 'Blood pressure', complaints: 'Complaints', diagnoses: 'Diagnoses', tests: 'Tests requested',
   results: 'Test results', medicines_prescribed: 'Medicines prescribed', medicines_dispensed: 'Medicines dispensed',
-  outcome: 'Outcome', follow_up_date: 'Next visit date', seen_by: 'Seen by',
+  outcome: 'Outcome', follow_up_date: 'Next visit date', seen_by: 'Seen by', visit_type: 'Visit type', injections: 'Injections given',
+};
+
+export const VISIT_TYPE_NAMES: Record<VisitType, string> = {
+  general: 'General', follow_up: 'Follow-up', antenatal: 'Antenatal', postnatal: 'Postnatal',
+  delivery: 'Delivery', immunisation: 'Immunisation', family_planning: 'Family planning',
+  child_welfare: 'Child welfare', tb_programme: 'TB programme', hiv_programme: 'HIV programme', emergency: 'Emergency',
 };
 
 const escape = (word: string) => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -69,7 +77,7 @@ const parsed = <S extends keyof typeof ENCOUNTER_STEP_VALUES>(entry: EncounterEn
 const all = <S extends keyof typeof ENCOUNTER_STEP_VALUES>(entries: readonly EncounterEntry[], step: S) =>
   entries.filter((entry) => entry.step === step).flatMap((entry) => { const values = parsed(entry, step); return values ? [values] : []; });
 
-type VisitLists = { complaints: string[]; diagnoses: string[]; codes: string[]; tests: string[]; results: string[]; prescribed: string[]; dispensed: string[] };
+type VisitLists = { complaints: string[]; diagnoses: string[]; codes: string[]; tests: string[]; results: string[]; prescribed: string[]; dispensed: string[]; injections: string[] };
 
 const listsFor = (entries: readonly EncounterEntry[]): VisitLists => {
   const diagnosis = parsed(latest(entries, 'diagnosis'), 'diagnosis');
@@ -84,12 +92,14 @@ const listsFor = (entries: readonly EncounterEntry[]): VisitLists => {
     results: all(entries, 'lab_results').flatMap((values) => values.results.map((row) => `${row.test}: ${row.result}`)),
     prescribed: lines.map((line) => [line.drug, line.dose].filter(Boolean).join(' ')),
     dispensed: (parsed(latest(entries, 'dispense'), 'dispense')?.lines ?? []).filter((line) => line.dispensed).map((line) => line.drug),
+    injections: all(entries, 'injection').map((given) => [given.drug, given.dose].filter(Boolean).join(' ')),
   };
 };
 
-/** Whether a visit belongs in a register linked to visits. */
-export const visitMatchesLink = (link: RegisterVisitLink, entries: readonly EncounterEntry[]): boolean => {
+/** Whether a visit belongs in a register linked to visits. A visit with no recorded type is a general visit. */
+export const visitMatchesLink = (link: RegisterVisitLink, entries: readonly EncounterEntry[], visitType: VisitType = 'general'): boolean => {
   if (link.visits === 'every') return true;
+  if (link.visits === 'visit_types') return (link.visitTypes ?? []).includes(visitType);
   const lists = listsFor(effectiveEncounterEntries(entries));
   if (lists.codes.some((code) => link.codes.some((prefix) => code.toUpperCase().startsWith(prefix.toUpperCase())))) return true;
   return [...lists.diagnoses, ...lists.tests, ...lists.results].some((text) => mentionsAny(text, link.words));
@@ -104,7 +114,7 @@ const ageText = (patient: Patient, on: string) => {
 };
 
 const factFor = (fact: VisitFact, words: readonly string[] | undefined, context: {
-  encounter: Encounter; entries: readonly EncounterEntry[]; patient?: Patient; visitedOn: string; first: boolean; names: ReadonlyMap<string, string>;
+  encounter: Encounter; entries: readonly EncounterEntry[]; patient?: Patient; visitedOn: string; first: boolean; names: ReadonlyMap<string, string>; visitType: VisitType;
 }): string => {
   const { encounter, entries, patient, visitedOn } = context;
   const narrow = (items: string[]) => (words?.length ? items.filter((item) => mentionsAny(item, words)) : items).join('; ');
@@ -127,6 +137,8 @@ const factFor = (fact: VisitFact, words: readonly string[] | undefined, context:
     case 'results': return narrow(listsFor(entries).results);
     case 'medicines_prescribed': return narrow(listsFor(entries).prescribed);
     case 'medicines_dispensed': return narrow(listsFor(entries).dispensed);
+    case 'injections': return narrow(listsFor(entries).injections);
+    case 'visit_type': return VISIT_TYPE_NAMES[context.visitType];
     case 'outcome': {
       const disposition = last(dispositionHeads(entries));
       if (disposition) return OUTCOMES[disposition.values.kind as keyof typeof OUTCOMES] ?? '';
@@ -152,6 +164,7 @@ export const visitRegisterRows = (definition: Pick<RegisterDefinition, 'register
   const localDate = input.localDate ?? ((iso: string) => iso.slice(0, 10));
   const names = input.staffNames ?? new Map<string, string>();
   const patients = new Map(input.patients.map((patient) => [patient.patientId, patient]));
+  const booked = new Map((input.appointments ?? []).map((appointment) => [appointment.id, appointment.visitType]));
   const byVisit = new Map<string, EncounterEntry[]>();
   for (const entry of input.entries) { const group = byVisit.get(entry.encounterId) ?? []; group.push(entry); byVisit.set(entry.encounterId, group); }
   const firstVisit = new Map<string, Encounter>();
@@ -170,9 +183,10 @@ export const visitRegisterRows = (definition: Pick<RegisterDefinition, 'register
     if (seen.has(encounter.id)) continue;
     seen.add(encounter.id);
     const entries = effectiveEncounterEntries(byVisit.get(encounter.id) ?? []);
-    if (!visitMatchesLink(link, entries)) continue;
+    const visitType = encounter.visitType ?? (encounter.appointmentId ? booked.get(encounter.appointmentId) : undefined) ?? 'general';
+    if (!visitMatchesLink(link, entries, visitType)) continue;
     const visitedOn = localDate(encounter.openedOn);
-    const context = { encounter, entries, patient: patients.get(encounter.patientId), visitedOn, first: firstVisit.get(encounter.patientId)?.id === encounter.id, names };
+    const context = { encounter, entries, patient: patients.get(encounter.patientId), visitedOn, first: firstVisit.get(encounter.patientId)?.id === encounter.id, names, visitType };
     const completion = completions.get(encounter.id);
     const values: Record<string, RegisterEntryValue> = {};
     for (const field of definition.fields) {

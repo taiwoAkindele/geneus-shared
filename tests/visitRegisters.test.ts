@@ -64,4 +64,16 @@ describe('visit-linked registers', () => {
     assert.deepEqual(registerEntryLinkIssues(malaria, { encounterId: 'visit:1', patientId: patient.patientId, values: { onset: '2026-11-01' } }), []);
     assert.ok(registerEntryLinkIssues({ fields: [], visitLink: undefined }, { encounterId: 'visit:1', values: {} }).length);
   });
+  it("takes visits of chosen types, reading an older visit's type from its appointment", () => {
+    const anc = RegisterDefinition.parse({ ...malaria, id: 'register:anc:v1', registerId: 'register:anc', name: 'Antenatal', visitLink: { visits: 'visit_types', visitTypes: ['antenatal'] },
+      fields: [{ id: 'type', type: 'text', label: 'Visit', fromVisit: { fact: 'visit_type' } }, { id: 'td', type: 'text', label: 'Td', fromVisit: { fact: 'injections', words: ['Td', 'tetanus'] } }, { id: 'ga', type: 'number', label: 'Gestational age (weeks)' }] });
+    const typed = Encounter.parse({ ...visit('visit:anc', '2026-11-03T08:00:00Z'), visitType: 'antenatal' });
+    const booked = Encounter.parse({ ...visit('visit:booked', '2026-11-02T08:00:00Z'), appointmentId: 'appointment:1' });
+    const general = visit('visit:general', '2026-11-01T08:00:00Z');
+    const td = entry('td', 'visit:anc', 'injection', { drug: 'Td', dose: '0.5 mL', route: 'IM' });
+    const rows = visitRegisterRows(anc, { encounters: [typed, booked, general], entries: [td], patients: [patient], appointments: [{ id: 'appointment:1', visitType: 'antenatal' }] });
+    assert.deepEqual(rows.map((row) => [row.encounterId, row.values.type, row.values.td]), [['visit:anc', 'Antenatal', 'Td 0.5 mL'], ['visit:booked', 'Antenatal', '']]);
+    assert.ok(registerDefinitionIssues({ ...anc, visitLink: { visits: 'visit_types', words: [], codes: [], visitTypes: [] } }).some((issue) => issue.includes('visit types')));
+    assert.deepEqual(registerDefinitionIssues(anc), []);
+  });
 });

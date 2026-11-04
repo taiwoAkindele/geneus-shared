@@ -1,7 +1,7 @@
 import type { RegisterDefinition, RegisterEntry, VisitFact } from './documents.ts';
 
 /** Facts that are lists, so a field can keep only the items mentioning chosen words. */
-export const LIST_VISIT_FACTS: readonly VisitFact[] = ['complaints', 'diagnoses', 'tests', 'results', 'medicines_prescribed', 'medicines_dispensed'];
+export const LIST_VISIT_FACTS: readonly VisitFact[] = ['complaints', 'diagnoses', 'tests', 'results', 'medicines_prescribed', 'medicines_dispensed', 'injections'];
 
 /** Definition invariants used before local persistence and at the upload boundary. */
 export const registerDefinitionIssues = (definition: Pick<RegisterDefinition, 'name' | 'category' | 'fields' | 'status'> & Partial<Pick<RegisterDefinition, 'visitLink'>>, previous: readonly RegisterDefinition[] = []): string[] => {
@@ -10,6 +10,7 @@ export const registerDefinitionIssues = (definition: Pick<RegisterDefinition, 'n
   if (!definition.category.trim()) issues.push('Choose a register category.');
   const link = definition.visitLink;
   if (link?.visits === 'matching' && !link.words.length && !link.codes.length) issues.push('Add the words or diagnosis codes that choose which visits fill this register.');
+  if (link?.visits === 'visit_types' && !link.visitTypes?.length) issues.push('Choose the visit types that fill this register.');
   const ids = new Set<string>();
   const published = previous.filter((version) => version.status === 'published');
   const latest = [...published].sort((a, b) => b.version - a.version)[0];
@@ -23,7 +24,7 @@ export const registerDefinitionIssues = (definition: Pick<RegisterDefinition, 'n
     if (field.fromVisit) {
       if (!link) issues.push(`"${field.label}" is filled from the visit. Choose which visits fill this register.`);
       if (field.type !== 'text' || field.required || field.options?.length) issues.push(`"${field.label}" is filled from the visit, so it is a short text field that staff are not asked for.`);
-      if (field.fromVisit.words?.length && !LIST_VISIT_FACTS.includes(field.fromVisit.fact)) issues.push(`"${field.label}" can only narrow complaints, diagnoses, tests, results or medicines by words.`);
+      if (field.fromVisit.words?.length && !LIST_VISIT_FACTS.includes(field.fromVisit.fact)) issues.push(`"${field.label}" can only narrow complaints, diagnoses, tests, results, medicines or injections by words.`);
     }
     if (definition.status === 'published' && ['select', 'multiselect'].includes(field.type)) {
       const choices = field.options ?? [];
