@@ -257,6 +257,16 @@ export const RegisterFieldType = z.enum([
 ]);
 export type RegisterFieldType = z.infer<typeof RegisterFieldType>;
 
+/** A fact a visit-linked register reads from the visit instead of asking staff for it. */
+export const VisitFact = z.enum([
+  'visit_date', 'patient_name', 'patient_id', 'age', 'sex', 'address', 'phone', 'new_or_revisit',
+  'weight', 'temperature', 'blood_pressure', 'complaints', 'diagnoses', 'tests', 'results',
+  'medicines_prescribed', 'medicines_dispensed', 'outcome', 'follow_up_date', 'seen_by',
+]);
+export type VisitFact = z.infer<typeof VisitFact>;
+
+const registerWords = z.array(z.string().trim().min(1).max(60)).max(40);
+
 /** One field in a register. `id` is STABLE — entries key their values by it, so
  *  it must never be reused or reassigned (labels may change freely). */
 export const RegisterFieldDef = z.object({
@@ -267,8 +277,25 @@ export const RegisterFieldDef = z.object({
   help: z.string().optional(),
   /** Choices for `select` / `multiselect`. */
   options: z.array(z.string()).optional(),
+  /**
+   * Filled from the visit, not by staff. `words` narrows a list fact (tests,
+   * results, diagnoses, medicines) to the items that mention one of them.
+   */
+  fromVisit: z.strictObject({ fact: VisitFact, words: registerWords.optional() }).optional(),
 });
 export type RegisterFieldDef = z.infer<typeof RegisterFieldDef>;
+
+/**
+ * A register that fills itself from visits: every visit, or the visits whose
+ * diagnoses, tests or results mention one of `words` or carry a diagnosis code
+ * starting with one of `codes` (for example ICD-10 "B50").
+ */
+export const RegisterVisitLink = z.strictObject({
+  visits: z.enum(['every', 'matching']),
+  words: registerWords.default([]),
+  codes: z.array(z.string().trim().min(1).max(12)).max(40).default([]),
+});
+export type RegisterVisitLink = z.infer<typeof RegisterVisitLink>;
 
 export const RegisterStatus = z.enum(['draft', 'published']);
 export type RegisterStatus = z.infer<typeof RegisterStatus>;
@@ -291,6 +318,8 @@ export const RegisterDefinition = baseEnvelope.extend({
   description: z.string().default(''),
   status: RegisterStatus.default('draft'),
   fields: z.array(RegisterFieldDef),
+  /** Absent for a register staff fill entry by entry. */
+  visitLink: RegisterVisitLink.optional(),
 });
 export type RegisterDefinition = z.infer<typeof RegisterDefinition>;
 
@@ -314,6 +343,11 @@ export const RegisterEntry = baseEnvelope.extend({
   setting: Setting.default('facility'),
   /** Some entries link a stored patient; tally-style ones don't. */
   patientId: patientId.optional(),
+  /**
+   * In a visit-linked register, the visit whose row this entry completes with
+   * the staff-recorded fields. The latest entry for a visit is the current one.
+   */
+  encounterId: z.string().min(1).optional(),
   values: z.record(z.string(), RegisterEntryValue),
 });
 export type RegisterEntry = z.infer<typeof RegisterEntry>;
