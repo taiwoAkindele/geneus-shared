@@ -23,6 +23,7 @@ export * from './inpatient.ts';
 export * from './clinicalDocuments.ts';
 export * from './resultTemplates.ts';
 export * from './registers.ts';
+export * from './visitRegisters.ts';
 export * from './facilityTypes.ts';
 export * from './facility.ts';
 export * from './facilityPolicy.ts';
