@@ -168,7 +168,7 @@ export const visitRegisterRows = (definition: Pick<RegisterDefinition, 'register
   const byVisit = new Map<string, EncounterEntry[]>();
   for (const entry of input.entries) { const group = byVisit.get(entry.encounterId) ?? []; group.push(entry); byVisit.set(entry.encounterId, group); }
   const firstVisit = new Map<string, Encounter>();
-  for (const encounter of input.encounters) {
+  for (const encounter of input.encounters.filter((visit) => !visit.inpatientContext)) {
     const first = firstVisit.get(encounter.patientId);
     if (!first || encounter.openedOn < first.openedOn || (encounter.openedOn === first.openedOn && encounter.id < first.id)) firstVisit.set(encounter.patientId, encounter);
   }
@@ -180,6 +180,7 @@ export const visitRegisterRows = (definition: Pick<RegisterDefinition, 'register
   const seen = new Set<string>();
   const rows: VisitRegisterRow[] = [];
   for (const encounter of input.encounters) {
+    if (encounter.inpatientContext) continue;
     if (seen.has(encounter.id)) continue;
     seen.add(encounter.id);
     const entries = effectiveEncounterEntries(byVisit.get(encounter.id) ?? []);

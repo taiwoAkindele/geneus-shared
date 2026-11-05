@@ -14,6 +14,8 @@ export const InpatientEvent = baseEnvelope.extend({
   requestEntryId: ref, previousId: ref.optional(), action: InpatientAction,
   receivingUnitId: ref, wardId: ref.optional(), bedId: ref.optional(), actorRole: Role,
   note: z.string().trim().min(1).max(4000).optional(),
+  dischargeSummaryId: ref.optional(),
+  departureException: z.string().trim().min(3).max(1000).optional(),
 }).superRefine((event, ctx) => {
   if ((event.action === 'confirm') !== !event.previousId || event.previousId === event.id)
     ctx.addIssue({ code: 'custom', message: 'Confirmation starts a new admission; later actions name its previous event' });
@@ -104,7 +106,8 @@ export const inpatientIssues = (event: InpatientEvent, records: InpatientRecords
       ready_for_discharge: ['arrive', 'transfer', 'continue_care'], continue_care: ['ready_for_discharge'],
       discharge: ['ready_for_discharge'], cancel: ['confirm', 'reserve'],
     };
-    if (!allowed[event.action].includes(previous.action)) return ['This action is not available at the current admission stage'];
+    const unexpectedDeparture = event.action === 'discharge' && Boolean(event.departureException) && ['arrive','transfer','continue_care'].includes(previous.action);
+    if (!allowed[event.action].includes(previous.action) && !unexpectedDeparture) return ['This action is not available at the current admission stage'];
     if (!['reserve', 'transfer'].includes(event.action) && ['wardId', 'bedId', 'receivingUnitId'].some((key) => event[key as keyof InpatientEvent] !== previous[key as keyof InpatientEvent])) return ['Keep the recorded team and bed for this action'];
     if (event.action === 'transfer' && event.bedId === previous.bedId) return ['Choose a different bed for the transfer'];
   }

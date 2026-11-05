@@ -59,6 +59,7 @@ export const DocType = z.enum([
   'clinical_event',
   'inpatient_event',
   'bed_ready_event',
+  'ward_care_event',
   'library_document',
   'visit_document',
   'handoff',

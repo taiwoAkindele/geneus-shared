@@ -57,8 +57,9 @@ export const outstandingResults = (prior: readonly EncounterEntry[]) => {
  * one order: vitals, complaint, testing decision and order, results and their
  * review, diagnosis, medication and injection decisions, then disposition.
  */
-export const careEntryIssues = (entry: Pick<EncounterEntry, 'step' | 'values'> & { workflowVersion?: 1 }, prior: readonly EncounterEntry[]): string[] => {
+export const careEntryIssues = (entry: Pick<EncounterEntry, 'step' | 'values'> & { workflowVersion?: 1 }, prior: readonly EncounterEntry[], ward = false): string[] => {
   const latest = (step: string) => [...prior].reverse().find((p) => p.step === step);
+  if (!ward) {
   if (['admission', 'follow_up'].includes(entry.step)) return ['Record an explicit disposition for this consultation'];
   if (entry.step === 'complaint' && !latest('vitals')) return ['Record at least one vital sign before the complaint'];
   if (['investigation_review', 'lab_order'].includes(entry.step) && !latest('complaint')) return ['Record the complaint and clinical note before deciding on tests'];
@@ -78,6 +79,7 @@ export const careEntryIssues = (entry: Pick<EncounterEntry, 'step' | 'values'> &
     if ((previous?.id ?? undefined) !== entry.values.previousEntryId) return ['Disposition changed. Review the latest decision before continuing'];
     if (previous && previous.values.kind !== 'observation') return ['This disposition is complete; add an attributed amendment'];
     if (entry.values.kind === 'referral' && !entry.values.referralId) return ['Create the linked referral before completing disposition'];
+  }
   }
   if (entry.step === 'investigation_review') {
     if (entry.values.decision === 'ordered' && !prior.some((p) => p.id === entry.values.orderEntryId && p.step === 'lab_order')) return ['The testing decision must reference this encounter’s laboratory order'];
