@@ -1,5 +1,32 @@
 # Geneus Health — Data Contract (Schema Reference)
 
+## Continuing inpatient care (5 November 2026)
+
+`src/wardCare.ts` defines the additive schema-5 ward contract. An encounter may
+carry `inpatientContext: { admissionId, purpose: nursing | review | discharge }`;
+this is internal care grouping, excluded from outpatient attendance and register
+totals. Its entries retain existing values and carry `admissionId`, optional
+`performedOn` and `lateReason`. Prescription lines may carry stable `lineId` values.
+
+Immutable `ward_care_event` values distinguish activity completion, exact-line
+medication start/continue/change/stop, given/not-given administration and signed
+discharge revision. Order, administration-correction and summary predecessors are
+explicit; timestamp order never resolves a competing successor. Summaries pin
+clinical/order source IDs, original patient/admission identity, reviewed take-home
+medicines and follow-up. Inpatient readiness/departure may reference the current
+summary or an attributed `departureException`.
+
+Shared rules validate patient/facility/stay membership, session purpose, completion,
+source-line versions, actual time, duplicate doses, predecessors and discharge
+readiness. `ClinicalRecord` extends existing authorization/review to ward events;
+actual-time authority and correction-time authority remain distinct. No scheduled
+doses, specimen workflow or automatic stock movement are implied.
+
+`wardCareVersion: 1` requires the current facility, clinical and inpatient workflow
+capabilities; the signed sync claim is `ward_care: 1`. Old clients are gated from
+ward contexts, entries and event evidence. Schema remains 5 and policy remains 13.
+See [implementation and rollout](../docs/INPATIENT-CARE-IMPLEMENTATION-2026-11-05.md).
+
 > The single source of truth for **what the client and the server must agree on**:
 > record shapes, permissions, the offline policy and the API. The Zod schemas in
 > [`src/`](src/) are authoritative; this file is the human-readable explanation.

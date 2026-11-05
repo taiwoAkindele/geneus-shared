@@ -20,6 +20,7 @@ export * from './api.ts';
 export * from './patientIdentity.ts';
 export * from './clinical.ts';
 export * from './inpatient.ts';
+export * from './wardCare.ts';
 export * from './clinicalDocuments.ts';
 export * from './resultTemplates.ts';
 export * from './registers.ts';
@@ -38,6 +39,7 @@ import { Location, ServiceDefinition, ServiceOffering, PractitionerProfile, Cred
 
 import { ClinicalEvent } from './clinical.ts';
 import { InpatientEvent, BedReadyEvent } from './inpatient.ts';
+import { WardCareEvent } from './wardCare.ts';
 import { LibraryDocument, VisitDocument } from './clinicalDocuments.ts';
 import { ResultTemplate, ResultPartDefinition, AnswerList, StandardTest, StandardTemplate } from './resultTemplates.ts';
 
@@ -82,7 +84,7 @@ export const AnyDocument = z.union([
   ReviewerDelegation, ClinicalAuthorityBootstrap, ExternalClinicalReviewer, AuthoritySnapshot,
   StaffAssignment, ServiceSession, SessionEvent, WorkOwnershipEvent, AppointmentReservation,
   ClinicalEvent,
-  InpatientEvent, BedReadyEvent,
+  InpatientEvent, BedReadyEvent, WardCareEvent,
   LibraryDocument, VisitDocument,
   ResultTemplate, ResultPartDefinition, AnswerList, StandardTest, StandardTemplate,
   Patient,
@@ -116,6 +118,7 @@ export type AnyDocument = z.infer<typeof AnyDocument>;
 
 /** Map of `type` → schema, for validating a record when its type is known. */
 export const SCHEMA_BY_TYPE = {
+  ward_care_event: WardCareEvent,
   location: Location, service_definition: ServiceDefinition, service_offering: ServiceOffering,
   practitioner_profile: PractitionerProfile, credential: Credential, capability_decision: CapabilityDecision,
   reviewer_delegation: ReviewerDelegation, clinical_authority_bootstrap: ClinicalAuthorityBootstrap,

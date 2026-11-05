@@ -744,6 +744,8 @@ export const Encounter = baseEnvelope.extend({
    * default). Absent on visits recorded before visit types reached visits.
    */
   visitType: VisitType.optional(),
+  /** A continuing-care activity within one admission, never another outpatient attendance. */
+  inpatientContext: z.strictObject({ admissionId: z.string().min(1), purpose: z.enum(['nursing', 'review', 'discharge']) }).optional(),
 });
 export type Encounter = z.infer<typeof Encounter>;
 
@@ -776,6 +778,7 @@ const positive = z.number().positive();
 const text = z.string().trim().min(1);
 
 export const PrescriptionLine = z.object({
+  lineId: z.string().min(1).optional(),
   drug: text,
   dose: text,
   frequency: text.optional(),
@@ -868,6 +871,10 @@ export const EncounterEntry = baseEnvelope
     workflowVersion: z.literal(1).optional(),
     type: z.literal('encounter_entry'),
     encounterId: z.string().min(1),
+    /** Context copied from the header so older clients can filter the complete activity graph. */
+    admissionId: z.string().min(1).optional(),
+    performedOn: isoDateTime.optional(),
+    lateReason: z.string().trim().min(3).max(1000).optional(),
     /** Repeated from the encounter so the patient's history is one lookup. */
     patientId,
     step: EncounterStep,
