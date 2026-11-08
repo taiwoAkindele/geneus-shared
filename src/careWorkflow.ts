@@ -92,7 +92,8 @@ export const careEntryIssues = (entry: Pick<EncounterEntry, 'step' | 'values'> &
     const reviewed = prior.filter((p) => p.step === 'result_review').flatMap((p) => p.values.resultEntryIds as string[]);
     if (ids.some((id) => !prior.some((p) => p.id === id && p.step === 'lab_results') || reviewed.includes(id))) return ['Review only existing results that have not already been acknowledged'];
   }
-  if (entry.step === 'dispense') {
+  if (entry.step === 'dispense' && !entry.values.supply) {
+    if (!entry.values.supply && prior.some((p) => p.step === 'dispense' && p.pharmacyVersion === 1)) return ['This prescription uses quantity-based dispensing. Upgrade and open Pharmacy to continue'];
     const medication = latest('prescription') ?? latest('diagnosis');
     const prescription = medication?.values.prescription as { drug: string }[] | undefined;
     const lines = entry.values.lines as { drug: string }[];

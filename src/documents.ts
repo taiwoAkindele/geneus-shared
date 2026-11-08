@@ -12,6 +12,7 @@ import { AppointmentAllocation, ClinicalActorContext, FacilityDependency, Facili
 import { AssignablePermission } from './capabilities.ts';
 import { provisionalPatientName, validCalendarDate, yearsBetween } from './patientIdentity.ts';
 import { LabReport } from './resultTemplates.ts';
+import { DispensingDetails } from './pharmacyTypes.ts';
 import {
   baseEnvelope,
   DocType,
@@ -453,6 +454,7 @@ export type InboundReferral = z.infer<typeof InboundReferral>;
 /* ================================================================== */
 
 export const StockItem = baseEnvelope.extend({
+  feeItemId: z.string().min(1).nullish().transform((v) => v ?? undefined).optional(),
   type: z.literal('stock_item'),
   name: z.string().min(1),
   category: z
@@ -465,6 +467,7 @@ export const StockItem = baseEnvelope.extend({
 export type StockItem = z.infer<typeof StockItem>;
 
 export const StockMovement = baseEnvelope.extend({
+  dispenseEntryId: z.string().min(1).optional(),
   type: z.literal('stock_movement'),
   itemId: z.string().min(1),
   /** Positive = received, negative = dispensed/used. */
@@ -778,6 +781,7 @@ const positive = z.number().positive();
 const text = z.string().trim().min(1);
 
 export const PrescriptionLine = z.object({
+  unitOfMeasure: text.optional(),
   lineId: z.string().min(1).optional(),
   drug: text,
   dose: text,
@@ -836,6 +840,7 @@ export const ENCOUNTER_STEP_VALUES = {
     note: text.optional(),
   }),
   dispense: z.strictObject({
+    supply: DispensingDetails.optional(),
     lines: z
       .array(
         z
@@ -868,6 +873,7 @@ export type EncounterStepValues = { [Step in EncounterStep]: z.infer<(typeof ENC
  */
 export const EncounterEntry = baseEnvelope
   .extend({
+    pharmacyVersion: z.literal(1).optional(),
     workflowVersion: z.literal(1).optional(),
     type: z.literal('encounter_entry'),
     encounterId: z.string().min(1),
@@ -891,6 +897,7 @@ export const EncounterEntry = baseEnvelope
     labReport: LabReport.optional(),
   })
   .superRefine((entry, context) => {
+    if ((entry.pharmacyVersion === 1) !== Boolean(entry.step === 'dispense' && entry.values.supply)) context.addIssue({ code: 'custom', path: ['pharmacyVersion'], message: 'Quantity-based dispensing requires its pharmacy workflow version' });
     if ((entry.step === 'amendment') !== Boolean(entry.amends)) {
       context.addIssue({
         code: 'custom',
@@ -1020,6 +1027,7 @@ export type FeeItem = z.infer<typeof FeeItem>;
  */
 export const Charge = baseEnvelope
   .extend({
+    dispenseEntryId: z.string().min(1).optional(),
     orderItemId: z.string().min(1).optional(),
     orderEntryId: z.string().min(1).optional(),
     type: z.literal('charge'),
@@ -1110,6 +1118,7 @@ export type Payment = z.infer<typeof Payment>;
 
 /** Append-only reduction: original price and approval remain visible. */
 export const BillingAdjustment = baseEnvelope.extend({
+  dispenseEntryId: z.string().min(1).optional(),
   type: z.literal('billing_adjustment'), patientId,
   chargeId: z.string().min(1), kind: z.enum(['discount', 'waiver']),
   amountMinor: minorUnits.positive(), reason: text,

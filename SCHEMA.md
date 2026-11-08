@@ -610,3 +610,21 @@ Templates, shared parts and answer lists are now device-written facility setting
 Registers can fill themselves from visits. A register_definition may carry an optional visitLink: every visit, or only visits whose diagnoses, tests or results mention one of its words (matched at the start of a word; words under four letters must match whole) or carry a diagnosis code starting with one of its codes. A field may carry fromVisit: the visit fact it shows (visit date, patient details, new or revisit, vitals, complaints, diagnoses, tests, results, medicines prescribed or dispensed, outcome, next visit date, seen by), optionally narrowed by words for list facts. Such fields are short text, never required, and staff do not record them. Rows are not stored: visitRegisterRows in src/visitRegisters.ts works them out from the visits, applying amendments, so device and server agree and late results or corrections appear without re-entry. Staff complete the remaining fields with a register_entry carrying the visit's encounterId and patientId; the latest such entry for a visit is current. registerEntryLinkIssues refuses visit-filled values, a missing visit in a linked register, and a visit in an unlinked one; the server also checks that the visit belongs to the same patient and facility. Both new properties are optional, so existing registers and entries are unchanged.
 
 A visit (`encounter`) may carry a `visitType` from the shared VisitType list, chosen when the visit starts and defaulting to its appointment's type; visits are append-only, so the type stays with the visit. A visitLink with `visits: 'visit_types'` takes the visits of its `visitTypes`; a visit with no recorded type is read from its appointment when one is supplied, otherwise it counts as general. Two more visit facts are available to fields: `visit_type` and `injections` (injections given, narrowable by words). The fields such a register asks staff for are recorded inside the visit as "programme details", stored as the same register_entry naming the visit.
+
+
+## Quantity-based dispensing (8 November 2026)
+
+EncounterEntry optionally carries pharmacyVersion: 1 and dispense values.supply,
+validated together. DispensingDetails names an exact signed prescription or
+discharge-summary line, predecessor, supply/return/note/price action, completion
+decision, quantity and explicit unit, stock source, price snapshot and reason.
+The legacy values.lines summary is derived from the immutable supply history.
+PrescriptionLine optionally includes unitOfMeasure. StockItem optionally links
+feeItemId; StockMovement, Charge and BillingAdjustment optionally reference
+dispenseEntryId. Return credits retain the compatible discount ledger shape.
+Shared pharmacy rules validate causal state, corrected/stopped sources, pricing
+and exemptions, net returned quantities, and deterministic financial/stock effects.
+UploadRequest/SyncTokenResponse negotiate pharmacyWorkflowVersion: 1, represented
+by the signed pharmacy_workflow claim. These are optional additive fields under
+schema 5 / policy 13; no new document type or broad permission grant is introduced.
+See [implementation](../docs/PHARMACY-STOCK-BILLING-2026-11-08.md).
