@@ -269,6 +269,7 @@ export const SyncTokenResponse = z.object({
   facilityFeature: FacilityFeatureSupport.optional(),
   inpatientWorkflowVersion: z.literal(1).optional(),
   wardCareVersion: z.literal(1).optional(),
+  pharmacyWorkflowVersion: z.literal(1).optional(),
   documentWorkflowVersion: z.literal(1).optional(),
   resultTemplateWorkflowVersion: z.literal(1).optional(),
 });
@@ -288,6 +289,7 @@ export const SyncTokenClaims = z.object({
   document_workflow: z.literal(1).optional(),
   result_template_workflow: z.literal(1).optional(),
   ward_care: z.literal(1).optional(),
+  pharmacy_workflow: z.literal(1).optional(),
 });
 export type SyncTokenClaims = z.infer<typeof SyncTokenClaims>;
 
@@ -321,6 +323,7 @@ export const UploadMutation = z.object({
 export type UploadMutation = z.infer<typeof UploadMutation>;
 
 export const UploadRequest = z.object({
+  pharmacyWorkflowVersion: z.literal(1).optional(),
   wardCareVersion: z.literal(1).optional(),
   resultTemplateWorkflowVersion: z.literal(1).optional(),
   documentWorkflowVersion: z.literal(1).optional(),
@@ -333,6 +336,7 @@ export const UploadRequest = z.object({
   schemaVersion: z.number().int().positive().optional(),
   policyVersion: z.number().int().positive().optional(),
 }).superRefine((request, context) => {
+  if (request.mutations.some((m) => m.table === 'encounter_entry' && (m.data.pharmacyVersion !== undefined || (m.data.values as Record<string, unknown> | undefined)?.supply !== undefined)) && (request.pharmacyWorkflowVersion !== 1 || request.clinicalWorkflowVersion !== 1 || request.facilityContractVersion !== 1 || (request.schemaVersion ?? 0) < 5 || (request.policyVersion ?? 0) < 13)) context.addIssue({ code: 'custom', message: 'Quantity-based dispensing requires pharmacy workflow 1 and the current clinical contract' });
     if (request.mutations.some((m) => m.table === 'ward_care_event' || (m.table === 'encounter' && m.data.inpatientContext !== undefined) || (m.table === 'encounter_entry' && m.data.admissionId !== undefined))
       && (request.wardCareVersion !== 1 || request.inpatientWorkflowVersion !== 1 || request.clinicalWorkflowVersion !== 1 || request.facilityContractVersion !== 1 || (request.schemaVersion ?? 0) < 5 || (request.policyVersion ?? 0) < 13)) context.addIssue({ code: 'custom', message: 'Ward care requires ward care workflow 1 and the current inpatient and clinical contracts' });
   if(request.mutations.some((mutation)=>['library_document','visit_document'].includes(mutation.table)) && (request.documentWorkflowVersion!==1 || request.facilityContractVersion!==1 || (request.schemaVersion??0)<5 || (request.policyVersion??0)<11)) context.addIssue({code:'custom',message:'Document writes require document workflow 1, facility contract 1, schema 5 and policy 11'});

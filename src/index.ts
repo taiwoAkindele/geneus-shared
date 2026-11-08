@@ -21,6 +21,8 @@ export * from './patientIdentity.ts';
 export * from './clinical.ts';
 export * from './inpatient.ts';
 export * from './wardCare.ts';
+export * from './pharmacyTypes.ts';
+export * from './pharmacy.ts';
 export * from './clinicalDocuments.ts';
 export * from './resultTemplates.ts';
 export * from './registers.ts';
