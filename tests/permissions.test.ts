@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  AssignablePermission,
   decide,
   HIGH_RISK_PERMISSIONS,
   isWithinOfflineWindow,
@@ -54,9 +55,17 @@ describe('role permissions', () => {
     }
   });
 
-  it('gives the facility admin every role-granted permission, so a facility can configure itself alone', () => {
-    const roleGranted = Permission.options.filter((permission) => !PROTECTED_PERMISSIONS.includes(permission));
+  /**
+   * v14: reading and editing confidential payer contracts and confirming insurance
+   * splits are a duty, not a seniority (docs/INSURANCE-HMO-PLAN.md §6.10). The
+   * administrator does not hold them by role but may assign them to anyone,
+   * themselves included, so a facility can still configure itself alone.
+   */
+  const ASSIGNED_INDIVIDUALLY: readonly string[] = ['insurance_contract:read', 'insurance_contract:manage', 'coverage:confirm'];
+  it('gives the facility admin every role-granted permission except duties assigned individually, so a facility can configure itself alone', () => {
+    const roleGranted = Permission.options.filter((permission) => !PROTECTED_PERMISSIONS.includes(permission) && !ASSIGNED_INDIVIDUALLY.includes(permission));
     assert.deepEqual([...ROLE_PERMISSIONS.facility_admin].sort(), [...roleGranted].sort());
+    for (const permission of ASSIGNED_INDIVIDUALLY) assert.ok((AssignablePermission.options as readonly string[]).includes(permission), permission);
   });
 
   /** Only the person a PIN setup code was issued for may claim it (SCHEMA.md §10). */
@@ -79,9 +88,9 @@ describe('role permissions', () => {
     }
   });
 
-  /** The cashier takes money and records no care (PRD §9.13.4). */
-  it('lets the cashier take payments and nothing else', () => {
-    assert.deepEqual([...permissionsFor('cashier', 'read_write')], ['payment:receive']);
+  /** The cashier takes money and records no care (PRD §9.13.4); v14 adds recording a permitted self-pay choice at the till. */
+  it('lets the cashier take payments and record a permitted self-pay choice, and nothing else', () => {
+    assert.deepEqual([...permissionsFor('cashier', 'read_write')], ['payment:receive', 'coverage:elect_self_pay']);
   });
 
   /** Booking raises the visit's fees in the same save, so whoever may book may raise them (PRD §9.13.3). */

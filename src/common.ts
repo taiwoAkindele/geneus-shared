@@ -104,6 +104,13 @@ export const DocType = z.enum([
   'answer_list',
   'standard_test',
   'standard_template',
+  'refund',
+  'payer',
+  'cover_schedule',
+  'patient_cover',
+  'cover_check',
+  'coverage_election',
+  'coverage_allocation',
 ]);
 export type DocType = z.infer<typeof DocType>;
 
@@ -141,6 +148,10 @@ export const RECEIPT_NUMBER_RE = /^[A-Z0-9]+(?:-[A-Z0-9]+)*-R-\d{6}-[A-Z0-9]{2}$
 export const receiptNumber = z
   .string()
   .regex(RECEIPT_NUMBER_RE, 'Expected a receipt number like OOE-PHC-R-000123-K2');
+
+/** A refund voucher: FACILITYCODE-F-SEQ. Minted by the server, online, so it needs no safety code. */
+export const REFUND_NUMBER_RE = /^[A-Z0-9]+(?:-[A-Z0-9]+)*-F-\d{6}$/;
+export const refundNumber = z.string().regex(REFUND_NUMBER_RE, 'Expected a refund number like OOE-PHC-F-000012');
 
 /* ------------------------------------------------------------------ */
 /* The record envelope                                                 */
