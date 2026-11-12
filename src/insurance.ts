@@ -70,14 +70,19 @@ export const isSupportedArrangement = (arrangement: Arrangement): arrangement is
 const basisPoints = z.number().int().min(0).max(10_000);
 
 /**
- * Co-payment per unit of service. Version 1 applies both kinds per unit, so a
- * charge for 3 units owes 3 × the per-unit co-pay; a co-pay that must apply
- * once per visit or claim is a later calculation version, not an approximation.
+ * What a fixed co-payment is charged against, exactly as the contract states it.
+ * Calculation version 1 calculates only `per_unit` (3 units owe 3 × the amount).
+ * A co-pay once per charge, dispense, visit or claim is recorded as such and
+ * leaves the charge undetermined — it is never approximated as per unit.
  */
+export const FixedCopayBasis = z.enum(['per_unit', 'per_charge', 'per_dispense', 'per_visit', 'per_claim']);
+export type FixedCopayBasis = z.infer<typeof FixedCopayBasis>;
+
+/** A percentage applies to the tariff of the units supplied, so it needs no basis. */
 export const Copay = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('none') }),
   z.strictObject({ kind: z.literal('percent'), basisPoints }),
-  z.strictObject({ kind: z.literal('fixed'), amountMinor: minorUnits }),
+  z.strictObject({ kind: z.literal('fixed'), amountMinor: minorUnits, basis: FixedCopayBasis }),
 ]);
 export type Copay = z.infer<typeof Copay>;
 
@@ -122,6 +127,12 @@ export const PayerContractTerms = z.strictObject({
   /** Negotiated price per unit, by fee item, with the payer's own service code for claims. */
   tariff: z.record(feeItemKey, z.strictObject({ unitMinor: minorUnits, payerCode: text.max(60).optional() })).default({}),
   plans: z.array(ContractPlan).min(1).max(50),
+  /**
+   * Whether a covered member may choose to pay without their insurance under
+   * this contract. Versioned with the contract, so a choice is judged by the
+   * rule in force on the date of service. Unset: not offered at the till.
+   */
+  selfPayElection: SelfPayElectionRule.optional(),
   note: text.max(2000).optional(),
 }).superRefine((terms, context) => {
   if (terms.effectiveTo && terms.effectiveTo < terms.effectiveFrom) context.addIssue({ code: 'custom', path: ['effectiveTo'], message: 'The contract must end on or after it starts' });
@@ -145,6 +156,10 @@ export const PayerContractVersion = z.strictObject({
   updatedOn: z.string().min(1).optional(),
   activatedBy: z.string().min(1).optional(),
   activatedOn: z.string().min(1).optional(),
+  /** Set once, by ending the contract; never before today, so history is unchanged. */
+  endedOn: z.string().min(1).optional(),
+  endedBy: z.string().min(1).optional(),
+  endReason: z.string().min(1).optional(),
 });
 export type PayerContractVersion = z.infer<typeof PayerContractVersion>;
 export const contractIdFor = (payerId: string) => `contract:${payerId}`;
@@ -172,7 +187,7 @@ export const ScheduleLine = z.discriminatedUnion('status', [
   z.strictObject({ status: z.literal('covered'), arrangement: z.enum(SUPPORTED_ARRANGEMENTS), patient: PatientAmount, approvalRequired: z.boolean() }),
   z.strictObject({ status: z.literal('excluded'), patientLiability: z.enum(['patient_pays', 'not_billable', 'not_configured']) }),
   z.strictObject({ status: z.literal('not_configured'), missing: NotConfiguredPart }),
-  z.strictObject({ status: z.literal('unsupported'), arrangement: z.enum(['per_diem', 'package']) }),
+  z.strictObject({ status: z.literal('unsupported'), feature: z.enum(['per_diem', 'package', 'copay_per_charge', 'copay_per_dispense', 'copay_per_visit', 'copay_per_claim']) }),
 ]);
 export type ScheduleLine = z.infer<typeof ScheduleLine>;
 
@@ -182,7 +197,6 @@ export const Payer = baseEnvelope.extend({
   kind: PayerKind,
   /** Short code staff recognise on a card or list. */
   code: z.string().trim().min(1).max(30),
-  selfPayElection: SelfPayElectionRule.optional(),
   active: z.boolean().default(true),
 });
 export type Payer = z.infer<typeof Payer>;
@@ -199,6 +213,9 @@ export const CoverSchedule = baseEnvelope.extend({
   currency: currencyCode,
   effectiveFrom: isoDate,
   effectiveTo: isoDate.optional(),
+  /** Set once when an administrator ends the contract; services after it are not covered by this schedule. */
+  endedOn: isoDate.optional(),
+  selfPayElection: SelfPayElectionRule.optional(),
   calculationVersion: z.literal(CALCULATION_VERSION),
   items: z.record(feeItemKey, ScheduleLine),
   categories: z.partialRecord(FeeCategory, ScheduleLine),
@@ -298,9 +315,16 @@ export const roundHalfUp = (value: number): number => {
 /** Integer percentage of an integer amount, half up, with no floating-point step. */
 export const percentOf = (amountMinor: number, bp: number): number => Math.floor((amountMinor * bp + 5_000) / 10_000);
 
-/** The per-unit patient amount a co-pay gives on a tariff. Never more than the tariff. */
-export const copayPerUnit = (copay: Copay, unitTariffMinor: number): number =>
-  copay.kind === 'none' ? 0 : copay.kind === 'percent' ? percentOf(unitTariffMinor, copay.basisPoints) : Math.min(copay.amountMinor, unitTariffMinor);
+/** A co-pay calculation version 1 can perform: none, a percentage, or a fixed amount per unit. */
+export const calculableCopay = (copay: Copay): boolean => copay.kind !== 'fixed' || copay.basis === 'per_unit';
+type CopayFeature = 'copay_per_charge' | 'copay_per_dispense' | 'copay_per_visit' | 'copay_per_claim';
+const unsupportedCopay = (copay: Copay): CopayFeature | undefined => (copay.kind === 'fixed' && copay.basis !== 'per_unit' ? (`copay_${copay.basis}` as CopayFeature) : undefined);
+
+/** The per-unit patient amount a co-pay gives on a tariff. Never more than the tariff. Callers check `calculableCopay` first. */
+export const copayPerUnit = (copay: Copay, unitTariffMinor: number): number => {
+  if (!calculableCopay(copay)) throw new Error('This co-pay basis is not calculable in version 1');
+  return copay.kind === 'none' ? 0 : copay.kind === 'percent' ? percentOf(unitTariffMinor, copay.basisPoints) : Math.min(copay.amountMinor, unitTariffMinor);
+};
 
 /** The patient's share of one charge from a schedule line amount. Same formula on device and server. */
 export const patientShareFor = (amount: PatientAmount, units: number, listPriceMinor: number): number => {
@@ -326,8 +350,10 @@ export const scheduleLineFor = (terms: PayerContractTerms, plan: ContractPlan, f
   const { arrangement, rule, tariffMinor } = resolveTerms(terms, plan, feeItemId, category);
   if (rule?.coverage === 'excluded') return { status: 'excluded', patientLiability: rule.patientLiability ?? 'not_configured' };
   if (!arrangement) return { status: 'not_configured', missing: 'arrangement' };
-  if (!isSupportedArrangement(arrangement)) return { status: 'unsupported', arrangement };
+  if (!isSupportedArrangement(arrangement)) return { status: 'unsupported', feature: arrangement };
   if (!rule) return { status: 'not_configured', missing: 'rule' };
+  const copayFeature = unsupportedCopay(rule.copay);
+  if (copayFeature) return { status: 'unsupported', feature: copayFeature };
   const approvalRequired = rule.approvalRequired;
   if (tariffMinor !== undefined) return { status: 'covered', arrangement, approvalRequired, patient: { kind: 'per_unit', amountMinor: copayPerUnit(rule.copay, tariffMinor) } };
   if (arrangement === 'per_service') return { status: 'not_configured', missing: 'tariff' };
@@ -357,10 +383,24 @@ export const buildScheduleLines = (terms: PayerContractTerms, plan: ContractPlan
   return { items, categories };
 };
 
-/** What activation must point out: every place the contract names an arrangement version 1 cannot calculate. */
-export const unsupportedArrangements = (terms: PayerContractTerms): { scope: 'category' | 'item'; key: string; arrangement: Arrangement }[] => [
-  ...Object.entries(terms.arrangements.categories).filter(([, a]) => a && !isSupportedArrangement(a)).map(([key, arrangement]) => ({ scope: 'category' as const, key, arrangement: arrangement! })),
-  ...Object.entries(terms.arrangements.items).filter(([, a]) => !isSupportedArrangement(a)).map(([key, arrangement]) => ({ scope: 'item' as const, key, arrangement })),
+export type UnsupportedTerm = { scope: 'category' | 'item'; key: string; feature: string; planCode?: string };
+/**
+ * What activation must point out by name: every arrangement and every co-pay
+ * basis calculation version 1 cannot calculate. Those services stay undetermined.
+ */
+export const unsupportedArrangements = (terms: PayerContractTerms): UnsupportedTerm[] => [
+  ...Object.entries(terms.arrangements.categories).filter(([, a]) => a && !isSupportedArrangement(a)).map(([key, a]) => ({ scope: 'category' as const, key, feature: a as string })),
+  ...Object.entries(terms.arrangements.items).filter(([, a]) => !isSupportedArrangement(a)).map(([key, a]) => ({ scope: 'item' as const, key, feature: a as string })),
+  ...terms.plans.flatMap((plan) => [
+    ...Object.entries(plan.rules.categories).flatMap(([key, rule]) => {
+      const feature = rule?.coverage === 'covered' ? unsupportedCopay(rule.copay) : undefined;
+      return feature ? [{ scope: 'category' as const, key, feature, planCode: plan.planCode }] : [];
+    }),
+    ...Object.entries(plan.rules.items).flatMap(([key, rule]) => {
+      const feature = rule.coverage === 'covered' ? unsupportedCopay(rule.copay) : undefined;
+      return feature ? [{ scope: 'item' as const, key, feature, planCode: plan.planCode }] : [];
+    }),
+  ]),
 ];
 
 /** Full split of one charge. Every part is a whole minor unit and they sum to the list price. */
@@ -396,6 +436,7 @@ export const computeAllocation = (input: { terms: PayerContractTerms; planCode: 
   if (!arrangement) return { ok: false, reason: 'not_configured', detail: 'arrangement' };
   if (!isSupportedArrangement(arrangement)) return { ok: false, reason: 'unsupported_arrangement', detail: arrangement };
   if (!rule) return { ok: false, reason: 'not_configured', detail: 'rule' };
+  if (!calculableCopay(rule.copay)) return { ok: false, reason: 'unsupported_arrangement', detail: unsupportedCopay(rule.copay) };
   if (units === undefined || !(units > 0)) return { ok: false, reason: 'quantity_unavailable' };
   const list = charge.listPriceMinor;
   if (tariffMinor !== undefined) {
@@ -441,10 +482,11 @@ export const chargeUnits = (charge: Pick<Charge, 'dispenseEntryId'>, dispenseEnt
 /**
  * The calendar date of service in the facility's time zone. Cover and checks
  * are dated by staff in local dates, so UTC would move late-night services to
- * the wrong day. Without a recorded time zone, UTC is used and said so.
+ * the wrong day. Without a recorded time zone there is no insurance service
+ * date: the caller gets `undefined`, never a UTC guess.
  */
-export const serviceDateOf = (createdOn: string, timeZone: string | undefined): string =>
-  new Intl.DateTimeFormat('en-CA', { timeZone: timeZone ?? 'UTC', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(createdOn));
+export const serviceDateOf = (createdOn: string, timeZone: string | undefined): string | undefined =>
+  timeZone ? new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(createdOn)) : undefined;
 
 /* ------------------------------------------------------------------ */
 /* Estimating one charge — the same on device and server              */
@@ -453,7 +495,7 @@ export const serviceDateOf = (createdOn: string, timeZone: string | undefined): 
 export const UndeterminedReason = z.enum([
   'cover_not_checked', 'check_pending', 'not_eligible', 'choose_cover', 'not_configured',
   'unsupported_arrangement', 'quantity_unavailable', 'not_billable_to_patient', 'exclusion_liability_not_configured',
-  'excluded_patient_pays',
+  'excluded_patient_pays', 'facility_timezone_missing', 'self_pay_not_permitted',
 ]);
 export type UndeterminedReason = z.infer<typeof UndeterminedReason>;
 
@@ -494,8 +536,21 @@ export const coversOn = (patientId: string, date: string, covers: readonly Patie
 /** The schedule in force: the highest active version of the payer's contract that has started and not ended. */
 export const scheduleOn = (payerId: string, plan: string, date: string, schedules: readonly CoverSchedule[]): CoverSchedule | undefined =>
   schedules
-    .filter((s) => s.payerId === payerId && s.planCode === plan && s.effectiveFrom <= date && (!s.effectiveTo || date <= s.effectiveTo))
+    .filter((s) => s.payerId === payerId && s.planCode === plan && s.effectiveFrom <= date && (!s.effectiveTo || date <= s.effectiveTo) && (!s.endedOn || date < s.endedOn))
     .sort((a, b) => b.contractVersion - a.contractVersion)[0];
+
+/**
+ * Whether a recorded self-pay choice is permitted on its date of service. A
+ * "not eligible" choice rests on the cited check. A member's own choice rests on
+ * the contract version in force that day: only `allowed` permits it.
+ */
+export const selfPayPermitted = (election: CoverageElection, cover: PatientCover, serviceDate: string, records: Pick<CoverageRecords, 'checks' | 'schedules'>): boolean => {
+  if (election.reason === 'not_eligible') {
+    const check = records.checks.find((c) => c.id === election.coverCheckId);
+    return Boolean(check && check.coverId === cover.id && check.result === 'not_eligible' && check.coversFrom <= serviceDate && serviceDate <= check.coversTo);
+  }
+  return scheduleOn(cover.payerId, cover.planCode, serviceDate, records.schedules)?.selfPayElection === 'allowed';
+};
 
 /**
  * Resolves one charge, in a fixed order: exemption, confirmed snapshot,
@@ -505,21 +560,27 @@ export const scheduleOn = (payerId: string, plan: string, date: string, schedule
 export const estimateCoverage = (input: {
   charge: Pick<Charge, 'id' | 'patientId' | 'feeItemId' | 'category' | 'listPriceMinor' | 'amountMinor' | 'currency' | 'createdOn' | 'dispenseEntryId'>;
   records: CoverageRecords;
-  serviceDate: string;
+  serviceDate: string | undefined;
   units: number | undefined;
 }): CoverageEstimate => {
-  const { charge, records, serviceDate } = input;
+  const { charge, records } = input;
   if (charge.amountMinor === 0) return { state: 'exempt' };
   const confirmed = currentAllocation(charge.id, records.allocations);
   if (confirmed) return confirmed.state === 'finalised' ? { state: 'finalised', allocation: confirmed } : { state: 'self_pay_confirmed', allocation: confirmed };
 
+  const allCovers = records.covers.filter((c) => c.patientId === charge.patientId);
+  if (!input.serviceDate) return allCovers.length ? { state: 'undetermined', reason: 'facility_timezone_missing' } : { state: 'self_pay' };
+  const serviceDate = input.serviceDate;
   const valid = coversOn(charge.patientId, serviceDate, records.covers);
   const elections = records.elections.filter((e) => e.patientId === charge.patientId && e.chargeIds.includes(charge.id)).sort(byNewest);
   const selfPay = elections.find((e) => e.kind === 'self_pay');
-  const allCovers = records.covers.filter((c) => c.patientId === charge.patientId);
   if (selfPay) {
     const cover = allCovers.find((c) => c.id === selfPay.coverId);
-    if (cover) return { state: 'self_pay_elected', election: selfPay, cover };
+    if (cover) {
+      // A recorded choice always stays on record; it counts only while the rule in force on the date of service permits it.
+      if (selfPayPermitted(selfPay, cover, serviceDate, records)) return { state: 'self_pay_elected', election: selfPay, cover };
+      return { state: 'undetermined', reason: 'self_pay_not_permitted', cover };
+    }
   }
   if (!valid.length) return { state: 'self_pay' };
   const chosen = elections.find((e) => e.kind === 'use_cover' && valid.some((c) => c.id === e.coverId));
@@ -537,7 +598,7 @@ export const estimateCoverage = (input: {
   const line = schedule.items[charge.feeItemId] ?? schedule.categories[charge.category];
   if (!line) return { state: 'undetermined', reason: 'not_configured', detail: 'rule', cover, check, schedule };
   if (line.status === 'not_configured') return { state: 'undetermined', reason: 'not_configured', detail: line.missing, cover, check, schedule };
-  if (line.status === 'unsupported') return { state: 'undetermined', reason: 'unsupported_arrangement', detail: line.arrangement, cover, check, schedule };
+  if (line.status === 'unsupported') return { state: 'undetermined', reason: 'unsupported_arrangement', detail: line.feature, cover, check, schedule };
   if (line.status === 'excluded') {
     if (line.patientLiability === 'patient_pays') return { state: 'not_covered', cover, check, schedule };
     return { state: 'undetermined', reason: line.patientLiability === 'not_billable' ? 'not_billable_to_patient' : 'exclusion_liability_not_configured', cover, check, schedule };
