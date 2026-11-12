@@ -34,6 +34,7 @@ export * from './facilitySync.ts';
 export * from './facilityValidation.ts';
 export * from './facilityAuthorization.ts';
 export * from './facilityProjection.ts';
+export * from './insurance.ts';
 
 import { Location, ServiceDefinition, ServiceOffering, PractitionerProfile, Credential, CapabilityDecision,
   ReviewerDelegation, ClinicalAuthorityBootstrap, ExternalClinicalReviewer, AuthoritySnapshot,
@@ -44,6 +45,7 @@ import { InpatientEvent, BedReadyEvent } from './inpatient.ts';
 import { WardCareEvent } from './wardCare.ts';
 import { LibraryDocument, VisitDocument } from './clinicalDocuments.ts';
 import { ResultTemplate, ResultPartDefinition, AnswerList, StandardTest, StandardTemplate } from './resultTemplates.ts';
+import { Payer, CoverSchedule, PatientCover, CoverCheck, CoverageElection, CoverageAllocation } from './insurance.ts';
 
 import {
   Patient,
@@ -72,6 +74,7 @@ import {
   BillingAdjustment,
   IncomingTransfer,
   BillingDepartment,
+  Refund,
 } from './documents.ts';
 
 /**
@@ -115,6 +118,7 @@ export const AnyDocument = z.union([
   BillingAdjustment,
   IncomingTransfer,
   BillingDepartment,
+  Refund, Payer, CoverSchedule, PatientCover, CoverCheck, CoverageElection, CoverageAllocation,
 ]);
 export type AnyDocument = z.infer<typeof AnyDocument>;
 
@@ -159,6 +163,8 @@ export const SCHEMA_BY_TYPE = {
   billing_adjustment: BillingAdjustment,
   incoming_transfer: IncomingTransfer,
   billing_department: BillingDepartment,
+  refund: Refund, payer: Payer, cover_schedule: CoverSchedule, patient_cover: PatientCover,
+  cover_check: CoverCheck, coverage_election: CoverageElection, coverage_allocation: CoverageAllocation,
 } as const satisfies Record<DocType, z.ZodType>;
 
 /**

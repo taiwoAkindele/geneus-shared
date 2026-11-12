@@ -11,7 +11,7 @@ describe('staff login access', () => {
     assert.equal(Staff.safeParse({ ...staff, loginAccess: 'admin' }).success, false);
   });
   it('does not grant more capabilities when 24-hour access is assigned', () => {
-    assert.deepEqual(staffPermissions(Staff.parse({ ...staff, loginAccess: 'always' })), ['payment:receive']);
+    assert.deepEqual(staffPermissions(Staff.parse({ ...staff, loginAccess: 'always' })), ['payment:receive', 'coverage:elect_self_pay']);
     assert.deepEqual(staffPermissions(Staff.parse({ ...staff, loginAccess: 'always', permission: 'read_only' })), []);
   });
 });

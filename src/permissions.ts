@@ -18,6 +18,8 @@ import { type ClinicalAction } from './facilityTypes.ts';
  * Bump when the matrix or the policy windows change. Devices carry the version
  * they authorised against, so a stale device is visible at sync rather than
  * silently applying yesterday's rules.
+ * v14: insurance — the insurance officer role, cover records and checks, self-pay
+ *      elections, confirming splits, contract access, and refunds.
  * v13: managing lab result templates, granted to administrators and assignable to lab staff.
  * v12: explicit medical-history read access, separate from patient details and writes.
  * v11: explicit admission/bed-management permission for hospital clinical staff.
@@ -29,7 +31,7 @@ import { type ClinicalAction } from './facilityTypes.ts';
  * v5: combined staff roles and individually assigned permissions.
  * v4: billing — the cashier role, fees, charges, payments, waivers, reversals.
  */
-export const POLICY_VERSION = 13 as const;
+export const POLICY_VERSION = 14 as const;
 export const READ_PERMISSIONS: readonly Permission[] = ['patient_chart:read'];
 export const canReadPatientChart = (context: Pick<AuthorizationContext, 'permissions'>): boolean => context.permissions.includes('patient_chart:read');
 
@@ -72,14 +74,25 @@ const FRONT_DESK: readonly Permission[] = [
   'charge:create',
   'register_entry:create',
   'register_definition:publish',
+  'cover:record',
+  'cover:verify',
+  'coverage:elect_self_pay',
   'sync_rejection:resolve',
 ];
 
 /** Takes money and records no care (PRD §9.13.4). */
-const CASHIER: readonly Permission[] = ['payment:receive'];
+const CASHIER: readonly Permission[] = ['payment:receive', 'coverage:elect_self_pay'];
 
 /** Cancelling what is owed, or a payment already taken, is a supervisor's decision (PRD §9.13.4). */
-const BILLING_OVERSIGHT: readonly Permission[] = ['payment:waive', 'payment:reverse'];
+const BILLING_OVERSIGHT: readonly Permission[] = ['payment:waive', 'payment:reverse', 'payment:refund'];
+
+/**
+ * Payer contracts and confirming insurance splits. Activating a contract is
+ * deliberately not here: it is an administrator's separate step.
+ */
+const INSURANCE_OFFICER: readonly Permission[] = [
+  'insurance_contract:read', 'insurance_contract:manage', 'cover:record', 'cover:verify', 'coverage:elect_self_pay', 'coverage:confirm',
+];
 
 /**
  * Granted by no role and never individually assignable. PIN claims use the
@@ -101,6 +114,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   supervisor: [...CLINICAL, 'admission:manage', 'referral:update', 'roster:extend', ...BILLING_OVERSIGHT],
   records_officer: FRONT_DESK,
   cashier: CASHIER,
+  insurance_officer: INSURANCE_OFFICER,
   // Explicitly reviewed v10 list: future permission additions must not auto-escalate administrators.
   facility_admin: [...new Set<Permission>([
     ...CLINICAL, ...FRONT_DESK, ...CASHIER, ...BILLING_OVERSIGHT,
@@ -108,6 +122,8 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'staff_assignment:manage', 'service_session:manage', 'work_ownership:manage',
     'stock_item:manage', 'fee_item:manage', 'staff:manage', 'staff:permission', 'staff:deactivate',
     'roster:assign', 'roster:extend', 'device:enroll', 'device:revoke',
+    // v14: activation only; reading and editing contracts and confirming splits are assigned individually.
+    'insurance_contract:activate',
   ])],
   laboratory_staff: ['patient_chart:read', 'patient:update', 'encounter:record', 'handoff:update', 'work_ownership:claim', 'service_session:operate',
     'clinical:collect_specimen', 'clinical:perform_test', 'clinical:record_result', 'clinical:verify_result', 'clinical:release_result'],

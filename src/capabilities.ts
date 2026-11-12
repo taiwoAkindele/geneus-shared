@@ -29,6 +29,16 @@ export const Permission = z.enum([
   'payment:receive',
   'payment:waive',
   'payment:reverse',
+  /** Money handed back from a credit; online, server-verified staff only. */
+  'payment:refund',
+  // Insurance (PRODUCT.md §7.10). Contract access is never implied by seniority.
+  'insurance_contract:read',
+  'insurance_contract:manage',
+  'insurance_contract:activate',
+  'cover:record',
+  'cover:verify',
+  'coverage:elect_self_pay',
+  'coverage:confirm',
   // Facility configuration
   'register_definition:publish',
   'unit:manage',

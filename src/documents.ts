@@ -20,6 +20,7 @@ import {
   isoDateTime,
   patientId,
   receiptNumber,
+  refundNumber,
   Sex,
   Setting,
 } from './common.ts';
@@ -524,6 +525,8 @@ export const Role = z.enum([
   'supervisor',
   /** Takes patients' payments (PRD §9.13.4); records no care. */
   'cashier',
+  /** Payer contracts, cover checks and confirming insurance splits; records no care. */
+  'insurance_officer',
   /** Access duties only; neither role establishes a professional qualification. */
   'laboratory_staff',
   'pharmacy_staff',
@@ -1115,6 +1118,31 @@ export const Payment = baseEnvelope
     }
   });
 export type Payment = z.infer<typeof Payment>;
+
+/**
+ * Money handed back to a patient from a credit on their account. Written only
+ * by the server (POST /billing/refunds), online, after checking each charge's
+ * credit under a lock, so two staff can never refund the same credit twice.
+ * Insert-only. The payments it refunds stay exactly as they were received; a
+ * reversal remains the record of a payment taken in error.
+ */
+export const RefundMethod = z.enum(['cash', 'transfer', 'pos']);
+export const Refund = baseEnvelope.extend({
+  type: z.literal('refund'),
+  patientId,
+  refundNumber,
+  method: RefundMethod,
+  amountMinor: minorUnits.positive(),
+  currency: currencyCode,
+  allocations: z.array(PaymentAllocation).min(1),
+  reason: text,
+  reference: text.optional(),
+}).superRefine((refund, context) => {
+  if (refund.allocations.reduce((sum, a) => sum + a.amountMinor, 0) !== refund.amountMinor) context.addIssue({ code: 'custom', path: ['allocations'], message: 'A refund must be allocated to charges in full' });
+  const ids = refund.allocations.map((a) => a.chargeId);
+  if (new Set(ids).size !== ids.length) context.addIssue({ code: 'custom', path: ['allocations'], message: 'Refund each charge once' });
+});
+export type Refund = z.infer<typeof Refund>;
 
 /** Append-only reduction: original price and approval remain visible. */
 export const BillingAdjustment = baseEnvelope.extend({
