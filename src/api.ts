@@ -177,6 +177,11 @@ export const DeviceRevocationRequest = z.object({
   revokedBy: z.string().min(1),
   /** True asks the device to drop its local replica on next contact. */
   wipe: z.boolean().default(true),
+  /**
+   * Required when the device last reported changes it had not yet sent: revoking it means
+   * that work never arrives, so the administrator accepts that by name, never silently.
+   */
+  acceptUnsentWork: z.boolean().optional(),
 });
 export type DeviceRevocationRequest = z.infer<typeof DeviceRevocationRequest>;
 
