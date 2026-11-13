@@ -485,8 +485,14 @@ export const chargeUnits = (charge: Pick<Charge, 'dispenseEntryId'>, dispenseEnt
  * the wrong day. Without a recorded time zone there is no insurance service
  * date: the caller gets `undefined`, never a UTC guess.
  */
-export const serviceDateOf = (createdOn: string, timeZone: string | undefined): string | undefined =>
-  timeZone ? new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(createdOn)) : undefined;
+const dateFormats = new Map<string, Intl.DateTimeFormat>();
+export const serviceDateOf = (createdOn: string, timeZone: string | undefined): string | undefined => {
+  if (!timeZone) return undefined;
+  // Building a formatter is far costlier than using one; billing dates thousands of charges at a time.
+  let format = dateFormats.get(timeZone);
+  if (!format) { format = new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }); dateFormats.set(timeZone, format); }
+  return format.format(new Date(createdOn));
+};
 
 /* ------------------------------------------------------------------ */
 /* Estimating one charge — the same on device and server              */
@@ -636,3 +642,27 @@ export const patientResponsibility = (charge: Pick<Charge, 'amountMinor'>, estim
  */
 export const isRoutine = (estimate: CoverageEstimate, paidMinor: number): boolean =>
   estimate.state === 'estimated' && !estimate.election && !estimate.line.approvalRequired && paidMinor <= estimate.patientShareMinor;
+
+/**
+ * Groups coverage records by patient once, so estimating many charges costs
+ * one pass over the records plus one small lookup per charge — never every
+ * record for every charge. Schedules are shared by all patients.
+ */
+export const indexCoverageRecords = (records: CoverageRecords): ((patientId: string) => CoverageRecords) => {
+  const group = <T extends { patientId: string }>(items: readonly T[]) => {
+    const map = new Map<string, T[]>();
+    for (const item of items) { const list = map.get(item.patientId); if (list) list.push(item); else map.set(item.patientId, [item]); }
+    return map;
+  };
+  const covers = group(records.covers), checks = group(records.checks), elections = group(records.elections), allocations = group(records.allocations);
+  const empty: never[] = [];
+  const cache = new Map<string, CoverageRecords>();
+  return (patientId) => {
+    let found = cache.get(patientId);
+    if (!found) {
+      found = { covers: covers.get(patientId) ?? empty, checks: checks.get(patientId) ?? empty, elections: elections.get(patientId) ?? empty, allocations: allocations.get(patientId) ?? empty, schedules: records.schedules };
+      cache.set(patientId, found);
+    }
+    return found;
+  };
+};
