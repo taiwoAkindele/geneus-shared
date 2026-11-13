@@ -281,6 +281,8 @@ export const SyncTokenResponse = z.object({
   insuranceWorkflowVersion: z.literal(1).optional(),
   /** True only while the hospital's insurance billing is active; setup never changes a bill. */
   insuranceBillingActive: z.boolean().optional(),
+  /** When insurance billing was active; a charge is judged against cover only inside one of these. */
+  insuranceBillingPeriods: z.array(z.strictObject({ from: z.string().min(1), to: z.string().min(1).optional() })).max(200).optional(),
 });
 export type SyncTokenResponse = z.infer<typeof SyncTokenResponse>;
 

@@ -696,6 +696,8 @@ export const indexCoverageRecords = (records: CoverageRecords): ((patientId: str
 export const InsuranceDocumentType = z.enum([
   'contract', 'tariff_schedule', 'benefit_schedule', 'authorization_policy', 'claim_template',
   'referral_form', 'remittance_advice', 'enrollee_roster', 'other',
+  // Claim evidence (Milestone 3): kept with the payer, attached to claims only by a person's choice.
+  'authorization_evidence', 'referral_letter', 'submission_evidence', 'acknowledgement',
 ]);
 export type InsuranceDocumentType = z.infer<typeof InsuranceDocumentType>;
 export const DocumentVerification = z.enum(['unverified', 'verified', 'rejected']);
@@ -742,6 +744,13 @@ export const SubmissionProfile = z.strictObject({
   deadlineDays: z.number().int().positive().max(730).optional(),
   claimFormat: ClaimFormat.optional(),
   requiredAttachments: z.array(InsuranceDocumentType.or(text.max(100))).max(20).default([]),
+  /**
+   * What diagnosis this payer's claims need. `coded_icd10` (the default) never passes until a verified
+   * ICD-10 catalogue is in place; `free_text` only where the payer has said it accepts written diagnoses.
+   */
+  diagnosisRequirement: z.enum(['coded_icd10', 'free_text', 'not_required']).default('coded_icd10'),
+  /** Every claim needs a recorded, approved referral for the patient. */
+  referralRequired: z.boolean().default(false),
 }).superRefine((profile, context) => {
   if (profile.channel === 'portal' && !profile.portalUrl) context.addIssue({ code: 'custom', path: ['portalUrl'], message: 'Give the portal address' });
   if (profile.channel === 'email' && !profile.recipient) context.addIssue({ code: 'custom', path: ['recipient'], message: 'Give the approved claims email address' });
@@ -824,4 +833,22 @@ export const TariffImport = z.strictObject({
   }
 });
 export type TariffImport = z.infer<typeof TariffImport>;
-export type TariffImportResult = { contractVersionId: string; version: number; revision: number; added: number; changed: number; unchanged: number; removed: number };
+/** `payloadSha256` is the server's own checksum of the validated rows it applied; the file checksum in the request is only what the browser reported. */
+export type TariffImportResult = { contractVersionId: string; version: number; revision: number; added: number; changed: number; unchanged: number; removed: number; payloadSha256?: string };
+
+/* ------------------------------------------------------------------ */
+/* Billing periods (activation effective dates)                        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A span during which insurance billing was active. A charge is judged
+ * against cover only when it was raised inside one, whatever the hospital's
+ * state now: activation never reclassifies earlier cash charges, and turning
+ * billing off never strips cover from charges raised while it was on.
+ */
+export const InsuranceBillingPeriod = z.strictObject({ from: z.string().min(1), to: z.string().min(1).optional() });
+export type InsuranceBillingPeriod = z.infer<typeof InsuranceBillingPeriod>;
+export const inBillingPeriod = (at: string, periods: readonly InsuranceBillingPeriod[]): boolean => {
+  const t = Date.parse(at);
+  return Number.isFinite(t) && periods.some((p) => Date.parse(p.from) <= t && (!p.to || t < Date.parse(p.to)));
+};
