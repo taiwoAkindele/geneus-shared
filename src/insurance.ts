@@ -32,6 +32,17 @@ const text = z.string().trim().min(1);
 
 /** Negotiated with devices and the server, like the pharmacy and ward-care workflows. */
 export const INSURANCE_WORKFLOW_VERSION = 1 as const;
+/**
+ * A hospital's insurance state. `setup` lets authorised staff prepare payers,
+ * contracts, documents, imports and submission settings without changing a
+ * single patient balance. Only `active` applies cover to bills, and only an
+ * operator moves a hospital there, after the server's readiness checks.
+ * Leaving `active` keeps every confirmed obligation (confirmed splits stay).
+ */
+export const InsuranceState = z.enum(['off', 'setup', 'active']);
+export type InsuranceState = z.infer<typeof InsuranceState>;
+export const insuranceConfigurable = (state: InsuranceState | undefined) => state === 'setup' || state === 'active';
+
 /** Insurance records a device may upload; every other insurance record is server-written. */
 export const INSURANCE_UPLOAD_TYPES = ['patient_cover', 'cover_check', 'coverage_election'] as const;
 /**
@@ -568,11 +579,18 @@ export const estimateCoverage = (input: {
   records: CoverageRecords;
   serviceDate: string | undefined;
   units: number | undefined;
+  /**
+   * Whether insurance billing is active for the hospital. While it is not
+   * (setup, or after deactivation) cover never changes a bill — but a split
+   * already confirmed stays: it is an obligation the hospital agreed.
+   */
+  billingActive: boolean;
 }): CoverageEstimate => {
   const { charge, records } = input;
   if (charge.amountMinor === 0) return { state: 'exempt' };
   const confirmed = currentAllocation(charge.id, records.allocations);
   if (confirmed) return confirmed.state === 'finalised' ? { state: 'finalised', allocation: confirmed } : { state: 'self_pay_confirmed', allocation: confirmed };
+  if (!input.billingActive) return { state: 'self_pay' };
 
   const allCovers = records.covers.filter((c) => c.patientId === charge.patientId);
   if (!input.serviceDate) return allCovers.length ? { state: 'undetermined', reason: 'facility_timezone_missing' } : { state: 'self_pay' };
@@ -666,3 +684,144 @@ export const indexCoverageRecords = (records: CoverageRecords): ((patientId: str
     return found;
   };
 };
+
+/* ------------------------------------------------------------------ */
+/* Supporting documents and submission settings — server-held          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Evidence a hospital keeps for a payer. Optional: a contract can be set up by
+ * hand without any of them. A document is evidence, never configuration.
+ */
+export const InsuranceDocumentType = z.enum([
+  'contract', 'tariff_schedule', 'benefit_schedule', 'authorization_policy', 'claim_template',
+  'referral_form', 'remittance_advice', 'enrollee_roster', 'other',
+]);
+export type InsuranceDocumentType = z.infer<typeof InsuranceDocumentType>;
+export const DocumentVerification = z.enum(['unverified', 'verified', 'rejected']);
+
+/** The metadata staff send with an upload; the server adds identity, version and checksums. */
+export const InsuranceDocumentUpload = z.strictObject({
+  payerId: z.string().min(1),
+  documentType: InsuranceDocumentType,
+  title: text.max(200),
+  fileName: text.max(200),
+  /** A new version of an earlier document of the same payer and type. */
+  replaces: z.string().min(1).optional(),
+  effectiveFrom: isoDate.optional(),
+  notes: text.max(2000).optional(),
+});
+export type InsuranceDocumentUpload = z.infer<typeof InsuranceDocumentUpload>;
+
+export const InsuranceDocument = InsuranceDocumentUpload.extend({
+  id: z.string().min(1),
+  mimeType: z.string().min(1),
+  byteSize: z.number().int().positive(),
+  sha256: z.string().regex(/^[a-f0-9]{64}$/),
+  version: z.number().int().positive(),
+  verification: DocumentVerification,
+  verifiedBy: z.string().min(1).optional(),
+  verifiedOn: z.string().min(1).optional(),
+  verificationNote: text.max(1000).optional(),
+  uploadedBy: z.string().min(1),
+  uploadedOn: z.string().min(1),
+});
+export type InsuranceDocument = z.infer<typeof InsuranceDocument>;
+
+/** How a payer's claims leave the hospital. Only manual submission exists today. */
+export const SubmissionMethod = z.enum(['manual', 'direct']);
+export const SubmissionChannel = z.enum(['portal', 'email', 'physical', 'other']);
+export const ClaimFormat = z.enum(['csv', 'xlsx', 'pdf']);
+export const SubmissionProfile = z.strictObject({
+  method: SubmissionMethod,
+  channel: SubmissionChannel,
+  portalUrl: z.url().max(500).optional(),
+  recipient: text.max(200).optional(),
+  instructions: text.max(2000).optional(),
+  /** Days after the service by which claims must reach the payer — as the contract states it, never defaulted. */
+  deadlineDays: z.number().int().positive().max(730).optional(),
+  claimFormat: ClaimFormat.optional(),
+  requiredAttachments: z.array(InsuranceDocumentType.or(text.max(100))).max(20).default([]),
+}).superRefine((profile, context) => {
+  if (profile.channel === 'portal' && !profile.portalUrl) context.addIssue({ code: 'custom', path: ['portalUrl'], message: 'Give the portal address' });
+  if (profile.channel === 'email' && !profile.recipient) context.addIssue({ code: 'custom', path: ['recipient'], message: 'Give the approved claims email address' });
+});
+export type SubmissionProfile = z.infer<typeof SubmissionProfile>;
+export const StoredSubmissionProfile = z.strictObject({ payerId: z.string().min(1), profile: SubmissionProfile, revision: z.number().int().positive(), updatedBy: z.string().min(1), updatedOn: z.string().min(1) });
+export type StoredSubmissionProfile = z.infer<typeof StoredSubmissionProfile>;
+
+/** What a hospital still needs before insurance billing can be switched on, as the server sees it. */
+export type InsuranceSetupItem = { kind: string; ok: boolean; detail?: string; requiredFor: 'billing' | 'claims' | 'optional' };
+export type InsuranceSetupStatus = { state: InsuranceState; timeZone?: string; items: InsuranceSetupItem[] };
+
+/* ------------------------------------------------------------------ */
+/* Spreadsheet import (Milestone 2)                                    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * What a saved column mapping imports. Mapping is generic: each kind names its
+ * own fields, and a template remembers which column held each field for a
+ * given sheet layout, so the next file in the same layout maps itself.
+ */
+export const ImportKind = z.enum(['contract_tariff']);
+export type ImportKind = z.infer<typeof ImportKind>;
+export const IMPORT_LIMITS = { maxFileBytes: 5 * 1024 * 1024, maxRows: 5000, maxColumns: 60, maxCellChars: 1000, maxSheets: 30 } as const;
+
+const headerCell = z.string().max(200);
+export const ImportTemplateSave = z.strictObject({
+  kind: ImportKind,
+  payerId: z.string().min(1).optional(),
+  name: text.max(120),
+  /** The header row's cells, normalised, so a later file in the same layout is recognised. */
+  headers: z.array(headerCell).max(IMPORT_LIMITS.maxColumns),
+  headerRow: z.number().int().min(0).max(50),
+  /** Field key → zero-based column index. */
+  mapping: z.record(z.string().min(1).max(60), z.number().int().min(0).max(IMPORT_LIMITS.maxColumns - 1)),
+  expectedRevision: z.number().int().positive().optional(),
+});
+export type ImportTemplateSave = z.infer<typeof ImportTemplateSave>;
+export const ImportTemplate = ImportTemplateSave.omit({ expectedRevision: true }).extend({
+  id: z.string().min(1), revision: z.number().int().positive(), updatedBy: z.string().min(1), updatedOn: z.string().min(1),
+});
+export type ImportTemplate = z.infer<typeof ImportTemplate>;
+
+/** Starts with a character a spreadsheet would treat as a formula. Such text is refused as a code. */
+export const formulaLike = (value: string) => /^[=+@\t\r]/.test(value);
+
+/** One priced service from an HMO tariff sheet, already matched to a fee item and confirmed by a person. */
+export const TariffImportLine = z.strictObject({
+  feeItemId: z.string().min(1).max(200),
+  unitMinor: z.number().int().nonnegative().max(100_000_000_000),
+  payerCode: z.string().trim().min(1).max(60).refine((v) => !formulaLike(v), 'A payer code cannot start with =, +, @ or a control character').optional(),
+  /** The 1-based row in the file, for the audit trail and error messages. */
+  sourceRow: z.number().int().positive(),
+});
+export type TariffImportLine = z.infer<typeof TariffImportLine>;
+
+/**
+ * Applies confirmed tariff lines to the payer's draft contract. `merge` keeps
+ * prices the sheet does not mention; `replace` makes the sheet the whole
+ * tariff. The original file is not sent or kept: only its name and checksum.
+ */
+export const TariffImport = z.strictObject({
+  payerId: z.string().min(1),
+  requestKey: z.string().min(8).max(100),
+  expectedRevision: z.number().int().positive().optional(),
+  mode: z.enum(['merge', 'replace']),
+  lines: z.array(TariffImportLine).min(1).max(IMPORT_LIMITS.maxRows),
+  source: z.strictObject({
+    fileName: z.string().trim().min(1).max(255),
+    sha256: z.string().regex(/^[0-9a-f]{64}$/),
+    sheet: z.string().max(100).optional(),
+    rows: z.number().int().nonnegative().max(IMPORT_LIMITS.maxRows),
+    templateId: z.string().min(1).optional(),
+  }),
+}).superRefine((value, context) => {
+  const seen = new Set<string>();
+  for (const [index, line] of value.lines.entries()) {
+    if (seen.has(line.feeItemId)) context.addIssue({ code: 'custom', path: ['lines', index, 'feeItemId'], message: `Row ${line.sourceRow} prices a service already priced by an earlier row` });
+    seen.add(line.feeItemId);
+  }
+});
+export type TariffImport = z.infer<typeof TariffImport>;
+export type TariffImportResult = { contractVersionId: string; version: number; revision: number; added: number; changed: number; unchanged: number; removed: number };

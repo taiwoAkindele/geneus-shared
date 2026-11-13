@@ -279,6 +279,8 @@ export const SyncTokenResponse = z.object({
   documentWorkflowVersion: z.literal(1).optional(),
   resultTemplateWorkflowVersion: z.literal(1).optional(),
   insuranceWorkflowVersion: z.literal(1).optional(),
+  /** True only while the hospital's insurance billing is active; setup never changes a bill. */
+  insuranceBillingActive: z.boolean().optional(),
 });
 export type SyncTokenResponse = z.infer<typeof SyncTokenResponse>;
 

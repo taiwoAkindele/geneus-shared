@@ -38,7 +38,7 @@ const charge = (feeItemId: string, listPriceMinor: number, extra: Partial<Charge
 const cover = (extra: Partial<PatientCover> = {}) => PatientCover.parse({ ...base, type: 'patient_cover', id: 'cover:one', createdOn: at('2026-02-01'), patientId: PATIENT, payerId: 'payer:synthetic-a', planCode: 'GOLD', enrolleeNumber: 'SYN-001', relationship: 'principal', active: true, ...extra });
 const check = (result: CoverCheck['result'], extra: Partial<CoverCheck> = {}) => CoverCheck.parse({ ...base, type: 'cover_check', id: `check:${result}`, createdOn: at('2026-03-10'), patientId: PATIENT, coverId: 'cover:one', method: 'portal', result, coversFrom: '2026-03-10', coversTo: '2026-03-10', ...extra });
 const records = (extra: Partial<CoverageRecords> = {}): CoverageRecords => ({ covers: [cover()], checks: [check('verified')], elections: [], allocations: [], schedules: [schedule(terms())], ...extra });
-const estimate = (c: Charge, r: CoverageRecords = records(), units: number | undefined = 1) => estimateCoverage({ charge: c, records: r, serviceDate: '2026-03-10', units });
+const estimate = (c: Charge, r: CoverageRecords = records(), units: number | undefined = 1) => estimateCoverage({ billingActive: true, charge: c, records: r, serviceDate: '2026-03-10', units });
 
 describe('estimating one charge resolves every state explicitly', () => {
   it('a patient with no cover is billed exactly as today', () => {
@@ -100,7 +100,7 @@ describe('estimating one charge resolves every state explicitly', () => {
   });
   it('an unknown quantity is undetermined, not one unit', () => {
     const c = charge('fee:drug', 1_000, { dispenseEntryId: 'rx:missing' });
-    const e = estimateCoverage({ charge: c, records: records(), serviceDate: '2026-03-10', units: chargeUnits(c) });
+    const e = estimateCoverage({ billingActive: true, charge: c, records: records(), serviceDate: '2026-03-10', units: chargeUnits(c) });
     assert.equal(e.state === 'undetermined' && e.reason, 'quantity_unavailable');
   });
   it('a confirmed snapshot wins over a later estimate, and a recorded self-pay over cover', () => {
@@ -152,8 +152,8 @@ describe('calculation version 1 arithmetic', () => {
   it('chooses the contract version in force on the date of service', () => {
     const v2 = terms({ effectiveFrom: '2026-03-15', tariff: { ...terms().tariff, 'fee:consult': { unitMinor: 5_000 } } });
     const r = records({ schedules: [schedule(terms(), 1), schedule(v2, 2)] });
-    const before = estimateCoverage({ charge: charge('fee:consult', 5_000), records: r, serviceDate: '2026-03-10', units: 1 });
-    const after = estimateCoverage({ charge: charge('fee:consult', 5_000), records: { ...r, checks: [check('verified', { coversFrom: '2026-03-20', coversTo: '2026-03-20' })] }, serviceDate: '2026-03-20', units: 1 });
+    const before = estimateCoverage({ billingActive: true, charge: charge('fee:consult', 5_000), records: r, serviceDate: '2026-03-10', units: 1 });
+    const after = estimateCoverage({ billingActive: true, charge: charge('fee:consult', 5_000), records: { ...r, checks: [check('verified', { coversFrom: '2026-03-20', coversTo: '2026-03-20' })] }, serviceDate: '2026-03-20', units: 1 });
     assert.equal(before.state === 'estimated' && before.patientShareMinor, 400);
     assert.equal(after.state === 'estimated' && after.patientShareMinor, 500);
   });
@@ -194,7 +194,7 @@ describe('the offline schedule reproduces the full calculation exactly', () => {
       const list = 1 + next(60_000);
       const units = pick([1, 1, 2, 3, 0.5, 2.5, 7.25]);
       const c = charge('fee:x', list, { category: 'consultation', id: `charge:gen:${i}` });
-      const e = estimateCoverage({ charge: c, records: records({ schedules: [schedule(t)] }), serviceDate: '2026-03-10', units });
+      const e = estimateCoverage({ billingActive: true, charge: c, records: records({ schedules: [schedule(t)] }), serviceDate: '2026-03-10', units });
       const full = computeAllocation({ terms: t, planCode: 'GOLD', charge: c, units });
       if (e.state === 'estimated') {
         assert.ok(full.ok, `full calculation must succeed when the schedule estimates (case ${i})`);
@@ -232,14 +232,16 @@ describe('terms version 1 cannot calculate stay explicit', () => {
     }
   });
   it('leaves insured charges undetermined when the hospital has no time zone', () => {
-    const e = estimateCoverage({ charge: charge('fee:consult', 5_000), records: records(), serviceDate: undefined, units: 1 });
+    const e = estimateCoverage({ billingActive: true, charge: charge('fee:consult', 5_000), records: records(), serviceDate: undefined, units: 1 });
     assert.equal(e.state === 'undetermined' && e.reason, 'facility_timezone_missing');
-    assert.equal(estimateCoverage({ charge: charge('fee:consult', 5_000), records: records({ covers: [] }), serviceDate: undefined, units: 1 }).state, 'self_pay', 'a cash patient is unaffected');
+    assert.equal(estimateCoverage({ billingActive: true, charge: charge('fee:consult', 5_000), records: records({ covers: [] }), serviceDate: undefined, units: 1 }).state, 'self_pay', 'a cash patient is unaffected');
+    // Setup mode: verified cover is recorded, but no bill changes until insurance billing is active.
+    assert.equal(estimateCoverage({ billingActive: false, charge: charge('fee:consult', 5_000), records: records(), serviceDate: '2026-03-10', units: 1 }).state, 'self_pay', 'setup never changes a bill');
   });
   it('stops a schedule from its end date, without touching earlier services', () => {
     const ended = { ...schedule(terms()), endedOn: '2026-03-10' };
     assert.equal(estimate(charge('fee:consult', 5_000), records({ schedules: [ended] })).state, 'undetermined', 'the end date itself is no longer covered');
-    const before = estimateCoverage({ charge: charge('fee:consult', 5_000), records: { ...records({ schedules: [ended] }), checks: [check('verified', { coversFrom: '2026-03-09', coversTo: '2026-03-09' })] }, serviceDate: '2026-03-09', units: 1 });
+    const before = estimateCoverage({ billingActive: true, charge: charge('fee:consult', 5_000), records: { ...records({ schedules: [ended] }), checks: [check('verified', { coversFrom: '2026-03-09', coversTo: '2026-03-09' })] }, serviceDate: '2026-03-09', units: 1 });
     assert.equal(before.state, 'estimated');
   });
   it('judges a recorded self-pay choice by the contract version in force on the date of service', () => {
@@ -249,7 +251,7 @@ describe('terms version 1 cannot calculate stay explicit', () => {
     const prohibitedV2 = schedule(terms({ selfPayElection: 'not_allowed', effectiveFrom: '2026-03-15' }), 2, '2026-03-15');
     const r = records({ elections: [choice], schedules: [allowedV1, prohibitedV2] });
     assert.equal(estimate(c, r).state, 'self_pay_elected', 'allowed on the 10th under version 1');
-    const later = estimateCoverage({ charge: c, records: r, serviceDate: '2026-03-20', units: 1 });
+    const later = estimateCoverage({ billingActive: true, charge: c, records: r, serviceDate: '2026-03-20', units: 1 });
     assert.equal(later.state === 'undetermined' && later.reason, 'self_pay_not_permitted', 'the same choice is not honoured where version 2 prohibits it');
     assert.equal(r.elections.length, 1, 'the choice itself stays on record');
     const unset = estimate(c, records({ elections: [choice] }));
