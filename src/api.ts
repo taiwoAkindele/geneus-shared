@@ -424,3 +424,21 @@ export const OperatorCodeRequest = z.strictObject({ email: z.email().max(254) })
 export const OperatorLogin = z.strictObject({ email: z.email().max(254), code: z.string().regex(/^\d{6}$/) });
 export type OperatorSession = { token: string; expiresOn: string; operator: { id: string; email: string; name: string } };
 export type OperatorFacility = { id: string; name: string; code: string; insuranceState: 'off' | 'setup' | 'active'; timeZone?: string; openRequest?: { id: string; requestedOn: string } };
+
+/* ------------------------------------------------------------------ */
+/* Server-verified staff sessions                                      */
+/* ------------------------------------------------------------------ */
+
+const staffPin = z.string().regex(/^\d{6}$/, 'A PIN is 6 digits');
+/** Opens a server session for the person signing in on this device, proven by their PIN. */
+export const StaffSessionOpen = z.strictObject({ staffId: z.string().min(1), pin: staffPin });
+/**
+ * Registers a person's PIN with the server for this device. Proven by a PIN
+ * setup code an administrator issued to that person, or by a code sent to the
+ * person's own verified email (for PINs set before server sessions existed).
+ */
+export const StaffPinEnrol = z.strictObject({ staffId: z.string().min(1), pin: staffPin, setupCode: z.string().min(4).max(40).optional(), emailCode: z.string().regex(/^\d{6}$/).optional() })
+  .refine((v) => Boolean(v.setupCode) !== Boolean(v.emailCode), 'Prove it with a PIN setup code or an email code');
+export type StaffSession = { token: string; staffId: string; expiresOn: string; idleMinutes: number };
+/** Configuration saved online: the same mutations as sync, confirmed by the server before they count. */
+export type ConfigurationSaveResponse = { applied: number; duplicates: number; rejected: { table: string; id: string; category: string; reason: string }[] };

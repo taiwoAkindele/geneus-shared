@@ -47,3 +47,24 @@ export type ConfigurationPrecondition = z.infer<typeof ConfigurationPrecondition
 export const configurationRevisionIssues = (expected: number | undefined, current: number | undefined): string[] =>
   !Number.isInteger(expected) || expected! < 1 || expected !== (current ?? 1)
     ? ['Configuration changed or its expected revision is missing; reload before applying this edit'] : [];
+
+/**
+ * Configuration: facility-wide settings saved only online, confirmed by the
+ * server before they count, never queued on a device for later upload.
+ * Daily operations (patients, care, billing transactions) stay offline-first.
+ */
+export const CONFIGURATION_TYPES = [
+  'fee_item', 'billing_department', 'unit', 'location', 'service_definition', 'service_offering', 'practitioner_profile',
+  'credential', 'capability_decision', 'reviewer_delegation', 'staff', 'roster_shift', 'staff_assignment', 'service_session',
+  'stock_item', 'register_definition', 'result_template', 'result_part', 'answer_list',
+] as const;
+
+/** Whether a write is configuration. Extending one's own shift at its end is operational, so it stays offline-capable. */
+export const isConfigurationWrite = (table: string, op: 'put' | 'patch' | 'delete', changedFields: readonly string[] = []): boolean => {
+  if (!(CONFIGURATION_TYPES as readonly string[]).includes(table)) return false;
+  if (table === 'roster_shift' && op === 'patch') {
+    const meaningful = changedFields.filter((field) => !['updatedBy', 'updatedOn', 'id'].includes(field));
+    if (meaningful.length && meaningful.every((field) => field === 'extendedUntil')) return false;
+  }
+  return true;
+};
