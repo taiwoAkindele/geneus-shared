@@ -61,11 +61,11 @@ describe('role permissions', () => {
    * administrator does not hold them by role but may assign them to anyone,
    * themselves included, so a facility can still configure itself alone.
    */
-  const ASSIGNED_INDIVIDUALLY: readonly string[] = ['insurance_contract:read', 'insurance_contract:manage', 'coverage:confirm'];
-  it('gives the facility admin every role-granted permission except duties assigned individually, so a facility can configure itself alone', () => {
-    const roleGranted = Permission.options.filter((permission) => !PROTECTED_PERMISSIONS.includes(permission) && !ASSIGNED_INDIVIDUALLY.includes(permission));
+  // v15: the facility admin performs every function, insurance included, so a facility can run itself alone.
+  it('gives the facility admin every role-granted permission, so a facility can configure and operate itself alone', () => {
+    const roleGranted = Permission.options.filter((permission) => !PROTECTED_PERMISSIONS.includes(permission));
     assert.deepEqual([...ROLE_PERMISSIONS.facility_admin].sort(), [...roleGranted].sort());
-    for (const permission of ASSIGNED_INDIVIDUALLY) assert.ok((AssignablePermission.options as readonly string[]).includes(permission), permission);
+    for (const permission of ['insurance_contract:read', 'insurance_contract:manage', 'coverage:confirm']) assert.ok((AssignablePermission.options as readonly string[]).includes(permission), permission);
   });
 
   /** Only the person a PIN setup code was issued for may claim it (SCHEMA.md §10). */
