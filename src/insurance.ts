@@ -760,8 +760,35 @@ export const StoredSubmissionProfile = z.strictObject({ payerId: z.string().min(
 export type StoredSubmissionProfile = z.infer<typeof StoredSubmissionProfile>;
 
 /** What a hospital still needs before insurance billing can be switched on, as the server sees it. */
-export type InsuranceSetupItem = { kind: string; ok: boolean; detail?: string; requiredFor: 'billing' | 'claims' | 'optional' };
-export type InsuranceSetupStatus = { state: InsuranceState; timeZone?: string; items: InsuranceSetupItem[] };
+/**
+ * One readiness item as facts, not prose: the screen turns them into what is
+ * missing, why it matters, who resolves it and where.
+ */
+export type InsuranceSetupKind = 'time_zone_recorded' | 'payers_added' | 'active_contract' | 'officer_with_verified_email' | 'devices_ready' | 'submission_method_per_payer' | 'contract_document_verified';
+export type DeviceBlockReason = 'no_insurance_support' | 'unsent_changes' | 'not_seen_in_24_hours' | 'never_reported' | 'revoked_with_unsent_changes';
+export type SetupDevice = { deviceId: string; label?: string; reasons: DeviceBlockReason[]; pendingMutationCount?: number; lastReportedOn?: string };
+export type SetupPerson = { staffId: string; name: string; email: 'none' | 'pending' | 'verified' };
+export type InsuranceSetupItem = {
+  kind: InsuranceSetupKind; ok: boolean; requiredFor: 'billing' | 'claims' | 'optional';
+  /** How many exist (payers, active contracts, officers with a verified email). */
+  count?: number;
+  /** Payers this item is still missing for. */
+  payers?: { id: string; name: string }[];
+  /** Staff who hold insurance duties, and whether their email is verified. */
+  people?: SetupPerson[];
+  devices?: SetupDevice[];
+  timeZone?: string;
+};
+
+/** A hospital administrator's request that Geneus switch insurance billing on, and Geneus's decision. */
+export const ActivationRequestStatus = z.enum(['requested', 'approved', 'rejected', 'withdrawn']);
+export type ActivationRequestStatus = z.infer<typeof ActivationRequestStatus>;
+export type InsuranceActivationRequest = {
+  id: string; facilityId: string; status: ActivationRequestStatus; note?: string;
+  requestedBy: string; requestedByName?: string; requestedOn: string;
+  decidedBy?: string; decidedOn?: string; decisionNote?: string;
+};
+export type InsuranceSetupStatus = { state: InsuranceState; timeZone?: string; items: InsuranceSetupItem[]; activation?: InsuranceActivationRequest };
 
 /* ------------------------------------------------------------------ */
 /* Spreadsheet import (Milestone 2)                                    */

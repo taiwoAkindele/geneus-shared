@@ -405,3 +405,22 @@ export const SignedTime = z.object({
   publicKey: z.string().min(1),
 });
 export type SignedTime = z.infer<typeof SignedTime>;
+
+/* ------------------------------------------------------------------ */
+/* Staff email self-service                                            */
+/* ------------------------------------------------------------------ */
+
+/** A member of staff proves an address they own; the code goes to that address. */
+export const OwnEmailCodeRequest = z.strictObject({ staffId: z.string().min(1), email: z.email().max(254) });
+export const OwnEmailConfirm = z.strictObject({ staffId: z.string().min(1), email: z.email().max(254), code: z.string().regex(/^\d{6}$/) });
+export type OwnEmailStatus = { email?: string; verified: boolean; pending?: { id: string; email: string; requestedOn: string } };
+export type StaffEmailRequestView = { id: string; staffId: string; staffName: string; email: string; requestedOn: string; replacing?: string };
+
+/* ------------------------------------------------------------------ */
+/* Geneus platform operators                                           */
+/* ------------------------------------------------------------------ */
+
+export const OperatorCodeRequest = z.strictObject({ email: z.email().max(254) });
+export const OperatorLogin = z.strictObject({ email: z.email().max(254), code: z.string().regex(/^\d{6}$/) });
+export type OperatorSession = { token: string; expiresOn: string; operator: { id: string; email: string; name: string } };
+export type OperatorFacility = { id: string; name: string; code: string; insuranceState: 'off' | 'setup' | 'active'; timeZone?: string; openRequest?: { id: string; requestedOn: string } };
