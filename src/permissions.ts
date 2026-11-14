@@ -18,6 +18,7 @@ import { type ClinicalAction } from './facilityTypes.ts';
  * Bump when the matrix or the policy windows change. Devices carry the version
  * they authorised against, so a stale device is visible at sync rather than
  * silently applying yesterday's rules.
+ * v16: insurance settlement — liability changes on documented grounds, payer remittances, write-offs.
  * v15: facility administrators hold every insurance permission (payers, contracts, confirmation, claims).
  * v14: insurance — the insurance officer role, cover records and checks, self-pay
  *      elections, confirming splits, contract access, and refunds.
@@ -32,7 +33,7 @@ import { type ClinicalAction } from './facilityTypes.ts';
  * v5: combined staff roles and individually assigned permissions.
  * v4: billing — the cashier role, fees, charges, payments, waivers, reversals.
  */
-export const POLICY_VERSION = 15 as const;
+export const POLICY_VERSION = 16 as const;
 export const READ_PERMISSIONS: readonly Permission[] = ['patient_chart:read'];
 export const canReadPatientChart = (context: Pick<AuthorizationContext, 'permissions'>): boolean => context.permissions.includes('patient_chart:read');
 
@@ -93,6 +94,8 @@ const BILLING_OVERSIGHT: readonly Permission[] = ['payment:waive', 'payment:reve
  */
 const INSURANCE_OFFICER: readonly Permission[] = [
   'insurance_contract:read', 'insurance_contract:manage', 'cover:record', 'cover:verify', 'coverage:elect_self_pay', 'coverage:confirm',
+  // v16: recording payer money. Moving a payer's share to the patient and write-offs are not here.
+  'insurance_remittance:record',
 ];
 
 /**
@@ -125,6 +128,8 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'roster:assign', 'roster:extend', 'device:enroll', 'device:revoke',
     // v15: an administrator performs every insurance function, including preparing contracts and confirming splits.
     'insurance_contract:activate', 'insurance_contract:read', 'insurance_contract:manage', 'coverage:confirm',
+    // v16: the separate approvals an insurance officer does not hold.
+    'coverage:approve_liability_change', 'insurance_remittance:record', 'billing:write_off',
   ])],
   laboratory_staff: ['patient_chart:read', 'patient:update', 'encounter:record', 'handoff:update', 'work_ownership:claim', 'service_session:operate',
     'clinical:collect_specimen', 'clinical:perform_test', 'clinical:record_result', 'clinical:verify_result', 'clinical:release_result'],

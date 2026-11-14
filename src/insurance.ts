@@ -698,6 +698,8 @@ export const InsuranceDocumentType = z.enum([
   'referral_form', 'remittance_advice', 'enrollee_roster', 'other',
   // Claim evidence (Milestone 3): kept with the payer, attached to claims only by a person's choice.
   'authorization_evidence', 'referral_letter', 'submission_evidence', 'acknowledgement',
+  // Settlement evidence: the payer's decision letter and dispute correspondence.
+  'payer_decision', 'dispute_correspondence',
 ]);
 export type InsuranceDocumentType = z.infer<typeof InsuranceDocumentType>;
 export const DocumentVerification = z.enum(['unverified', 'verified', 'rejected']);
@@ -734,6 +736,8 @@ export type InsuranceDocument = z.infer<typeof InsuranceDocument>;
 export const SubmissionMethod = z.enum(['manual', 'direct']);
 export const SubmissionChannel = z.enum(['portal', 'email', 'physical', 'other']);
 export const ClaimFormat = z.enum(['csv', 'xlsx', 'pdf']);
+export const DiagnosisRequirement = z.enum(['codes_verified', 'codes_as_entered', 'free_text', 'not_required']);
+export type DiagnosisRequirement = z.infer<typeof DiagnosisRequirement>;
 export const SubmissionProfile = z.strictObject({
   method: SubmissionMethod,
   channel: SubmissionChannel,
@@ -742,13 +746,21 @@ export const SubmissionProfile = z.strictObject({
   instructions: text.max(2000).optional(),
   /** Days after the service by which claims must reach the payer — as the contract states it, never defaulted. */
   deadlineDays: z.number().int().positive().max(730).optional(),
+  /** Days after submission by which the payer should pay, as the contract states it. Without it nothing is called overdue. */
+  paymentDueDays: z.number().int().positive().max(730).optional(),
   claimFormat: ClaimFormat.optional(),
   requiredAttachments: z.array(InsuranceDocumentType.or(text.max(100))).max(20).default([]),
   /**
-   * What diagnosis this payer's claims need. `coded_icd10` (the default) never passes until a verified
-   * ICD-10 catalogue is in place; `free_text` only where the payer has said it accepts written diagnoses.
+   * What diagnosis this payer's claims need, as the payer states it:
+   *   codes_verified   — every code must be found in a diagnosis catalogue the hospital imported under its own licence;
+   *   codes_as_entered — the payer accepts codes as the clinician recorded them; Geneus checks only their format;
+   *   free_text        — the payer accepts written diagnoses;
+   *   not_required.
+   * The strictest is the default. The earlier `coded_icd10` setting reads as `codes_verified`, never weaker.
    */
-  diagnosisRequirement: z.enum(['coded_icd10', 'free_text', 'not_required']).default('coded_icd10'),
+  diagnosisRequirement: z.preprocess((value) => (value === 'coded_icd10' ? 'codes_verified' : value), DiagnosisRequirement).default('codes_verified'),
+  /** The code system the payer's claims use. */
+  diagnosisCodeSystem: z.string().trim().min(1).max(30).default('ICD-10'),
   /** Every claim needs a recorded, approved referral for the patient. */
   referralRequired: z.boolean().default(false),
 }).superRefine((profile, context) => {
@@ -799,7 +811,7 @@ export type InsuranceSetupStatus = { state: InsuranceState; timeZone?: string; i
  * own fields, and a template remembers which column held each field for a
  * given sheet layout, so the next file in the same layout maps itself.
  */
-export const ImportKind = z.enum(['contract_tariff', 'claim_export']);
+export const ImportKind = z.enum(['contract_tariff', 'claim_export', 'diagnosis_catalogue', 'remittance']);
 export type ImportKind = z.infer<typeof ImportKind>;
 export const IMPORT_LIMITS = { maxFileBytes: 5 * 1024 * 1024, maxRows: 5000, maxColumns: 60, maxCellChars: 1000, maxSheets: 30 } as const;
 
@@ -929,7 +941,14 @@ export const currentCompletions = (completions: readonly ServiceCompletion[]): M
   return current;
 };
 
-const CLINICAL_VISIT_ROLES = new Set(['doctor', 'nurse', 'chew', 'clinical_officer', 'supervisor']);
+/**
+ * Who conducts a billable consultation: doctors, and CHEWs who consult in
+ * primary care. A nurse's vitals, triage or an amendment shows the patient
+ * attended, not that a consultation took place.
+ */
+export const CONSULTING_ROLES: readonly Role[] = ['doctor', 'chew'];
+const NOT_CONSULTATION_STEPS = new Set<string>(['vitals', 'amendment', 'dispense', 'lab_results', 'injection']);
+const isConsultationEvidence = (entry: EncounterEntry) => CONSULTING_ROLES.includes(entry.actorRole) && !NOT_CONSULTATION_STEPS.has(entry.step);
 
 /**
  * Classifies how one charge was fulfilled from records both the device and
@@ -953,10 +972,11 @@ export const serviceFulfillment = (charge: Charge, evidence: {
     const result = evidence.results.find((e) => e.step === 'lab_results' && (e.values.results as { orderItemId?: string }[] | undefined)?.some((r) => r.orderItemId === charge.orderItemId));
     if (result) return { kind: 'result', entryId: result.id, on: result.performedOn ?? result.createdOn, by: result.createdBy };
   } else if (!charge.dispenseEntryId && charge.category === 'consultation') {
-    const seen = evidence.visitEntries.find((e) => e.step !== 'amendment' && CLINICAL_VISIT_ROLES.has(e.actorRole));
-    if (seen) return { kind: 'visit', entryId: seen.id, on: seen.createdOn, by: seen.createdBy, role: seen.actorRole };
+    const seen = evidence.visitEntries.find(isConsultationEvidence);
+    if (seen) return { kind: 'visit', entryId: seen.id, on: seen.performedOn ?? seen.createdOn, by: seen.createdBy, role: seen.actorRole };
   }
-  if (c?.status === 'completed') return { kind: 'completion', completionId: c.id, on: c.completedOn, by: c.createdBy, role: c.actorRole };
+  // A consultation's completion counts only from someone who consults.
+  if (c?.status === 'completed' && (charge.category !== 'consultation' || CONSULTING_ROLES.includes(c.actorRole))) return { kind: 'completion', completionId: c.id, on: c.completedOn, by: c.createdBy, role: c.actorRole };
   return { kind: 'missing', ordered: Boolean(charge.orderItemId || charge.dispenseEntryId) };
 };
 
@@ -968,7 +988,12 @@ export const serviceFulfillment = (charge: Charge, evidence: {
  */
 export const AuthorizationKind = z.enum(['pre_authorization', 'referral']);
 export type AuthorizationKind = z.infer<typeof AuthorizationKind>;
-export const AuthorizationStatus = z.enum(['requested', 'approved', 'denied']);
+/**
+ * `emergency_exception`: care was given before the payer's approval because it
+ * could not wait. Care goes on; the claim stays blocked until the payer's own
+ * decision is recorded as a replacing record (approved or denied).
+ */
+export const AuthorizationStatus = z.enum(['requested', 'approved', 'denied', 'emergency_exception']);
 export type AuthorizationStatus = z.infer<typeof AuthorizationStatus>;
 export const AuthorizationInput = z.strictObject({
   patientId: z.string().min(1),
@@ -982,6 +1007,10 @@ export const AuthorizationInput = z.strictObject({
   /** What it covers: named services, kinds of service, or one visit. Empty means the whole episode for a referral only. */
   feeItemIds: z.array(z.string().min(1).max(200)).max(200).default([]),
   categories: z.array(FeeCategory).max(10).default([]),
+  /** Quantities the payer approved per named service, where it limits them. A claim beyond them is blocked. */
+  approvedQuantities: z.record(z.string().min(1).max(200), z.number().int().positive().max(100_000)).default({}),
+  /** When the hospital asked the payer. */
+  requestedOn: isoDate.optional(),
   encounterId: z.string().min(1).optional(),
   obtainedVia: z.enum(['portal', 'phone', 'email', 'letter', 'other']),
   referredFrom: text.max(200).optional(),
@@ -992,6 +1021,10 @@ export const AuthorizationInput = z.strictObject({
   if (a.validTo < a.validFrom) context.addIssue({ code: 'custom', path: ['validTo'], message: 'It must end on or after it starts' });
   if (a.status === 'approved' && !a.reference) context.addIssue({ code: 'custom', path: ['reference'], message: 'An approval needs the payer\'s code or referral number' });
   if (a.kind === 'pre_authorization' && !a.feeItemIds.length && !a.categories.length && !a.encounterId) context.addIssue({ code: 'custom', path: ['feeItemIds'], message: 'Say which services or visit the authorization covers' });
+  if (a.status === 'emergency_exception' && a.kind !== 'pre_authorization') context.addIssue({ code: 'custom', path: ['status'], message: 'An emergency exception applies to a prior authorization' });
+  if (a.status === 'emergency_exception' && !a.note) context.addIssue({ code: 'custom', path: ['note'], message: 'Say why care could not wait for the payer\'s approval' });
+  for (const id of Object.keys(a.approvedQuantities)) if (!a.feeItemIds.includes(id)) context.addIssue({ code: 'custom', path: ['approvedQuantities', id], message: 'A quantity must be for a service the authorization names' });
+  if (a.requestedOn && a.requestedOn > a.validTo) context.addIssue({ code: 'custom', path: ['requestedOn'], message: 'It cannot be requested after it ends' });
 });
 export type AuthorizationInput = z.infer<typeof AuthorizationInput>;
 export type ClaimAuthorization = AuthorizationInput & { id: string; recordedBy: string; recordedOn: string; replacedBy?: string };
@@ -1010,16 +1043,18 @@ export type ClaimState = z.infer<typeof ClaimState>;
 
 export type ClaimIssueCode =
   | 'fulfillment_missing' | 'not_performed'
-  | 'authorization_missing' | 'authorization_pending' | 'authorization_denied'
+  | 'authorization_missing' | 'authorization_pending' | 'authorization_denied' | 'authorization_emergency_followup' | 'authorization_quantity_exceeded'
   | 'referral_missing'
-  | 'diagnosis_missing' | 'diagnosis_code_missing' | 'diagnosis_coding_unverified'
+  | 'diagnosis_missing' | 'diagnosis_code_missing' | 'diagnosis_code_format' | 'diagnosis_code_not_in_catalogue' | 'diagnosis_catalogue_missing'
+  | 'admission_date_missing' | 'discharge_date_missing'
+  | 'enrollee_number_missing' | 'service_date_invalid' | 'amount_invalid'
   | 'allocation_superseded' | 'submission_method_missing' | 'payer_code_missing' | 'attachment_missing';
 export type ClaimIssue = { code: ClaimIssueCode; blocking: boolean; chargeId?: string; message: string };
 
 /** Fields a payer's export template can place, in any order, under its own headers. */
 export const CLAIM_EXPORT_FIELDS = [
   'claimNumber', 'claimRevision', 'claimStatus', 'batchReference', 'facilityName', 'patientName', 'hospitalNumber', 'enrolleeNumber', 'planCode',
-  'serviceDate', 'admissionDate', 'dischargeDate', 'diagnosis', 'diagnosisCode', 'authorizationCode', 'referralNumber',
+  'serviceDate', 'admissionDate', 'dischargeDate', 'diagnosis', 'diagnosisCode', 'diagnosisCodeStatus', 'authorizationCode', 'referralNumber',
   'payerServiceCode', 'serviceName', 'category', 'quantity', 'unitPrice', 'amountClaimed', 'patientShare', 'listPrice', 'fulfilledOn',
 ] as const;
 export type ClaimExportField = (typeof CLAIM_EXPORT_FIELDS)[number];
@@ -1037,6 +1072,8 @@ export const ClaimSubmissionInput = z.strictObject({
   reference: text.max(200),
   submittedOn: isoDate,
   evidenceDocumentId: z.string().min(1).optional(),
+  /** The export files that were sent, so the exact rows and revisions submitted are on record. */
+  exportIds: z.array(z.string().min(1)).max(50).default([]),
   note: text.max(1000).optional(),
   requestKey: z.string().min(8).max(100),
 });
@@ -1055,15 +1092,326 @@ export type ClaimLineView = {
   chargeId: string; allocationId: string; contractVersionId: string; feeItemId: string; description: string; category: string;
   serviceDate: string; units: number; unitPriceMinor: number | null; payerShareMinor: number; patientShareMinor: number; listPriceMinor: number;
   payerCode?: string; fulfillment: FulfillmentEvidence; authorization?: { id: string; reference?: string; status: AuthorizationStatus };
+  /** The payer's latest decision on this service, when it decided per service. */
+  decision?: { approvedMinor: number; reasonCode?: string; reason?: string };
 };
+export type ClaimDecisionView = { id: string; claimId: string; decision: PayerDecisionKind; decidedOn: string; approvedMinor: number; payerReference?: string; reasonCode?: string; reason?: string; recordedBy: string; recordedOn: string };
 export type ClaimView = {
   id: string; claimNumber: string; revision: number; supersedes?: string; supersededBy?: string; state: ClaimState;
   payerId: string; patientId: string; patientName: string; enrolleeNumber: string; planCode: string; coverId: string;
   episode: { kind: 'admission' | 'encounter' | 'appointment' | 'day'; key: string }; serviceFrom: string; serviceTo: string;
   currency: string; payerShareMinor: number; batchId?: string;
-  diagnoses: { label: string; code?: string; codingSystem?: string }[];
+  /** From the admission's own arrival and discharge records; absent when Geneus holds no such record. */
+  admittedOn?: string; dischargedOn?: string;
+  diagnoses: ClaimDiagnosis[];
   referral?: { id: string; reference?: string };
   lines: ClaimLineView[]; issues: ClaimIssue[]; attachments: { documentId: string; documentType: string; title: string }[];
   events: { state: ClaimState; at: string; by: string; note?: string }[];
   createdOn: string;
+  /** Payer decisions on this revision, newest first; and the money position of the claim number. */
+  decisions?: ClaimDecisionView[];
+  settlement?: ClaimSettlement;
+};
+
+/* ------------------------------------------------------------------ */
+/* Authorization at the point of care (audit H2)                       */
+/* ------------------------------------------------------------------ */
+
+export type ApprovalNotice = { coverId: string; payerId: string; planCode: string; scheduleId: string };
+
+/**
+ * Whether a payer of this patient needs its prior approval for a service, from
+ * the synced patient-facing schedule alone — so it works offline at ordering,
+ * dispensing and admission. It looks at every valid cover, checked or not:
+ * staff are warned early, and the warning never blocks care.
+ */
+export const approvalNeeded = (input: {
+  patientId: string; feeItemId?: string; category: FeeCategory; date: string;
+  records: Pick<CoverageRecords, 'covers' | 'schedules'>;
+}): ApprovalNotice | undefined => {
+  for (const cover of coversOn(input.patientId, input.date, input.records.covers)) {
+    const schedule = scheduleOn(cover.payerId, cover.planCode, input.date, input.records.schedules);
+    if (!schedule) continue;
+    const line = (input.feeItemId ? schedule.items[input.feeItemId] : undefined) ?? schedule.categories[input.category];
+    if (line?.status === 'covered' && line.approvalRequired) return { coverId: cover.id, payerId: cover.payerId, planCode: cover.planCode, scheduleId: schedule.id };
+  }
+  return undefined;
+};
+
+/* ------------------------------------------------------------------ */
+/* Diagnoses on claims (audit H1)                                      */
+/* ------------------------------------------------------------------ */
+
+/**
+ * How far Geneus could establish a claim diagnosis — separate facts, never
+ * merged: `catalogue_verified` (found in the hospital's licensed catalogue),
+ * `format_checked` (a well-formed code, not looked up), `format_invalid`,
+ * `not_in_catalogue` and `not_coded`. None of them means the payer accepts it.
+ */
+export type DiagnosisVerification = 'catalogue_verified' | 'format_checked' | 'format_invalid' | 'not_in_catalogue' | 'not_coded';
+export type ClaimDiagnosis = { label: string; code?: string; codingSystem?: string; verification: DiagnosisVerification; catalogueDescription?: string };
+
+const ICD10_FORMAT = /^[A-TV-Z][0-9][0-9A-Z](\.[0-9A-Z]{1,4})?$/;
+export const diagnosisSystemKey = (system: string | undefined) => (system ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+/** A code's shape for its system. ICD-10 has a known shape; other systems are only bounded. */
+export const diagnosisCodeWellFormed = (codingSystem: string, code: string): boolean => {
+  const value = code.trim().toUpperCase();
+  if (!value || value.length > 20 || formulaLike(value)) return false;
+  return diagnosisSystemKey(codingSystem) === 'ICD10' ? ICD10_FORMAT.test(value) : /^[A-Z0-9.\-]+$/.test(value);
+};
+export const normaliseDiagnosisCode = (code: string) => code.trim().toUpperCase();
+
+/**
+ * Applies a payer's diagnosis requirement to what clinicians recorded. Pure:
+ * `lookup` answers from the hospital's imported catalogue (undefined when the
+ * code is absent), and `catalogueSize` says whether one exists at all. A payer
+ * that requires verified codes is never satisfied by format alone.
+ */
+export const assessClaimDiagnoses = (input: {
+  recorded: readonly { label: string; code?: string; codingSystem?: string }[];
+  requirement: DiagnosisRequirement; codeSystem: string;
+  catalogueSize: number; lookup: (code: string) => string | undefined;
+}): { diagnoses: ClaimDiagnosis[]; issues: ClaimIssue[] } => {
+  const issues: ClaimIssue[] = [];
+  const diagnoses: ClaimDiagnosis[] = input.recorded.map((d) => {
+    if (!d.code) return { label: d.label, verification: 'not_coded' };
+    const code = normaliseDiagnosisCode(d.code);
+    const system = d.codingSystem ?? input.codeSystem;
+    const base = { label: d.label, code, ...(d.codingSystem ? { codingSystem: d.codingSystem } : {}) };
+    if (!diagnosisCodeWellFormed(system, code)) return { ...base, verification: 'format_invalid' };
+    if (diagnosisSystemKey(system) === diagnosisSystemKey(input.codeSystem) && input.catalogueSize > 0) {
+      const found = input.lookup(code);
+      return found !== undefined ? { ...base, verification: 'catalogue_verified', catalogueDescription: found } : { ...base, verification: 'not_in_catalogue' };
+    }
+    return { ...base, verification: 'format_checked' };
+  });
+  if (input.requirement === 'not_required') return { diagnoses, issues };
+  if (!diagnoses.length) return { diagnoses, issues: [{ code: 'diagnosis_missing', blocking: true, message: 'No diagnosis is recorded for this visit. The clinician who saw the patient records it' }] };
+  if (input.requirement === 'free_text') return { diagnoses, issues };
+  const ofSystem = diagnoses.filter((d) => d.code && diagnosisSystemKey(d.codingSystem ?? input.codeSystem) === diagnosisSystemKey(input.codeSystem));
+  if (!ofSystem.length) return { diagnoses, issues: [{ code: 'diagnosis_code_missing', blocking: true, message: `This payer needs a ${input.codeSystem} code. The clinician who saw the patient adds it` }] };
+  const malformed = ofSystem.filter((d) => d.verification === 'format_invalid');
+  if (malformed.length) issues.push({ code: 'diagnosis_code_format', blocking: true, message: `Not a valid ${input.codeSystem} code: ${malformed.map((d) => d.code).join(', ')}` });
+  if (input.requirement === 'codes_verified') {
+    if (input.catalogueSize === 0) issues.push({ code: 'diagnosis_catalogue_missing', blocking: true, message: `This payer needs verified ${input.codeSystem} codes. Import your licensed ${input.codeSystem} list in Insurance settings` });
+    else {
+      const unknown = ofSystem.filter((d) => d.verification === 'not_in_catalogue');
+      if (unknown.length) issues.push({ code: 'diagnosis_code_not_in_catalogue', blocking: true, message: `Not in your ${input.codeSystem} list: ${unknown.map((d) => d.code).join(', ')}` });
+    }
+  }
+  return { diagnoses, issues };
+};
+
+export const DiagnosisCatalogueLine = z.strictObject({
+  code: z.string().trim().min(1).max(20).refine((v) => !formulaLike(v), 'A code cannot start with =, +, @ or a control character'),
+  description: z.string().trim().min(1).max(500),
+  sourceRow: z.number().int().positive(),
+});
+/**
+ * A diagnosis code list the hospital holds a licence for, imported through the
+ * column-mapping screen. Geneus ships none: the licence reference names the
+ * hospital's own source and terms.
+ */
+export const DiagnosisCatalogueImport = z.strictObject({
+  codeSystem: z.string().trim().min(1).max(30),
+  edition: z.string().trim().min(1).max(60),
+  licenceReference: z.string().trim().min(3).max(500),
+  mode: z.enum(['merge', 'replace']),
+  lines: z.array(DiagnosisCatalogueLine).min(1).max(20_000),
+  source: z.strictObject({ fileName: z.string().trim().min(1).max(255), sha256: z.string().regex(/^[0-9a-f]{64}$/), rows: z.number().int().nonnegative().max(20_000), templateId: z.string().min(1).optional() }),
+  requestKey: z.string().min(8).max(100),
+}).superRefine((value, context) => {
+  const seen = new Set<string>();
+  for (const [index, line] of value.lines.entries()) {
+    const code = normaliseDiagnosisCode(line.code);
+    if (!diagnosisCodeWellFormed(value.codeSystem, code)) context.addIssue({ code: 'custom', path: ['lines', index, 'code'], message: `Row ${line.sourceRow}: "${line.code}" is not a ${value.codeSystem} code` });
+    if (seen.has(code)) context.addIssue({ code: 'custom', path: ['lines', index, 'code'], message: `Row ${line.sourceRow} repeats ${code}` });
+    seen.add(code);
+  }
+});
+export type DiagnosisCatalogueImport = z.infer<typeof DiagnosisCatalogueImport>;
+export type DiagnosisCatalogueSummary = { codeSystem: string; edition: string; licenceReference: string; codes: number; importedBy: string; importedOn: string };
+
+/* ------------------------------------------------------------------ */
+/* Moving a payer's share to the patient (audit H3)                    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The only grounds on which an officer may make the patient responsible for
+ * a charge that has cover. A reason alone is never enough, and missing
+ * hospital configuration is never a ground.
+ *   patient_election — the contract in force allows members to pay without
+ *                      their insurance, and the patient's agreement is recorded;
+ *   not_eligible     — a recorded check found the cover not eligible on the date;
+ *   contract_clause  — a named clause of the contract makes the patient liable
+ *                      (a benefit limit used up, for example).
+ * A charge the payer is expected to pay (an estimate exists), or any
+ * contract-clause change, needs `coverage:approve_liability_change`.
+ */
+export const LiabilityGround = z.enum(['patient_election', 'not_eligible', 'contract_clause']);
+export type LiabilityGround = z.infer<typeof LiabilityGround>;
+export const LiabilityChange = z.strictObject({
+  ground: LiabilityGround,
+  /** patient_election: how the patient agreed (signed form, in person, reference). */
+  patientAgreement: z.string().trim().min(3).max(500).optional(),
+  /** not_eligible: the check that found it. */
+  coverCheckId: z.string().min(1).optional(),
+  /** contract_clause: the clause, as the contract numbers or names it. */
+  contractClause: z.string().trim().min(2).max(300).optional(),
+}).superRefine((v, context) => {
+  if (v.ground === 'patient_election' && !v.patientAgreement) context.addIssue({ code: 'custom', path: ['patientAgreement'], message: 'Record how the patient agreed to pay' });
+  if (v.ground === 'not_eligible' && !v.coverCheckId) context.addIssue({ code: 'custom', path: ['coverCheckId'], message: 'Name the check that found the cover not eligible' });
+  if (v.ground === 'contract_clause' && !v.contractClause) context.addIssue({ code: 'custom', path: ['contractClause'], message: 'Name the contract clause' });
+});
+export type LiabilityChange = z.infer<typeof LiabilityChange>;
+
+/* ------------------------------------------------------------------ */
+/* Payer decisions, remittances and settlement (Slice 4)               */
+/* ------------------------------------------------------------------ */
+
+/**
+ * What the payer decided, as the hospital received it. Geneus records the
+ * payer's decision; it never decides. Insert-only: a later decision on the
+ * same claim revision supersedes the earlier one, which stays on record.
+ */
+export const PayerDecisionKind = z.enum(['approved', 'partially_approved', 'queried', 'returned', 'denied']);
+export type PayerDecisionKind = z.infer<typeof PayerDecisionKind>;
+export const PayerDecisionInput = z.strictObject({
+  claimId: z.string().min(1),
+  decision: PayerDecisionKind,
+  decidedOn: isoDate,
+  payerReference: text.max(200).optional(),
+  reasonCode: text.max(60).optional(),
+  reason: text.max(2000).optional(),
+  /** The total the payer approved, when its advice does not itemise services (a partial approval only). */
+  approvedMinor: minorUnits.optional(),
+  /** Per service: what the payer approved, with its own reason. */
+  lines: z.array(z.strictObject({ chargeId: z.string().min(1), approvedMinor: minorUnits, reasonCode: text.max(60).optional(), reason: text.max(1000).optional() })).max(2000).default([]),
+  evidenceDocumentId: z.string().min(1).optional(),
+  requestKey: z.string().min(8).max(100),
+}).superRefine((d, context) => {
+  if (d.decision === 'partially_approved' && !d.lines.length && d.approvedMinor === undefined) context.addIssue({ code: 'custom', path: ['lines'], message: 'Enter what the payer approved, in total or for each service' });
+  if (d.lines.length && d.approvedMinor !== undefined) context.addIssue({ code: 'custom', path: ['approvedMinor'], message: 'Give the approval per service or in total, not both' });
+  if (d.decision !== 'partially_approved' && d.approvedMinor !== undefined) context.addIssue({ code: 'custom', path: ['approvedMinor'], message: 'Only a partial approval states its own total' });
+  if (['queried', 'returned'].includes(d.decision) && d.lines.length) context.addIssue({ code: 'custom', path: ['lines'], message: 'A query or return approves nothing yet' });
+  if (d.decision !== 'approved' && !d.reason && !d.reasonCode) context.addIssue({ code: 'custom', path: ['reason'], message: 'Record the payer\'s reason' });
+});
+export type PayerDecisionInput = z.infer<typeof PayerDecisionInput>;
+
+export const RemittanceMethod = z.enum(['transfer', 'cheque', 'cash', 'other']);
+export const RemittanceAllocationInput = z.strictObject({ claimId: z.string().min(1), amountMinor: z.number().int().positive() });
+/**
+ * Money received from a payer. Never a patient payment: it settles the payer's
+ * share of claims and nothing a patient owes. One remittance may pay many
+ * claims; any amount not yet matched stays visibly unallocated.
+ */
+export const RemittanceInput = z.strictObject({
+  payerId: z.string().min(1),
+  receivedOn: isoDate,
+  /** The payer's payment or advice reference, unique per payer, so the same money is never recorded twice. */
+  reference: text.max(200),
+  amountMinor: z.number().int().positive(),
+  currency: currencyCode,
+  method: RemittanceMethod,
+  receivingAccount: text.max(200).optional(),
+  evidenceDocumentId: z.string().min(1).optional(),
+  note: text.max(1000).optional(),
+  allocations: z.array(RemittanceAllocationInput).max(2000).default([]),
+  /** When the allocations came from the payer's spreadsheet: its name and checksum, never its content. */
+  source: z.strictObject({ fileName: z.string().trim().min(1).max(255), sha256: z.string().regex(/^[0-9a-f]{64}$/), rows: z.number().int().nonnegative(), templateId: z.string().min(1).optional() }).optional(),
+  requestKey: z.string().min(8).max(100),
+}).superRefine((r, context) => {
+  const total = r.allocations.reduce((n, a) => n + a.amountMinor, 0);
+  if (total > r.amountMinor) context.addIssue({ code: 'custom', path: ['allocations'], message: 'More is allocated than was received' });
+  if (new Set(r.allocations.map((a) => a.claimId)).size !== r.allocations.length) context.addIssue({ code: 'custom', path: ['allocations'], message: 'Allocate to each claim once' });
+});
+export type RemittanceInput = z.infer<typeof RemittanceInput>;
+export const RemittanceAllocate = z.strictObject({ remittanceId: z.string().min(1), allocations: z.array(RemittanceAllocationInput).min(1).max(2000), requestKey: z.string().min(8).max(100) })
+  .refine((r) => new Set(r.allocations.map((a) => a.claimId)).size === r.allocations.length, 'Allocate to each claim once');
+export type RemittanceAllocate = z.infer<typeof RemittanceAllocate>;
+/** A remittance recorded in error is reversed whole, never edited; the corrected one is recorded again. */
+export const RemittanceReverse = z.strictObject({ remittanceId: z.string().min(1), reason: text.min(3).max(1000), requestKey: z.string().min(8).max(100) });
+export type RemittanceReverse = z.infer<typeof RemittanceReverse>;
+
+export const DisputeOpen = z.strictObject({ claimId: z.string().min(1), amountMinor: z.number().int().positive(), reason: text.min(3).max(2000), payerReference: text.max(200).optional(), requestKey: z.string().min(8).max(100) });
+export type DisputeOpen = z.infer<typeof DisputeOpen>;
+export const DisputeResolve = z.strictObject({ disputeId: z.string().min(1), outcome: z.enum(['payer_agreed', 'payer_upheld', 'withdrawn']), note: text.min(3).max(2000), requestKey: z.string().min(8).max(100) });
+export type DisputeResolve = z.infer<typeof DisputeResolve>;
+/** Giving up an amount the payer will not pay. It never becomes the patient's debt. */
+export const WriteOffInput = z.strictObject({ claimId: z.string().min(1), amountMinor: z.number().int().positive(), reason: text.min(3).max(2000), requestKey: z.string().min(8).max(100) });
+export type WriteOffInput = z.infer<typeof WriteOffInput>;
+
+export type SettlementStatus = 'not_submitted' | 'awaiting_response' | 'queried' | 'returned' | 'denied' | 'approved_unpaid' | 'partially_paid' | 'disputed' | 'settled';
+
+/**
+ * The money position of one claim (all revisions of one claim number). Every
+ * figure is kept separate; nothing is netted into a patient's account.
+ *   expected    — the payer share of the current revision, as confirmed;
+ *   approved    — what the payer's latest decision approved (none until decided);
+ *   deducted    — expected − approved;
+ *   paid        — remittances allocated to any revision, less reversals;
+ *   writtenOff  — amounts the hospital gave up;
+ *   outstanding — expected − paid − writtenOff (never below zero);
+ *   payerOwes   — (approved, else expected) − paid, never below zero.
+ */
+export type ClaimSettlement = {
+  status: SettlementStatus; expectedMinor: number; approvedMinor?: number; deductedMinor: number; paidMinor: number;
+  writtenOffMinor: number; disputedMinor: number; outstandingMinor: number; payerOwesMinor: number; overdue: boolean;
+};
+const addDays = (isoDay: string, days: number) => { const d = new Date(`${isoDay}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + days); return d.toISOString().slice(0, 10); };
+export const claimSettlement = (input: {
+  submitted: boolean; submittedOn?: string; expectedMinor: number;
+  decision?: { decision: PayerDecisionKind; approvedMinor: number };
+  paidMinor: number; writtenOffMinor: number; openDisputeMinor: number;
+  paymentDueDays?: number; today: string;
+}): ClaimSettlement => {
+  const decided = input.decision && ['approved', 'partially_approved', 'denied'].includes(input.decision.decision) ? input.decision.approvedMinor : undefined;
+  const deducted = decided === undefined ? 0 : Math.max(0, input.expectedMinor - decided);
+  const outstanding = Math.max(0, input.expectedMinor - input.paidMinor - input.writtenOffMinor);
+  const payerOwes = Math.max(0, (decided ?? input.expectedMinor) - input.paidMinor);
+  let status: SettlementStatus;
+  if (!input.submitted && input.paidMinor === 0) status = 'not_submitted';
+  else if (outstanding === 0) status = 'settled';
+  else if (input.openDisputeMinor > 0) status = 'disputed';
+  else if (input.decision?.decision === 'queried') status = 'queried';
+  else if (input.decision?.decision === 'returned') status = 'returned';
+  else if (input.paidMinor > 0) status = 'partially_paid';
+  else if (input.decision?.decision === 'denied') status = 'denied';
+  else if (decided !== undefined) status = 'approved_unpaid';
+  else status = 'awaiting_response';
+  const due = input.submittedOn && input.paymentDueDays ? addDays(input.submittedOn, input.paymentDueDays) : undefined;
+  const overdue = Boolean(due && due < input.today && payerOwes > 0 && ['awaiting_response', 'approved_unpaid', 'partially_paid'].includes(status));
+  return { status, expectedMinor: input.expectedMinor, ...(decided !== undefined ? { approvedMinor: decided } : {}), deductedMinor: deducted, paidMinor: input.paidMinor,
+    writtenOffMinor: input.writtenOffMinor, disputedMinor: input.openDisputeMinor, outstandingMinor: outstanding, payerOwesMinor: payerOwes, overdue };
+};
+
+/** A remittance spreadsheet row, after column mapping, before a person confirms the match. */
+export type RemittanceRow = { sourceRow: number; claimNumber?: string; enrolleeNumber?: string; approvedMinor?: number; deductedMinor?: number; paidMinor?: number; reasonCode?: string; reason?: string };
+export type RemittanceCandidate = { claimId: string; claimNumber: string; patientName: string; outstandingMinor: number };
+export type RemittanceMatch = { sourceRow: number; confidence: 'exact' | 'uncertain' | 'none'; claimId?: string; candidates: RemittanceCandidate[]; paidMinor?: number; approvedMinor?: number; problems: string[] };
+/** Fields a remittance spreadsheet can map. */
+export const REMITTANCE_FIELDS = ['claimNumber', 'enrolleeNumber', 'approvedAmount', 'deductedAmount', 'paidAmount', 'reasonCode', 'reason'] as const;
+
+/**
+ * Matches remittance rows to claims. Only a row naming one of this payer's
+ * claim numbers, paying no more than it has outstanding, is `exact`;
+ * anything else is for a person to decide. Nothing is accepted automatically.
+ */
+export const matchRemittanceRows = (rows: readonly RemittanceRow[], claims: readonly (RemittanceCandidate & { enrolleeNumber: string })[]): RemittanceMatch[] => {
+  const byNumber = new Map(claims.map((c) => [c.claimNumber.trim().toUpperCase(), c]));
+  const amounts = (row: RemittanceRow) => ({ ...(row.paidMinor !== undefined ? { paidMinor: row.paidMinor } : {}), ...(row.approvedMinor !== undefined ? { approvedMinor: row.approvedMinor } : {}) });
+  const candidate = (c: RemittanceCandidate): RemittanceCandidate => ({ claimId: c.claimId, claimNumber: c.claimNumber, patientName: c.patientName, outstandingMinor: c.outstandingMinor });
+  return rows.map((row) => {
+    const problems: string[] = [];
+    if (row.paidMinor === undefined) problems.push('No paid amount in this row');
+    const exact = row.claimNumber ? byNumber.get(row.claimNumber.trim().toUpperCase()) : undefined;
+    if (exact) {
+      if (row.paidMinor !== undefined && row.paidMinor > exact.outstandingMinor) problems.push('Pays more than the claim has outstanding');
+      return { sourceRow: row.sourceRow, confidence: problems.length ? 'uncertain' : 'exact', claimId: exact.claimId, candidates: [candidate(exact)], ...amounts(row), problems };
+    }
+    if (row.claimNumber) problems.push(`No claim ${row.claimNumber} for this payer`);
+    const enrollee = row.enrolleeNumber?.trim().toUpperCase();
+    const candidates = enrollee ? claims.filter((c) => c.enrolleeNumber.trim().toUpperCase() === enrollee && c.outstandingMinor > 0).map(candidate) : [];
+    return { sourceRow: row.sourceRow, confidence: candidates.length ? 'uncertain' : 'none', candidates, ...amounts(row), problems };
+  });
 };

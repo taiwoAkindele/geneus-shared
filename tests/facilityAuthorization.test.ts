@@ -6,7 +6,7 @@ import {
   ReviewerDelegation, assessDelayedClinicalTime, assignmentEligibilityIssues, authorityProofIssues, authoritySignaturePayload,
   clinicalActivityIssues, clinicalEventActions, credentialSupportsInterval, encounterClinicalActions, externalReviewerIssues,
   projectClinicalAuthority, reviewerDecisionIssues, staffPermissions, withReviewerAuthority, mayApproveWorkforcePin, staffGovernanceIssues,
-  sessionClinicalCoverageIssues,
+  sessionClinicalCoverageIssues, POLICY_VERSION,
 } from '../src/index.ts';
 import { NOW, assignment, contextFor, credential, decision, envelope, offering, patientId, proofFor, reviewer, session, worker } from './facilityFixtures.ts';
 
@@ -33,7 +33,7 @@ describe('protected clinical authority', () => {
       { ...proof, signatureVerified: false }, { ...proof, currentRevision: 2 },
       { ...proof, snapshot: { ...proof.snapshot, staffId: reviewer.staffId } },
       { ...proof, snapshot: { ...proof.snapshot, facilityId: 'OTHER' } },
-      { ...proof, snapshot: { ...proof.snapshot, policyVersion: 16 } },
+      { ...proof, snapshot: { ...proof.snapshot, policyVersion: POLICY_VERSION + 1 } },
     ]) assert.ok(authorityProofIssues(context, modified, NOW).length);
     assert.deepEqual(authorityProofIssues({ ...context, policyVersion: 11 }, proof, NOW), []);
     assert.ok(authorityProofIssues(context, proof, Date.parse(proof.snapshot.expiresOn)).length);
