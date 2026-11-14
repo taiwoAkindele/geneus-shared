@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { FacilityWorkforcePolicy, SyncRejection, SyncTokenResponse, UploadRequest, UploadResponse,
+import { POLICY_VERSION, FacilityWorkforcePolicy, SyncRejection, SyncTokenResponse, UploadRequest, UploadResponse,
   configurationRevisionIssues, facilityCompatibilityIssues, facilityMutationIssues, requiresFacilityContract,
   workforceEnforcementActive, type FacilityMutation } from '../src/index.ts';
 import { NOW, assignment, envelope, location } from './facilityFixtures.ts';
@@ -19,7 +19,7 @@ describe('facility compatibility and synchronized mutations', () => {
     assert.ok(facilityCompatibilityIssues(request, undefined).length);
     assert.ok(facilityCompatibilityIssues({ ...request, policyVersion: 9 }, support).length);
     assert.deepEqual(facilityCompatibilityIssues({ ...request, policyVersion: 11 }, support), []);
-    assert.ok(facilityCompatibilityIssues({ ...request, policyVersion: 16 }, support).length);
+    assert.ok(facilityCompatibilityIssues({ ...request, policyVersion: POLICY_VERSION + 1 }, support).length);
     assert.deepEqual(facilityCompatibilityIssues({ ...request, schemaVersion: 5 }, support), []);
     assert.ok(facilityCompatibilityIssues({ ...request, schemaVersion: 6 }, support).length);
     assert.ok(facilityCompatibilityIssues(legacy, support, true).length);

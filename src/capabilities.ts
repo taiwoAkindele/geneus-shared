@@ -39,6 +39,12 @@ export const Permission = z.enum([
   'cover:verify',
   'coverage:elect_self_pay',
   'coverage:confirm',
+  /** Making the patient liable for a share the payer was expected to pay, on a documented ground. */
+  'coverage:approve_liability_change',
+  /** Recording money received from payers, its allocation to claims, and reversals. */
+  'insurance_remittance:record',
+  /** Giving up an amount a payer will not pay. Never moves it to the patient. */
+  'billing:write_off',
   // Facility configuration
   'register_definition:publish',
   'unit:manage',
