@@ -491,6 +491,12 @@ export const Facility = baseEnvelope.extend({
   lga: z.string().min(1),
   state: z.string().min(1),
   timeZone: FacilityTimeZone.optional(),
+  /**
+   * Every time zone the facility has used and from when, oldest first. A
+   * correction applies from the moment it is made: anything raised before
+   * keeps the date it had. Absent on facilities that never changed it.
+   */
+  timeZoneHistory: z.array(z.strictObject({ timeZone: FacilityTimeZone, from: z.string().min(1) })).max(100).optional(),
   /** Server-owned after readiness/mixed-client checks; never inferred from a legacy role. */
   workforcePolicy: FacilityWorkforcePolicy.optional(),
   level: z

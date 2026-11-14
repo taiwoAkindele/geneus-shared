@@ -81,3 +81,17 @@ export const FACILITY_DOCUMENT_TYPES = [
 ] as const;
 export type FacilityDocumentType = (typeof FACILITY_DOCUMENT_TYPES)[number];
 export const RESTRICTED_FACILITY_DOCUMENT_TYPES = ['credential', 'capability_decision', 'reviewer_delegation', 'clinical_authority_bootstrap', 'external_clinical_reviewer'] as const;
+
+/**
+ * The facility's time zone in force at a moment: the latest history entry
+ * starting at or before it. Before the first entry the first zone applies (no
+ * insurance can be billed before a zone exists). Without history, the current zone.
+ */
+export const timeZoneAt = (facility: { timeZone?: string; timeZoneHistory?: readonly { timeZone: string; from: string }[] } | undefined, at: string): string | undefined => {
+  const history = facility?.timeZoneHistory;
+  if (!history?.length) return facility?.timeZone;
+  const t = Date.parse(at);
+  let zone = history[0].timeZone;
+  for (const entry of history) if (Date.parse(entry.from) <= t) zone = entry.timeZone;
+  return zone;
+};
