@@ -24,8 +24,8 @@
  * — the result is `undetermined`, never an approximation.
  */
 import { z } from 'zod';
-import { baseEnvelope, isoDate, patientId } from './common.ts';
-import { FeeCategory, currencyCode, minorUnits, type Charge, type EncounterEntry } from './documents.ts';
+import { baseEnvelope, isoDate, isoDateTime, patientId } from './common.ts';
+import { FeeCategory, Role, currencyCode, minorUnits, type Charge, type EncounterEntry } from './documents.ts';
 import { dispensingDetails } from './pharmacy.ts';
 
 const text = z.string().trim().min(1);
@@ -50,7 +50,7 @@ export const INSURANCE_UPLOAD_TYPES = ['patient_cover', 'cover_check', 'coverage
  * cannot read them, so it never receives them. Refunds ride with them because an
  * older client could not subtract them from a balance.
  */
-export const INSURANCE_SYNCED_TYPES = ['payer', 'cover_schedule', 'patient_cover', 'cover_check', 'coverage_election', 'coverage_allocation', 'refund'] as const;
+export const INSURANCE_SYNCED_TYPES = ['payer', 'cover_schedule', 'patient_cover', 'cover_check', 'coverage_election', 'coverage_allocation', 'refund', 'service_completion'] as const;
 /** Stored on every confirmed snapshot. A change to the arithmetic is a new version. */
 export const CALCULATION_VERSION = 1 as const;
 
@@ -772,7 +772,7 @@ export type InsuranceSetupStatus = { state: InsuranceState; timeZone?: string; i
  * own fields, and a template remembers which column held each field for a
  * given sheet layout, so the next file in the same layout maps itself.
  */
-export const ImportKind = z.enum(['contract_tariff']);
+export const ImportKind = z.enum(['contract_tariff', 'claim_export']);
 export type ImportKind = z.infer<typeof ImportKind>;
 export const IMPORT_LIMITS = { maxFileBytes: 5 * 1024 * 1024, maxRows: 5000, maxColumns: 60, maxCellChars: 1000, maxSheets: 30 } as const;
 
@@ -786,6 +786,8 @@ export const ImportTemplateSave = z.strictObject({
   headerRow: z.number().int().min(0).max(50),
   /** Field key → zero-based column index. */
   mapping: z.record(z.string().min(1).max(60), z.number().int().min(0).max(IMPORT_LIMITS.maxColumns - 1)),
+  /** Export only: how a field is written, such as dates as day/month/year or amounts in naira. */
+  formats: z.record(z.string().min(1).max(60), z.enum(['date_iso', 'date_dmy', 'amount_major', 'amount_minor'])).optional(),
   expectedRevision: z.number().int().positive().optional(),
 });
 export type ImportTemplateSave = z.infer<typeof ImportTemplateSave>;
@@ -851,4 +853,190 @@ export type InsuranceBillingPeriod = z.infer<typeof InsuranceBillingPeriod>;
 export const inBillingPeriod = (at: string, periods: readonly InsuranceBillingPeriod[]): boolean => {
   const t = Date.parse(at);
   return Number.isFinite(t) && periods.some((p) => Date.parse(p.from) <= t && (!p.to || t < Date.parse(p.to)));
+};
+
+/* ------------------------------------------------------------------ */
+/* Claims (Milestone 3)                                                */
+/* ------------------------------------------------------------------ */
+
+/**
+ * That a billed service was actually performed, supplied or completed —
+ * recorded by the clinical or operational staff who did it, never by an
+ * insurance officer. Needed only where no existing clinical record already
+ * shows it (a released result, a dispense, a clinician's visit entry).
+ * Synced and insert-only: a correction is a new record that `replaces` it.
+ */
+export const ServiceCompletionStatus = z.enum(['completed', 'not_done']);
+export type ServiceCompletionStatus = z.infer<typeof ServiceCompletionStatus>;
+export const ServiceCompletion = baseEnvelope.extend({
+  type: z.literal('service_completion'),
+  patientId,
+  chargeId: z.string().min(1),
+  status: ServiceCompletionStatus,
+  /** When the service was done (or found not done), as the person recording it states. */
+  completedOn: isoDateTime,
+  actorRole: Role,
+  note: text.max(1000).optional(),
+  replaces: z.string().min(1).optional(),
+}).refine((c) => c.status === 'completed' || Boolean(c.note), { message: 'Say why the service was not done', path: ['note'] });
+export type ServiceCompletion = z.infer<typeof ServiceCompletion>;
+
+/** The roles that perform services. An insurance officer, cashier or administrator records no clinical evidence. */
+export const COMPLETION_ROLES = ['doctor', 'nurse', 'chew', 'laboratory_staff', 'pharmacy_staff', 'supervisor'] as const;
+
+/** How a claim line shows the service happened. `missing` and `not_done` block a claim. */
+export type FulfillmentEvidence =
+  | { kind: 'administrative' }
+  | { kind: 'result'; entryId: string; on: string; by: string }
+  | { kind: 'dispense'; entryId: string; on: string; by: string }
+  | { kind: 'visit'; entryId: string; on: string; by: string; role: string }
+  | { kind: 'completion'; completionId: string; on: string; by: string; role: string }
+  | { kind: 'not_done'; completionId: string; reason: string }
+  | { kind: 'missing'; ordered: boolean };
+
+/** The latest completion for each charge, following `replaces`. */
+export const currentCompletions = (completions: readonly ServiceCompletion[]): Map<string, ServiceCompletion> => {
+  const replaced = new Set(completions.map((c) => c.replaces).filter(Boolean));
+  const current = new Map<string, ServiceCompletion>();
+  for (const c of [...completions].sort((a, b) => a.createdOn.localeCompare(b.createdOn))) if (!replaced.has(c.id)) current.set(c.chargeId, c);
+  return current;
+};
+
+const CLINICAL_VISIT_ROLES = new Set(['doctor', 'nurse', 'chew', 'clinical_officer', 'supervisor']);
+
+/**
+ * Classifies how one charge was fulfilled from records both the device and
+ * the server hold. A clinician's "not done" always wins; otherwise existing
+ * clinical evidence is preferred to a completion record.
+ */
+export const serviceFulfillment = (charge: Charge, evidence: {
+  /** lab_results entries of the charge's encounter. */
+  results: readonly EncounterEntry[];
+  /** The dispense entry the charge was raised by, if any. */
+  dispense?: EncounterEntry;
+  /** Entries of the visit the charge belongs to. */
+  visitEntries: readonly EncounterEntry[];
+  completion?: ServiceCompletion;
+}): FulfillmentEvidence => {
+  const c = evidence.completion;
+  if (c?.status === 'not_done') return { kind: 'not_done', completionId: c.id, reason: c.note ?? '' };
+  if (charge.category === 'registration' || charge.category === 'card') return { kind: 'administrative' };
+  if (charge.dispenseEntryId && evidence.dispense) return { kind: 'dispense', entryId: evidence.dispense.id, on: evidence.dispense.performedOn ?? evidence.dispense.createdOn, by: evidence.dispense.createdBy };
+  if (charge.orderItemId) {
+    const result = evidence.results.find((e) => e.step === 'lab_results' && (e.values.results as { orderItemId?: string }[] | undefined)?.some((r) => r.orderItemId === charge.orderItemId));
+    if (result) return { kind: 'result', entryId: result.id, on: result.performedOn ?? result.createdOn, by: result.createdBy };
+  } else if (!charge.dispenseEntryId && charge.category === 'consultation') {
+    const seen = evidence.visitEntries.find((e) => e.step !== 'amendment' && CLINICAL_VISIT_ROLES.has(e.actorRole));
+    if (seen) return { kind: 'visit', entryId: seen.id, on: seen.createdOn, by: seen.createdBy, role: seen.actorRole };
+  }
+  if (c?.status === 'completed') return { kind: 'completion', completionId: c.id, on: c.completedOn, by: c.createdBy, role: c.actorRole };
+  return { kind: 'missing', ordered: Boolean(charge.orderItemId || charge.dispenseEntryId) };
+};
+
+/**
+ * A payer's prior authorization or a referral, as the hospital obtained it.
+ * Captured online by staff who verify cover; never edited — a change
+ * (approval after a request, a correction) is a new record that replaces it.
+ * Only `approved` with a reference, in force on the date of service, passes.
+ */
+export const AuthorizationKind = z.enum(['pre_authorization', 'referral']);
+export type AuthorizationKind = z.infer<typeof AuthorizationKind>;
+export const AuthorizationStatus = z.enum(['requested', 'approved', 'denied']);
+export type AuthorizationStatus = z.infer<typeof AuthorizationStatus>;
+export const AuthorizationInput = z.strictObject({
+  patientId: z.string().min(1),
+  payerId: z.string().min(1),
+  kind: AuthorizationKind,
+  status: AuthorizationStatus,
+  /** The payer's authorization code or the referral number. */
+  reference: text.max(100).optional(),
+  validFrom: isoDate,
+  validTo: isoDate,
+  /** What it covers: named services, kinds of service, or one visit. Empty means the whole episode for a referral only. */
+  feeItemIds: z.array(z.string().min(1).max(200)).max(200).default([]),
+  categories: z.array(FeeCategory).max(10).default([]),
+  encounterId: z.string().min(1).optional(),
+  obtainedVia: z.enum(['portal', 'phone', 'email', 'letter', 'other']),
+  referredFrom: text.max(200).optional(),
+  note: text.max(1000).optional(),
+  evidenceDocumentId: z.string().min(1).optional(),
+  replaces: z.string().min(1).optional(),
+}).superRefine((a, context) => {
+  if (a.validTo < a.validFrom) context.addIssue({ code: 'custom', path: ['validTo'], message: 'It must end on or after it starts' });
+  if (a.status === 'approved' && !a.reference) context.addIssue({ code: 'custom', path: ['reference'], message: 'An approval needs the payer\'s code or referral number' });
+  if (a.kind === 'pre_authorization' && !a.feeItemIds.length && !a.categories.length && !a.encounterId) context.addIssue({ code: 'custom', path: ['feeItemIds'], message: 'Say which services or visit the authorization covers' });
+});
+export type AuthorizationInput = z.infer<typeof AuthorizationInput>;
+export type ClaimAuthorization = AuthorizationInput & { id: string; recordedBy: string; recordedOn: string; replacedBy?: string };
+
+/**
+ * Claim states. Each is a separate fact: preparing a file is not sending it,
+ * and sending it is not the payer accepting it.
+ *   draft — being prepared; may be exported only as a marked draft.
+ *   ready — every blocking check passed when an officer marked it.
+ *   exported — included in a non-draft export file.
+ *   submitted — recorded as sent through the payer's channel, with a reference.
+ *   acknowledged — the payer confirmed receipt (not approval).
+ */
+export const ClaimState = z.enum(['draft', 'ready', 'exported', 'submitted', 'acknowledged']);
+export type ClaimState = z.infer<typeof ClaimState>;
+
+export type ClaimIssueCode =
+  | 'fulfillment_missing' | 'not_performed'
+  | 'authorization_missing' | 'authorization_pending' | 'authorization_denied'
+  | 'referral_missing'
+  | 'diagnosis_missing' | 'diagnosis_code_missing' | 'diagnosis_coding_unverified'
+  | 'allocation_superseded' | 'submission_method_missing' | 'payer_code_missing' | 'attachment_missing';
+export type ClaimIssue = { code: ClaimIssueCode; blocking: boolean; chargeId?: string; message: string };
+
+/** Fields a payer's export template can place, in any order, under its own headers. */
+export const CLAIM_EXPORT_FIELDS = [
+  'claimNumber', 'claimRevision', 'claimStatus', 'batchReference', 'facilityName', 'patientName', 'hospitalNumber', 'enrolleeNumber', 'planCode',
+  'serviceDate', 'admissionDate', 'dischargeDate', 'diagnosis', 'diagnosisCode', 'authorizationCode', 'referralNumber',
+  'payerServiceCode', 'serviceName', 'category', 'quantity', 'unitPrice', 'amountClaimed', 'patientShare', 'listPrice', 'fulfilledOn',
+] as const;
+export type ClaimExportField = (typeof CLAIM_EXPORT_FIELDS)[number];
+export const ClaimExportFormat = z.enum(['date_iso', 'date_dmy', 'amount_major', 'amount_minor']);
+export type ClaimExportFormat = z.infer<typeof ClaimExportFormat>;
+export const DEFAULT_CLAIM_COLUMNS: readonly ClaimExportField[] = [
+  'claimNumber', 'claimStatus', 'patientName', 'enrolleeNumber', 'planCode', 'serviceDate', 'diagnosis', 'diagnosisCode', 'authorizationCode', 'referralNumber',
+  'payerServiceCode', 'serviceName', 'quantity', 'unitPrice', 'amountClaimed',
+];
+
+export const ClaimSubmissionInput = z.strictObject({
+  claimIds: z.array(z.string().min(1)).min(1).max(2000),
+  channel: SubmissionChannel,
+  /** The payer portal batch number, email subject or delivery reference. */
+  reference: text.max(200),
+  submittedOn: isoDate,
+  evidenceDocumentId: z.string().min(1).optional(),
+  note: text.max(1000).optional(),
+  requestKey: z.string().min(8).max(100),
+});
+export type ClaimSubmissionInput = z.infer<typeof ClaimSubmissionInput>;
+export const ClaimAcknowledgementInput = z.strictObject({
+  submissionId: z.string().min(1),
+  reference: text.max(200).optional(),
+  acknowledgedOn: isoDate,
+  evidenceDocumentId: z.string().min(1).optional(),
+  note: text.max(1000).optional(),
+  requestKey: z.string().min(8).max(100),
+});
+export type ClaimAcknowledgementInput = z.infer<typeof ClaimAcknowledgementInput>;
+
+export type ClaimLineView = {
+  chargeId: string; allocationId: string; contractVersionId: string; feeItemId: string; description: string; category: string;
+  serviceDate: string; units: number; unitPriceMinor: number | null; payerShareMinor: number; patientShareMinor: number; listPriceMinor: number;
+  payerCode?: string; fulfillment: FulfillmentEvidence; authorization?: { id: string; reference?: string; status: AuthorizationStatus };
+};
+export type ClaimView = {
+  id: string; claimNumber: string; revision: number; supersedes?: string; supersededBy?: string; state: ClaimState;
+  payerId: string; patientId: string; patientName: string; enrolleeNumber: string; planCode: string; coverId: string;
+  episode: { kind: 'admission' | 'encounter' | 'appointment' | 'day'; key: string }; serviceFrom: string; serviceTo: string;
+  currency: string; payerShareMinor: number; batchId?: string;
+  diagnoses: { label: string; code?: string; codingSystem?: string }[];
+  referral?: { id: string; reference?: string };
+  lines: ClaimLineView[]; issues: ClaimIssue[]; attachments: { documentId: string; documentType: string; title: string }[];
+  events: { state: ClaimState; at: string; by: string; note?: string }[];
+  createdOn: string;
 };

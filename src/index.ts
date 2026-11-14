@@ -45,7 +45,7 @@ import { InpatientEvent, BedReadyEvent } from './inpatient.ts';
 import { WardCareEvent } from './wardCare.ts';
 import { LibraryDocument, VisitDocument } from './clinicalDocuments.ts';
 import { ResultTemplate, ResultPartDefinition, AnswerList, StandardTest, StandardTemplate } from './resultTemplates.ts';
-import { Payer, CoverSchedule, PatientCover, CoverCheck, CoverageElection, CoverageAllocation } from './insurance.ts';
+import { Payer, CoverSchedule, PatientCover, CoverCheck, CoverageElection, CoverageAllocation, ServiceCompletion } from './insurance.ts';
 
 import {
   Patient,
@@ -118,7 +118,7 @@ export const AnyDocument = z.union([
   BillingAdjustment,
   IncomingTransfer,
   BillingDepartment,
-  Refund, Payer, CoverSchedule, PatientCover, CoverCheck, CoverageElection, CoverageAllocation,
+  Refund, Payer, CoverSchedule, PatientCover, CoverCheck, CoverageElection, CoverageAllocation, ServiceCompletion,
 ]);
 export type AnyDocument = z.infer<typeof AnyDocument>;
 
@@ -165,6 +165,7 @@ export const SCHEMA_BY_TYPE = {
   billing_department: BillingDepartment,
   refund: Refund, payer: Payer, cover_schedule: CoverSchedule, patient_cover: PatientCover,
   cover_check: CoverCheck, coverage_election: CoverageElection, coverage_allocation: CoverageAllocation,
+  service_completion: ServiceCompletion,
 } as const satisfies Record<DocType, z.ZodType>;
 
 /**
