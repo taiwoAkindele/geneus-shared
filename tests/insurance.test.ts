@@ -263,15 +263,15 @@ describe('insurance records, permissions and rollout', () => {
   it('requires the insurance workflow and policy 14 to upload insurance records', () => {
     const mutation = { clientId: 1, op: 'put', table: 'cover_check', id: 'check:x', data: {} } as const;
     assert.equal(UploadRequest.safeParse({ transactionId: null, mutations: [mutation], facilityContractVersion: 1, schemaVersion: 5, policyVersion: 13 }).success, false);
-    assert.equal(UploadRequest.safeParse({ transactionId: null, mutations: [mutation], insuranceWorkflowVersion: 1, facilityContractVersion: 1, schemaVersion: 5, policyVersion: 14 }).success, true);
+    assert.equal(UploadRequest.safeParse({ transactionId: null, mutations: [mutation], insuranceWorkflowVersion: 1, facilityContractVersion: 1, schemaVersion: 5, policyVersion: 15 }).success, true);
   });
-  it('grants contract access by duty, never by seniority', () => {
+  it('grants contract access by duty; a facility administrator holds every insurance duty', () => {
     assert.ok(!ROLE_PERMISSIONS.supervisor.some((p) => p.startsWith('insurance_contract') || p === 'coverage:confirm'));
     assert.ok(ROLE_PERMISSIONS.supervisor.includes('payment:refund'));
     assert.deepEqual([...ROLE_PERMISSIONS.cashier].sort(), ['coverage:elect_self_pay', 'payment:receive']);
     assert.ok(ROLE_PERMISSIONS.insurance_officer.includes('coverage:confirm') && !ROLE_PERMISSIONS.insurance_officer.includes('insurance_contract:activate') && !ROLE_PERMISSIONS.insurance_officer.includes('payment:refund'));
     const admin = ROLE_PERMISSIONS.facility_admin;
-    assert.ok(admin.includes('insurance_contract:activate') && !admin.includes('insurance_contract:read') && !admin.includes('coverage:confirm'));
+    assert.ok(['insurance_contract:activate', 'insurance_contract:read', 'insurance_contract:manage', 'coverage:confirm', 'payment:refund'].every((p) => admin.includes(p)), 'an administrator performs every insurance function');
   });
   it('a self-pay election records the patient agreement and, when not eligible, the check', () => {
     const election = { ...base, type: 'coverage_election', id: 'el:x', createdOn: at('2026-03-10'), patientId: PATIENT, kind: 'self_pay', coverId: 'cover:one', chargeIds: ['c:1'] };
