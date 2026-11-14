@@ -111,6 +111,7 @@ export const DocType = z.enum([
   'cover_check',
   'coverage_election',
   'coverage_allocation',
+  'service_completion',
 ]);
 export type DocType = z.infer<typeof DocType>;
 
