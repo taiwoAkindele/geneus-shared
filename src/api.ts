@@ -279,6 +279,8 @@ export const SyncTokenResponse = z.object({
   documentWorkflowVersion: z.literal(1).optional(),
   resultTemplateWorkflowVersion: z.literal(1).optional(),
   insuranceWorkflowVersion: z.literal(1).optional(),
+  /** Care services on bookings and visits, and facility details. */
+  careServiceVersion: z.literal(1).optional(),
   /** True only while the hospital's insurance billing is active; setup never changes a bill. */
   insuranceBillingActive: z.boolean().optional(),
   /** When insurance billing was active; a charge is judged against cover only inside one of these. */
@@ -302,8 +304,13 @@ export const SyncTokenClaims = z.object({
   ward_care: z.literal(1).optional(),
   pharmacy_workflow: z.literal(1).optional(),
   insurance_workflow: z.literal(1).optional(),
+  care_service: z.literal(1).optional(),
 });
 export type SyncTokenClaims = z.infer<typeof SyncTokenClaims>;
+/** Fields only a client that negotiated care services receives and may write; strict older parsers would refuse them. */
+export const CARE_SERVICE_FIELDS = { service_offering: ['visitTypes'], appointment: ['offeringId'], encounter: ['offeringId'], facility: ['country', 'address', 'phone', 'currency'] } as const;
+const usesCareServiceFields = (m: { table: string; data: Record<string, unknown> }) =>
+  ((CARE_SERVICE_FIELDS as Record<string, readonly string[]>)[m.table] ?? []).some((field) => m.data[field] !== undefined);
 
 /* ------------------------------------------------------------------ */
 /* Upload — POST /sync/upload (Authorization: Bearer <credential>)     */
@@ -342,6 +349,7 @@ export const UploadRequest = z.object({
   documentWorkflowVersion: z.literal(1).optional(),
   inpatientWorkflowVersion: z.literal(1).optional(),
   clinicalWorkflowVersion: z.literal(1).optional(),
+  careServiceVersion: z.literal(1).optional(),
   /** PowerSync's local transaction id; null when the write was not transactional. */
   transactionId: z.number().int().nonnegative().nullable(),
   mutations: z.array(UploadMutation).min(1),
@@ -356,6 +364,7 @@ export const UploadRequest = z.object({
   if (request.mutations.some((mutation) => ['inpatient_event', 'bed_ready_event'].includes(mutation.table) || (mutation.table === 'staff' && Array.isArray(mutation.data.additionalPermissions) && mutation.data.additionalPermissions.includes('admission:manage'))) && (request.inpatientWorkflowVersion !== 1 || request.facilityContractVersion !== 1 || (request.schemaVersion ?? 0) < 5 || (request.policyVersion ?? 0) < 11)) context.addIssue({ code: 'custom', message: 'Inpatient writes require inpatient workflow 1, facility contract 1, schema 5 and policy 11' });
   if (request.mutations.some((m) => ['result_template', 'result_part', 'answer_list'].includes(m.table) || (m.table === 'encounter_entry' && m.data.labReport !== undefined) || (m.table === 'staff' && Array.isArray(m.data.additionalPermissions) && m.data.additionalPermissions.includes('result_template:manage'))) && (request.resultTemplateWorkflowVersion !== 1 || request.clinicalWorkflowVersion !== 1 || (request.policyVersion ?? 0) < 13)) context.addIssue({ code: 'custom', message: 'Structured lab results and template access require result template workflow 1, clinical workflow 1 and policy 13' });
   if (request.mutations.some((m) => (INSURANCE_UPLOAD_TYPES as readonly string[]).includes(m.table)) && (request.insuranceWorkflowVersion !== 1 || request.facilityContractVersion !== 1 || (request.schemaVersion ?? 0) < 5 || (request.policyVersion ?? 0) < 14)) context.addIssue({ code: 'custom', message: 'Insurance records require insurance workflow 1, facility contract 1, schema 5 and policy 14' });
+  if (request.mutations.some(usesCareServiceFields) && (request.careServiceVersion !== 1 || request.facilityContractVersion !== 1 || (request.schemaVersion ?? 0) < 4)) context.addIssue({ code: 'custom', message: 'Care services on bookings and visits require care service version 1 and facility contract 1' });
   if (request.clinicalWorkflowVersion === 1 && (request.facilityContractVersion !== 1 || (request.schemaVersion ?? 0) < 4 || (request.policyVersion ?? 0) < 10)) context.addIssue({ code: 'custom', message: 'Clinical workflow v1 requires facility contract 1, schema 4 and policy 10' });
   if (request.mutations.some((m) => m.table === 'encounter_entry' && (m.data.workflowVersion === 1 || ['investigation_review','result_review','prescription','injection_order','disposition'].includes(String(m.data.step)))) && request.clinicalWorkflowVersion !== 1) context.addIssue({ code: 'custom', message: 'New care entries require clinical workflow version one' });
   if (request.mutations.some(requiresFacilityContract) && (request.facilityContractVersion !== 1 || (request.schemaVersion ?? 0) < 4 || (request.policyVersion ?? 0) < 10)) context.addIssue({ code: 'custom', message: 'Facility writes require the negotiated v1 contract, schema 4 and policy 10' });

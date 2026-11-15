@@ -19,6 +19,26 @@ export type FacilityDependency = z.infer<typeof FacilityDependency>;
 export const OrganizationKind = z.enum(['department', 'unit']);
 export type OrganizationKind = z.infer<typeof OrganizationKind>;
 export const LocationKind = z.enum(['site', 'building', 'room', 'ward', 'bed', 'store', 'service_point', 'mobile', 'virtual']);
+/**
+ * What the visit is for, chosen at booking. Exemption rules are written against
+ * it (PRD §9.13.2) — an antenatal or immunisation visit is often free by policy
+ * — so it is a fixed list both consumers and every facility's rules agree on.
+ * A care service names which of these its visits may be recorded as.
+ */
+export const VisitType = z.enum([
+  'general',
+  'follow_up',
+  'antenatal',
+  'postnatal',
+  'delivery',
+  'immunisation',
+  'family_planning',
+  'child_welfare',
+  'tb_programme',
+  'hiv_programme',
+  'emergency',
+]);
+export type VisitType = z.infer<typeof VisitType>;
 export const ServiceCategory = z.enum(['consultation', 'nursing', 'laboratory', 'pharmacy', 'procedure', 'preventive', 'rehabilitation', 'other']);
 export const ClinicalAction = z.enum(['assess', 'diagnose', 'prescribe', 'collect_specimen', 'perform_test', 'record_result', 'verify_result', 'release_result', 'dispense', 'administer']);
 export type ClinicalAction = z.infer<typeof ClinicalAction>;
