@@ -8,7 +8,7 @@ import { Disposition, InvestigationItem, InvestigationReview } from './careWorkf
  * schema before it reaches PostgreSQL (see SCHEMA.md) — never hand-duplicated.
  */
 import { z } from 'zod';
-import { AppointmentAllocation, ClinicalActorContext, FacilityDependency, FacilityTimeZone, FacilityWorkforcePolicy, OrganizationKind, RESTRICTED_FACILITY_DOCUMENT_TYPES, distinctRefs, facilityIdRef } from './facilityTypes.ts';
+import { AppointmentAllocation, ClinicalActorContext, VisitType, FacilityDependency, FacilityTimeZone, FacilityWorkforcePolicy, OrganizationKind, RESTRICTED_FACILITY_DOCUMENT_TYPES, distinctRefs, facilityIdRef } from './facilityTypes.ts';
 import { AssignablePermission } from './capabilities.ts';
 import { provisionalPatientName, validCalendarDate, yearsBetween } from './patientIdentity.ts';
 import { LabReport } from './resultTemplates.ts';
@@ -166,25 +166,8 @@ export const sameAppointmentTime = (left?: string, right?: string): boolean => {
   return Date.parse(left) === Date.parse(right);
 };
 
-/**
- * What the visit is for, chosen at booking. Exemption rules are written against
- * it (PRD §9.13.2) — an antenatal or immunisation visit is often free by policy
- * — so it is a fixed list both consumers and every facility's rules agree on.
- */
-export const VisitType = z.enum([
-  'general',
-  'follow_up',
-  'antenatal',
-  'postnatal',
-  'delivery',
-  'immunisation',
-  'family_planning',
-  'child_welfare',
-  'tb_programme',
-  'hiv_programme',
-  'emergency',
-]);
-export type VisitType = z.infer<typeof VisitType>;
+/** Defined with the facility vocabulary (facilityTypes.ts) so care services can name the visits they record. */
+export { VisitType };
 
 export const Appointment = baseEnvelope
   .extend({
@@ -198,6 +181,11 @@ export const Appointment = baseEnvelope
     activity: z.array(AppointmentActivity).optional(),
     /** Absent on bookings made before visit types existed. */
     visitType: VisitType.optional(),
+    /**
+     * The care service booked (a service_offering). Absent on bookings made
+     * before care services, and when a hospital has none set up.
+     */
+    offeringId: z.string().min(1).optional(),
     /** Includes first-visit charges raised at registration before this booking. */
     chargeIds: z.array(z.string().min(1)).optional(),
     /** Optional v4 resource proposal; a server reservation confirms it separately. */
@@ -209,6 +197,7 @@ export const Appointment = baseEnvelope
   })
   .superRefine((appointment, context) => {
     if (appointment.allocation && (!appointment.scheduledFor || Date.parse(appointment.allocation.endsAt) <= Date.parse(appointment.scheduledFor))) context.addIssue({ code: z.ZodIssueCode.custom, path: ['allocation'], message: 'A resource allocation needs a start and a later end' });
+    if (appointment.allocation && appointment.offeringId && appointment.allocation.offeringId !== appointment.offeringId) context.addIssue({ code: z.ZodIssueCode.custom, path: ['allocation', 'offeringId'], message: 'Reserve resources for the care service that was booked' });
     const activity = appointment.activity ?? [];
     const ids = new Set<string>();
     for (let i = 0; i < activity.length; i++) {
@@ -502,8 +491,26 @@ export const Facility = baseEnvelope.extend({
   level: z
     .enum(['chc', 'phc', 'general_hospital', 'teaching_hospital', 'specialist'])
     .default('phc'),
+  /** ISO 3166-1 alpha-2; Nigeria when absent. */
+  country: z.string().regex(/^[A-Z]{2}$/, 'Use a two-letter country code').optional(),
+  address: z.string().trim().min(1).max(300).optional(),
+  phone: z.string().trim().min(5).max(30).optional(),
+  /** The currency new prices start in; each fee keeps its own. Naira when absent. */
+  currency: z.string().regex(/^[A-Z]{3}$/, 'Use a three-letter currency code').optional(),
 });
 export type Facility = z.infer<typeof Facility>;
+/** What a hospital may change about itself. The code is its permanent identity and is not editable. */
+export const FacilityDetailsUpdate = z.strictObject({
+  name: z.string().trim().min(1).max(200),
+  level: Facility.shape.level.unwrap(),
+  state: z.string().trim().min(1).max(100),
+  lga: z.string().trim().min(1).max(100),
+  country: z.string().regex(/^[A-Z]{2}$/),
+  address: z.string().trim().max(300).optional(),
+  phone: z.string().trim().max(30).optional(),
+  currency: z.string().regex(/^[A-Z]{3}$/),
+});
+export type FacilityDetailsUpdate = z.infer<typeof FacilityDetailsUpdate>;
 
 /** Configurable per facility — no fixed list (PRD §9.7). */
 export const Unit = baseEnvelope.extend({
@@ -756,6 +763,8 @@ export const Encounter = baseEnvelope.extend({
    * default). Absent on visits recorded before visit types reached visits.
    */
   visitType: VisitType.optional(),
+  /** The care service this visit is for (a service_offering): the booking's, or chosen at registration. */
+  offeringId: z.string().min(1).optional(),
   /** A continuing-care activity within one admission, never another outpatient attendance. */
   inpatientContext: z.strictObject({ admissionId: z.string().min(1), purpose: z.enum(['nursing', 'review', 'discharge']) }).optional(),
 });

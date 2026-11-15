@@ -34,6 +34,7 @@ export * from './facilitySync.ts';
 export * from './facilityValidation.ts';
 export * from './facilityAuthorization.ts';
 export * from './facilityProjection.ts';
+export * from './careServices.ts';
 export * from './insurance.ts';
 
 import { Location, ServiceDefinition, ServiceOffering, PractitionerProfile, Credential, CapabilityDecision,

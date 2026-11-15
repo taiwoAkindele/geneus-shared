@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { baseEnvelope, patientId, SCHEMA_VERSION } from './common.ts';
 import {
   CodedConcept, ClinicalAction, ClinicalActions, ClinicalScope, FacilityDate, FacilityInstant,
-  FacilityTimeZone, Interval, LocationKind, ServiceCategory, distinctRefs, facilityIdRef as ref,
+  FacilityTimeZone, Interval, LocationKind, ServiceCategory, VisitType, distinctRefs, facilityIdRef as ref,
   facilityText as text, FACILITY_MIN_POLICY_VERSION,
 } from './facilityTypes.ts';
 
@@ -42,6 +42,13 @@ export const ServiceOffering = record({
   intakePolicy: z.enum(['walk_in', 'scheduled', 'both']), timeZone: FacilityTimeZone,
   configuration: z.enum(['draft', 'proposed', 'active', 'retired']), revision: version.default(1),
   resourceReadiness: z.enum(['unassessed', 'available', 'unavailable']).default('unassessed'),
+  /**
+   * The visits this care service records (first is the usual one): what a
+   * booking or registration may choose. Empty for care that is not a visit,
+   * such as inpatient care (admission) or a lab test (ordered).
+   */
+  visitTypes: z.array(VisitType).max(VisitType.options.length).default([])
+    .refine((v) => new Set(v).size === v.length, 'Choose each visit kind only once'),
 }).refine((v) => v.delivery !== 'physical' || v.locationIds.length > 0, 'A physical offering needs an actual location');
 export type ServiceOffering = z.infer<typeof ServiceOffering>;
 
