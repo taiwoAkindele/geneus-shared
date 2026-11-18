@@ -149,6 +149,15 @@ describe('calculation version 1 arithmetic', () => {
     assert.equal(r.split.patientShareMinor, 125); // round(50 × 2.5)
     assert.ok(splitBalances(r.split, 1_000));
   });
+  it('uses explicit manual quantity with the existing tariff and copay rules', () => {
+    const c=charge('fee:drug', 1_350, {feePriceVersion:'price:selected',quantity:3,unitPriceMinor:450});
+    assert.equal(chargeUnits(c),3);
+    const r=computeAllocation({terms:terms(),planCode:'GOLD',charge:c,units:chargeUnits(c)!});
+    assert.ok(r.ok);
+    if(r.ok){assert.equal(r.split.tariffTotalMinor,999);assert.equal(r.split.patientShareMinor,150);assert.ok(splitBalances(r.split,1350));}
+    const lines=buildScheduleLines(terms(),terms().plans[0],id=>CATEGORY[id]);
+    assert.ok(!JSON.stringify(lines).includes('pharmacy'),'old contracts retain their original category vocabulary');
+  });
   it('chooses the contract version in force on the date of service', () => {
     const v2 = terms({ effectiveFrom: '2026-03-15', tariff: { ...terms().tariff, 'fee:consult': { unitMinor: 5_000 } } });
     const r = records({ schedules: [schedule(terms(), 1), schedule(v2, 2)] });

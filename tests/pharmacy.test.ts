@@ -19,6 +19,21 @@ const append = (records: PharmacyRecords, e: EncounterEntry): PharmacyRecords =>
   return { ...records, entries: [...records.entries, e], movements: [...records.movements, ...effects.filter((r) => r.type === 'stock_movement')], charges: [...records.charges, ...effects.filter((r) => r.type === 'charge')], adjustments: [...records.adjustments, ...effects.filter((r) => r.type === 'billing_adjustment')] };
 };
 describe('quantity-based pharmacy contract', () => {
+  it('keeps prepaid partial supplies in billing review without guessing coverage or charging again',()=>{
+    const records=data();
+    records.charges=[{...base,id:'manual:three-units',type:'charge',patientId:patient.id,feeItemId:fee.id,category:'other',description:fee.name,listPriceMinor:300,amountMinor:300,currency:'NGN'}];
+    const unpriced=(quantity:number,previousEntryId?:string)=>details({catalogueVersion:1,quantity,previousEntryId,billing:'unpriced',feeItemId:undefined,unitPriceMinor:undefined,currency:undefined,chargedMinor:undefined,reason:'Existing manual bill requires quantity review'});
+    const first=entry('prepaid:two',unpriced(2),records);
+    assert.deepEqual(pharmacyIssues(first,records),[]);
+    const saved=append(records,first),last=entry('prepaid:one',unpriced(1,first.id),saved);
+    assert.deepEqual(pharmacyIssues(last,saved),[]);
+    const final=append(saved,last);
+    assert.equal(final.charges.length,1);assert.equal(supplyState(source,'line:one',final.entries).supplied,3);
+    const unsafe=entry('prepaid:duplicate',details({catalogueVersion:1,quantity:3,chargedMinor:300}),records);
+    assert.match(pharmacyIssues(unsafe,records).join(),/review/i);
+    const extra=entry('prepaid:additional',details({catalogueVersion:1,quantity:3,chargedMinor:300,additionalChargeReason:'Separate additional supply confirmed'}),records);
+    assert.deepEqual(pharmacyIssues(extra,records),[]);
+  });
   it('supplies the exact signed take-home prescription and refuses new supplies against a revised summary', () => {
     const summary = WardCareEvent.parse({ ...base, id: 'summary:one', type: 'ward_care_event', admissionId: 'stay:one', patientId: patient.id, encounterId: source.encounterId, occurredOn: base.createdOn, values: { kind: 'discharge', admissionReason: 'Recorded reason', diagnoses: 'Recorded diagnosis', course: 'Recorded care', instructions: 'Reviewed instructions', takeHome: source.values.prescription, sourceEntryIds: [], patientName: patient.fullName, patientIdentifier: patient.id, admittedOn: base.createdOn } });
     const records = { ...data(), entries: [], wardEvents: [summary] };

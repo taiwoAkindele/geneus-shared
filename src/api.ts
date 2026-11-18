@@ -266,6 +266,8 @@ export type PinSetupCodeIssued = z.infer<typeof PinSetupCodeIssued>;
  * costs offline operation nothing.
  */
 export const SyncTokenResponse = z.object({
+  billingCatalogueVersion: z.literal(1).optional(),
+  billingCatalogueEnabled: z.boolean().optional(),
   token: z.string().min(1),
   expiresOn: isoDateTime,
   syncEndpoint: z.url(),
@@ -342,6 +344,7 @@ export const UploadMutation = z.object({
 export type UploadMutation = z.infer<typeof UploadMutation>;
 
 export const UploadRequest = z.object({
+  billingCatalogueVersion: z.literal(1).optional(),
   insuranceWorkflowVersion: z.literal(1).optional(),
   pharmacyWorkflowVersion: z.literal(1).optional(),
   wardCareVersion: z.literal(1).optional(),

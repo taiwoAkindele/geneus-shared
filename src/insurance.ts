@@ -390,7 +390,8 @@ export const buildScheduleLines = (terms: PayerContractTerms, plan: ContractPlan
     items[feeItemId] = category ? scheduleLineFor(terms, plan, feeItemId, category) : { status: 'not_configured', missing: 'arrangement' };
   }
   const categories: Partial<Record<FeeCategory, ScheduleLine>> = {};
-  for (const category of FeeCategory.options) categories[category] = scheduleLineFor(terms, plan, undefined, category);
+  // Do not introduce unknown enum keys into older facilities' activated schedules.
+  for (const category of FeeCategory.options.filter((c) => ['registration', 'card', 'consultation', 'laboratory', 'procedure', 'other'].includes(c) || c in terms.arrangements.categories || c in plan.rules.categories)) categories[category] = scheduleLineFor(terms, plan, undefined, category);
   return { items, categories };
 };
 
@@ -483,7 +484,8 @@ export const splitBalances = (split: AllocationSplit, listPriceMinor: number): b
  * dispense entry; every other charge in Geneus is one unit. When a supply's
  * entry is not available the quantity is unknown — not assumed to be one.
  */
-export const chargeUnits = (charge: Pick<Charge, 'dispenseEntryId'>, dispenseEntry?: EncounterEntry): number | undefined => {
+export const chargeUnits = (charge: Pick<Charge, 'dispenseEntryId' | 'quantity'>, dispenseEntry?: EncounterEntry): number | undefined => {
+  if (charge.quantity !== undefined) return charge.quantity;
   if (!charge.dispenseEntryId) return 1;
   if (!dispenseEntry || dispenseEntry.id !== charge.dispenseEntryId) return undefined;
   const quantity = dispensingDetails(dispenseEntry)?.quantity;

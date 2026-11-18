@@ -4,6 +4,8 @@ const quantity = z.number().finite().positive().max(1_000_000);
 const minor = z.number().int().nonnegative().safe();
 /** One immutable supply, return, or attributed decision for an exact prescription line. */
 export const DispensingDetails = z.strictObject({
+  catalogueVersion: z.literal(1).optional(),
+  additionalChargeReason: ref.optional(),
   prescriptionEntryId: ref, lineId: ref, previousEntryId: ref.optional(),
   action: z.enum(['supply', 'return', 'note', 'price']), complete: z.boolean(),
   quantity: quantity.optional(), unit: ref.optional(),

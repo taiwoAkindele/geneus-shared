@@ -15,6 +15,7 @@ import type { DocType } from './common.ts';
 export * from './common.ts';
 export * from './careWorkflow.ts';
 export * from './documents.ts';
+export * from './billingCatalogue.ts';
 export * from './permissions.ts';
 export * from './api.ts';
 export * from './patientIdentity.ts';
