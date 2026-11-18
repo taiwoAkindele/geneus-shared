@@ -20,7 +20,7 @@ import { z } from 'zod';
  */
 // v4: facility/workforce vocabulary, protected authority and revised policy.
 // v5: explicit provisional patient identities may omit unknown demographics.
-export const SCHEMA_VERSION = 5 as const;
+export const SCHEMA_VERSION = 6 as const;
 
 /* ------------------------------------------------------------------ */
 /* Primitive helpers                                                   */

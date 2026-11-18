@@ -28,6 +28,7 @@ export const Location = record({
 export type Location = z.infer<typeof Location>;
 
 export const ServiceDefinition = record({
+  feeItemId: ref.optional(),
   type: z.literal('service_definition'), name: text, category: ServiceCategory,
   investigation: z.strictObject({ specimen: text, department: text, aliases: z.array(text).max(50).default([]) }).optional(),
   concept: CodedConcept, orderable: z.boolean().default(false), active: z.boolean().default(true), revision: version.default(1),

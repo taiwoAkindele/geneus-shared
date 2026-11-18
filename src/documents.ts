@@ -1,3 +1,5 @@
+import {ExemptionRule} from './billingRules.ts';
+export {ExemptionRule} from './billingRules.ts';
 import { Disposition, InvestigationItem, InvestigationReview } from './careWorkflow.ts';
 /**
  * Geneus Health — shared contract: the document schemas.
@@ -955,7 +957,8 @@ export const minorUnits = z.number().int().nonnegative();
 
 export const currencyCode = z.string().regex(/^[A-Z]{3}$/, 'Expected an ISO 4217 currency code like NGN');
 
-export const FeeCategory = z.enum(['registration', 'card', 'consultation', 'laboratory', 'procedure', 'other']);
+export const LEGACY_FEE_CATEGORIES = ['registration', 'card', 'consultation', 'laboratory', 'procedure', 'other'] as const;
+export const FeeCategory = z.enum([...LEGACY_FEE_CATEGORIES, 'pharmacy', 'maternity', 'admission', 'imaging']);
 export type FeeCategory = z.infer<typeof FeeCategory>;
 
 /**
@@ -971,31 +974,6 @@ export type ChargeWhen = z.infer<typeof ChargeWhen>;
  * `{ reason: 'Under-5 policy', ageUnderYears: 5 }`. Every condition a rule
  * gives must hold; a fee is exempt when any one of its rules matches.
  */
-export const ExemptionRule = z
-  .strictObject({
-    /** Shown on the bill and in the reports: "Exempt — Under-5 policy". */
-    reason: text,
-    /** Matches a patient younger than this many whole years. */
-    ageUnderYears: z.number().int().positive().max(130).optional(),
-    /** Matches a patient this many whole years old or older. */
-    ageFromYears: z.number().int().nonnegative().max(130).optional(),
-    sex: Sex.optional(),
-    visitTypes: z.array(VisitType).min(1).optional(),
-  })
-  .refine(
-    (rule) =>
-      rule.ageUnderYears !== undefined ||
-      rule.ageFromYears !== undefined ||
-      rule.sex !== undefined ||
-      rule.visitTypes !== undefined,
-    { message: 'An exemption needs at least one condition' },
-  )
-  .refine(
-    (rule) => rule.ageUnderYears === undefined || rule.ageFromYears === undefined || rule.ageFromYears < rule.ageUnderYears,
-    { message: 'No patient can be both that old and that young', path: ['ageFromYears'] },
-  );
-export type ExemptionRule = z.infer<typeof ExemptionRule>;
-
 /** What exemption rules are checked against, known when the fee is raised. */
 export type ExemptionFacts = {
   /** Whole years at the time of the visit; absent when it cannot be worked out. */
@@ -1023,6 +1001,8 @@ export const findExemption = (rules: readonly ExemptionRule[], facts: ExemptionF
 
 /** One entry in the facility's fee schedule. Edited in place; charges keep the price they were raised at. */
 export const FeeItem = baseEnvelope.extend({
+  /** Server-owned marker: the current immutable price also records category/exemptions. */
+  priceEvidenceVersion: z.literal(1).optional(),
   priceVersion: z.string().min(1).optional(),
   type: z.literal('fee_item'),
   name: text,
@@ -1045,6 +1025,12 @@ export type FeeItem = z.infer<typeof FeeItem>;
  */
 export const Charge = baseEnvelope
   .extend({
+    feePriceVersion: z.string().min(1).optional(),
+    quantity: z.number().finite().positive().max(1_000_000).optional(),
+    unitPriceMinor: minorUnits.optional(),
+    unitOfMeasure: z.string().trim().min(1).optional(),
+    /** Explicit actual service point; never inferred from category or receiving account. */
+    servicePointId: z.string().min(1).optional(),
     dispenseEntryId: z.string().min(1).optional(),
     orderItemId: z.string().min(1).optional(),
     orderEntryId: z.string().min(1).optional(),
@@ -1068,7 +1054,12 @@ export const Charge = baseEnvelope
   .refine((charge) => charge.amountMinor === (charge.exemptionReason ? 0 : charge.listPriceMinor), {
     message: 'A charge owes its full price, or nothing when an exemption applies',
     path: ['amountMinor'],
-  });
+  }).refine((charge) => {
+    const snapshot = charge.feePriceVersion !== undefined || charge.quantity !== undefined || charge.unitPriceMinor !== undefined;
+    return !snapshot || Boolean(charge.feePriceVersion && charge.quantity !== undefined && charge.unitPriceMinor !== undefined
+      && Number.isSafeInteger(Math.round(charge.unitPriceMinor * charge.quantity))
+      && charge.listPriceMinor === Math.round(charge.unitPriceMinor * charge.quantity));
+  }, 'Keep the selected fee version, quantity and unit price together');
 export type Charge = z.infer<typeof Charge>;
 
 /**

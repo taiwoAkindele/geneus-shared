@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { isoDate, isoDateTime } from './common.ts';
 import type { EncounterEntry } from './documents.ts';
+import { ExemptionRule } from './billingRules.ts';
 
 const text = z.string().trim().min(1);
 export const CLINICAL_WORKFLOW_VERSION = 1 as const;
@@ -10,7 +11,12 @@ export const InvestigationItem = z.strictObject({
   specimen: text.optional(), priority: z.enum(['routine', 'urgent']).default('routine'),
   priceMinor: z.number().int().nonnegative().optional(), currency: text.optional(),
   custom: z.boolean().optional(),
-}).refine((v) => v.custom || (v.serviceDefinitionId && v.offeringId), 'Select a catalogue investigation or identify a custom request')
+  catalogueSource: z.literal('billing').optional(),
+  exemptions: z.array(z.lazy(()=>ExemptionRule)).optional(),
+  billingReviewReason: text.optional(),
+  additionalChargeReason: text.optional(),
+}).refine((v) => v.custom || (v.serviceDefinitionId && v.offeringId) || (v.catalogueSource === 'billing' && v.feeItemId && v.feePriceVersion && v.priceMinor !== undefined && v.currency), 'Select a catalogue investigation or identify a custom request')
+  .refine((v) => !v.custom || (!v.feeItemId && v.priceMinor === undefined && !v.catalogueSource), 'Custom requests cannot carry catalogue prices')
   .refine((v) => (v.priceMinor === undefined) === (v.currency === undefined), 'Price and currency must be recorded together');
 export type InvestigationItem = z.infer<typeof InvestigationItem>;
 export const InvestigationReview = z.strictObject({

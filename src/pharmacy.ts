@@ -2,6 +2,7 @@ import { DispensingDetails, type DispensingDetails as Details } from './pharmacy
 import { Charge, StockMovement, BillingAdjustment, findExemption, type EncounterEntry, type StockItem, type FeeItem, type Patient, type VisitType } from './documents.ts';
 import type { WardCareEvent } from './wardCare.ts';
 import { patientAge } from './patientIdentity.ts';
+import { manualBillCandidates } from './billingCatalogue.ts';
 import { medicationHeads, dischargeHeads } from './wardCare.ts';
 
 export type PharmacyRecords = { entries: readonly EncounterEntry[]; items: readonly StockItem[]; movements: readonly StockMovement[]; fees: readonly FeeItem[]; charges: readonly Charge[]; adjustments: readonly BillingAdjustment[]; patient?: Patient; wardEvents?: readonly WardCareEvent[]; visitType?: VisitType };
@@ -87,6 +88,7 @@ export const pharmacyIssues = (entry: EncounterEntry, data: PharmacyRecords): st
   }
   if (d.action === 'supply' || d.action === 'price') {
     if (d.billing === 'charge') {
+      if(d.catalogueVersion===1 && manualBillCandidates(data.charges,entry.patientId,d.feeItemId!,entry.encounterId).length && !d.additionalChargeReason) return ['An existing manual bill may cover this supply. Record it for billing review, or explicitly explain an additional supply'];
       const fee = data.fees.find((f) => f.id === d.feeItemId && f.facilityId === entry.facilityId && f.active);
       if (!fee || !data.patient || data.patient.patientId !== entry.patientId || data.patient.facilityId !== entry.facilityId) return ['The medicine price or patient record is unavailable'];
       if (fee.amountMinor !== d.unitPriceMinor || fee.currency !== d.currency || supplyPrice(fee, d.quantity!, data.patient, entry.createdOn, data.visitType).amount !== d.chargedMinor) return ['The medicine price changed. Review the current price before saving'];
@@ -120,7 +122,7 @@ export const pharmacyEffects = (entry: EncounterEntry, data: PharmacyRecords): (
     if (d.billing === 'charge') {
       const fee = data.fees.find((f) => f.id === d.feeItemId)!;
       const price = supplyPrice(fee, d.quantity!, data.patient!, entry.createdOn, data.visitType);
-      result.push(Charge.parse({ ...base, id: pharmacyChargeId(entry.id), type: 'charge', patientId: entry.patientId, encounterId: entry.encounterId, feeItemId: fee.id, description: `${fee.name} · ${d.quantity} ${d.unit}`, category: fee.category, departmentId: fee.departmentId ?? undefined, listPriceMinor: price.total, amountMinor: price.amount, currency: d.currency, exemptionReason: price.exemptionReason }));
+      result.push(Charge.parse({ ...base, ...(d.catalogueVersion===1 ? {feePriceVersion:d.feePriceVersion,quantity:d.quantity,unitPriceMinor:d.unitPriceMinor,unitOfMeasure:d.unit,servicePointId:entry.actorContext?.locationId}:{}), id: pharmacyChargeId(entry.id), type: 'charge', patientId: entry.patientId, encounterId: entry.encounterId, feeItemId: fee.id, description: `${fee.name} · ${d.quantity} ${d.unit}`, category: fee.category, departmentId: fee.departmentId ?? undefined, listPriceMinor: price.total, amountMinor: price.amount, currency: d.currency, exemptionReason: price.exemptionReason }));
     }
   }
   if (d.action === 'return') {

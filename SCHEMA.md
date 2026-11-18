@@ -628,3 +628,30 @@ UploadRequest/SyncTokenResponse negotiate pharmacyWorkflowVersion: 1, represente
 by the signed pharmacy_workflow claim. These are optional additive fields under
 schema 5 / policy 13; no new document type or broad permission grant is introduced.
 See [implementation](../docs/PHARMACY-STOCK-BILLING-2026-11-08.md).
+
+## Central Billing catalogue (18 November 2026)
+
+Schema 6 adds `pharmacy`, `maternity`, `admission` and `imaging` to the existing six
+FeeCategory values. `other` remains General / Other. Categories organize discovery;
+they grant no clinical or departmental permission. `billingCatalogueVersion: 1`
+is negotiated separately from per-record legacy envelope versions.
+
+FeeItem's server-owned `priceEvidenceVersion: 1` identifies complete immutable price
+heads including category and exemption policy. New Charge snapshots carry a complete
+`feePriceVersion`, positive quantity and unitPriceMinor tuple whose rounded product
+equals listPriceMinor. Optional unitOfMeasure and servicePointId retain explicitly
+recorded units and actual operational context. Old charges retain absent evidence.
+Insurance `chargeUnits` uses explicit quantity before the legacy dispense-source
+lookup; existing calculation/settlement rules are unchanged.
+
+ServiceDefinition may reference an existing central feeItemId. InvestigationItem
+can name a central fee/version without a clinical definition or offering; clinical
+metadata is optional and never inferred from the fee name. Existing operational
+references remain supported. Billing review reasons suppress a second generated
+charge, without declaring an uncertain bill paid. DispensingDetails optionally
+marks catalogueVersion 1 and an explicit additionalChargeReason.
+
+ExemptionRule is re-exported from its existing public API; its unchanged schema
+now lives in billingRules.ts to avoid a runtime dependency cycle. No new document
+type, configurable category registry, ledger or generic service-link contract is
+introduced. See [implementation and compatibility](../docs/billing-release-2ab-2026-11-18/README.md).
