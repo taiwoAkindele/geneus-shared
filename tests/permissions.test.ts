@@ -89,8 +89,8 @@ describe('role permissions', () => {
   });
 
   /** The cashier takes money and records no care (PRD §9.13.4); v14 adds recording a permitted self-pay choice at the till. */
-  it('lets the cashier take payments and record a permitted self-pay choice, and nothing else', () => {
-    assert.deepEqual([...permissionsFor('cashier', 'read_write')], ['payment:receive', 'coverage:elect_self_pay']);
+  it('lets the cashier collect, record a permitted self-pay choice and associate sources without clinical or credit authority', () => {
+    assert.deepEqual([...permissionsFor('cashier', 'read_write')], ['payment:receive', 'coverage:elect_self_pay','charge:associate']);
   });
 
   /** Booking raises the visit's fees in the same save, so whoever may book may raise them (PRD §9.13.3). */

@@ -2,10 +2,11 @@ import { DispensingDetails, type DispensingDetails as Details } from './pharmacy
 import { Charge, StockMovement, BillingAdjustment, findExemption, type EncounterEntry, type StockItem, type FeeItem, type Patient, type VisitType } from './documents.ts';
 import type { WardCareEvent } from './wardCare.ts';
 import { patientAge } from './patientIdentity.ts';
+import {allocatedQuantity,type ServiceChargeAllocation} from './serviceAllocations.ts';
 import { manualBillCandidates } from './billingCatalogue.ts';
 import { medicationHeads, dischargeHeads } from './wardCare.ts';
 
-export type PharmacyRecords = { entries: readonly EncounterEntry[]; items: readonly StockItem[]; movements: readonly StockMovement[]; fees: readonly FeeItem[]; charges: readonly Charge[]; adjustments: readonly BillingAdjustment[]; patient?: Patient; wardEvents?: readonly WardCareEvent[]; visitType?: VisitType };
+export type PharmacyRecords = { integratedBilling?:boolean; serviceAllocations?:readonly ServiceChargeAllocation[]; entries: readonly EncounterEntry[]; items: readonly StockItem[]; movements: readonly StockMovement[]; fees: readonly FeeItem[]; charges: readonly Charge[]; adjustments: readonly BillingAdjustment[]; patient?: Patient; wardEvents?: readonly WardCareEvent[]; visitType?: VisitType };
 export const dispensingDetails = (entry: EncounterEntry): Details | undefined => {
   if (entry.step !== 'dispense' || entry.pharmacyVersion !== 1) return undefined;
   const parsed = DispensingDetails.safeParse(entry.values.supply);
@@ -41,6 +42,7 @@ export const supplyPrice = (fee: FeeItem, quantity: number, patient: Patient, at
   return { total, amount: exemption ? 0 : total, exemptionReason: exemption?.reason };
 };
 export const returnCredit = (original: EncounterEntry, quantity: number, data: PharmacyRecords): number => {
+  if(data.integratedBilling)return 0; // Physical return first; an authorized financial release applies any supported credit.
   const source = dispensingDetails(original);
   const charge = supplyCharge(original.id, data);
   if (!source || source.action !== 'supply' || !charge || !source.quantity || !charge.amountMinor) return 0;
@@ -95,6 +97,7 @@ export const pharmacyIssues = (entry: EncounterEntry, data: PharmacyRecords): st
     }
   }
   if (d.action === 'price') {
+    if(allocatedQuantity(data.serviceAllocations??[],a=>a.sourceEntryId===d.priceFor)>0)return ['This supply is already associated with an existing charge. Resolve its financial association before creating another bill'];
     const original = state.events.find((e) => e.id === d.priceFor), supplied = original && dispensingDetails(original);
     if (!original || supplied?.action !== 'supply' || supplied.billing !== 'unpriced' || supplyCharge(original.id, data) || state.events.some((e) => dispensingDetails(e)?.priceFor === original.id)) return ['This supply already has a bill, or is not waiting for a price'];
     if (supplied.unit !== d.unit || !same(unreturnedQuantity(original, state.events), d.quantity!)) return ['The return or quantity changed. Review the quantity that still needs billing'];

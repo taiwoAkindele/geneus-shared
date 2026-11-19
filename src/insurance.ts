@@ -294,11 +294,10 @@ export const CoverageElection = baseEnvelope.extend({
 export type CoverageElection = z.infer<typeof CoverageElection>;
 
 /**
- * The patient-facing projection of a confirmed snapshot. The payer share,
- * contract adjustment, capitation-covered amount and calculation inputs live
- * only in server columns. `arrangement` says whether the remainder is an HMO
- * receivable (`per_service`) or covered by capitation; it never carries an
- * amount, so no visit-level receivable can be summed from synced data.
+ * The responsibility decision. Calculation inputs and contract terms stay
+ * private on the server. Compatible integrated readers receive patient-facing
+ * amounts in the separate CoverageFinancialSummary, derived from this snapshot.
+ * `arrangement` distinguishes per-service receivables from capitation.
  */
 export const CoverageAllocation = baseEnvelope.extend({
   type: z.literal('coverage_allocation'),
@@ -927,6 +926,7 @@ export const COMPLETION_ROLES = ['doctor', 'nurse', 'chew', 'laboratory_staff', 
 
 /** How a claim line shows the service happened. `missing` and `not_done` block a claim. */
 export type FulfillmentEvidence =
+  | {kind:'association';allocationIds:string[];entryIds:string[];on:string;by:string}
   | { kind: 'administrative' }
   | { kind: 'result'; entryId: string; on: string; by: string }
   | { kind: 'dispense'; entryId: string; on: string; by: string }
@@ -958,6 +958,8 @@ const isConsultationEvidence = (entry: EncounterEntry) => CONSULTING_ROLES.inclu
  * clinical evidence is preferred to a completion record.
  */
 export const serviceFulfillment = (charge: Charge, evidence: {
+  associations?:readonly import('./serviceAllocations.ts').ServiceChargeAllocation[];
+  associatedEntries?:readonly EncounterEntry[];
   /** lab_results entries of the charge's encounter. */
   results: readonly EncounterEntry[];
   /** The dispense entry the charge was raised by, if any. */
@@ -969,7 +971,34 @@ export const serviceFulfillment = (charge: Charge, evidence: {
   const c = evidence.completion;
   if (c?.status === 'not_done') return { kind: 'not_done', completionId: c.id, reason: c.note ?? '' };
   if (charge.category === 'registration' || charge.category === 'card') return { kind: 'administrative' };
-  if (charge.dispenseEntryId && evidence.dispense) return { kind: 'dispense', entryId: evidence.dispense.id, on: evidence.dispense.performedOn ?? evidence.dispense.createdOn, by: evidence.dispense.createdBy };
+  const associated=(evidence.associations??[]).filter(a=>a.chargeId===charge.id&&a.acceptedOn);
+  if(associated.length){
+    const allocations=associated.filter(a=>a.action==='allocate'),entries=evidence.associatedEntries??[],ids:string[]=[],events:EncounterEntry[]=[];
+    let performed=0;
+    for(const a of allocations){
+      const released=associated.filter(r=>r.reversesId===a.id).reduce((n,r)=>n+r.quantity,0),net=Math.max(0,a.quantity-released);
+      if(net<=0)continue;
+      if(a.sourceKind==='pharmacy'){
+        const entry=entries.find(e=>e.id===a.sourceEntryId&&e.patientId===charge.patientId),supply=entry?.values.supply as {action?:string;quantity?:number}|undefined;
+        const returned=entries.reduce((n,e)=>{const d=e.values.supply as {action?:string;returnOf?:string;quantity?:number}|undefined;return n+(d?.action==='return'&&d.returnOf===a.sourceEntryId?(d.quantity??0):0);},0);
+        const resolved=(evidence.associations??[]).filter(r=>r.acceptedOn&&r.action==='release'&&r.returnEntryId&&r.sourceEntryId===a.sourceEntryId).reduce((n,r)=>n+r.quantity,0);
+        if(returned>resolved+0.000001)return {kind:'missing',ordered:true};
+        if(entry&&supply?.action==='supply'){performed+=Math.min(net,Math.max(0,(supply.quantity??0)-returned));ids.push(a.id);events.push(entry);}
+      }else{
+        const result=entries.find(e=>e.step==='lab_results'&&e.patientId===charge.patientId&&(e.values.results as {orderItemId?:string}[]|undefined)?.some(r=>r.orderItemId===a.sourceItemId));
+        if(result){performed+=net;ids.push(a.id);events.push(result);}
+      }
+    }
+    const credited=associated.filter(a=>a.action==='release'&&a.creditReturnedUnits).reduce((n,a)=>n+a.quantity,0);
+    if(charge.quantity!==undefined&&performed+0.000001>=charge.quantity-credited&&performed>0){const latest=events.sort((a,b)=>b.createdOn.localeCompare(a.createdOn))[0];return {kind:'association',allocationIds:ids,entryIds:[...new Set(events.map(e=>e.id))],on:latest.performedOn??latest.createdOn,by:latest.createdBy};}
+    return {kind:'missing',ordered:true};
+  }
+  if (charge.dispenseEntryId && evidence.dispense) {
+    const source=(evidence.dispense.values.supply as {priceFor?:string}|undefined)?.priceFor??evidence.dispense.id;
+    const laterReturn=(evidence.associatedEntries??[]).some(e=>{const d=e.values.supply as {action?:string;returnOf?:string}|undefined;return e.schemaVersion>=7&&e.patientId===charge.patientId&&d?.action==='return'&&d.returnOf===source&&Date.parse(e.createdOn)>=Date.parse(charge.createdOn);});
+    if(laterReturn)return {kind:'missing',ordered:true};
+    return { kind: 'dispense', entryId: evidence.dispense.id, on: evidence.dispense.performedOn ?? evidence.dispense.createdOn, by: evidence.dispense.createdBy };
+  }
   if (charge.orderItemId) {
     const result = evidence.results.find((e) => e.step === 'lab_results' && (e.values.results as { orderItemId?: string }[] | undefined)?.some((r) => r.orderItemId === charge.orderItemId));
     if (result) return { kind: 'result', entryId: result.id, on: result.performedOn ?? result.createdOn, by: result.createdBy };
@@ -1308,6 +1337,7 @@ export const RemittanceAllocationInput = z.strictObject({ claimId: z.string().mi
  * claims; any amount not yet matched stays visibly unallocated.
  */
 export const RemittanceInput = z.strictObject({
+  incomingTransferId: z.string().min(1).optional(),
   payerId: z.string().min(1),
   receivedOn: isoDate,
   /** The payer's payment or advice reference, unique per payer, so the same money is never recorded twice. */

@@ -20,7 +20,7 @@ import { z } from 'zod';
  */
 // v4: facility/workforce vocabulary, protected authority and revised policy.
 // v5: explicit provisional patient identities may omit unknown demographics.
-export const SCHEMA_VERSION = 6 as const;
+export const SCHEMA_VERSION = 7 as const;
 
 /* ------------------------------------------------------------------ */
 /* Primitive helpers                                                   */
@@ -82,6 +82,8 @@ export const DocType = z.enum([
   'charge',
   'payment',
   'billing_adjustment',
+  'service_charge_allocation',
+  'coverage_financial_summary',
   'incoming_transfer',
   'billing_department',
   'location',

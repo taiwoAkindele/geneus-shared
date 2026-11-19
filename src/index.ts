@@ -16,6 +16,10 @@ export * from './common.ts';
 export * from './careWorkflow.ts';
 export * from './documents.ts';
 export * from './billingCatalogue.ts';
+export * from './serviceAllocations.ts';
+import {ServiceChargeAllocation} from './serviceAllocations.ts';
+export * from './patientStatements.ts';
+import {CoverageFinancialSummary} from './patientStatements.ts';
 export * from './permissions.ts';
 export * from './api.ts';
 export * from './patientIdentity.ts';
@@ -87,6 +91,8 @@ import {
  * register definition — see `validateRegisterEntry` (documents.ts).
  */
 export const AnyDocument = z.union([
+  ServiceChargeAllocation,
+  CoverageFinancialSummary,
   Location, ServiceDefinition, ServiceOffering, PractitionerProfile, Credential, CapabilityDecision,
   ReviewerDelegation, ClinicalAuthorityBootstrap, ExternalClinicalReviewer, AuthoritySnapshot,
   StaffAssignment, ServiceSession, SessionEvent, WorkOwnershipEvent, AppointmentReservation,
@@ -126,6 +132,8 @@ export type AnyDocument = z.infer<typeof AnyDocument>;
 
 /** Map of `type` → schema, for validating a record when its type is known. */
 export const SCHEMA_BY_TYPE = {
+  service_charge_allocation:ServiceChargeAllocation,
+  coverage_financial_summary:CoverageFinancialSummary,
   ward_care_event: WardCareEvent,
   location: Location, service_definition: ServiceDefinition, service_offering: ServiceOffering,
   practitioner_profile: PractitionerProfile, credential: Credential, capability_decision: CapabilityDecision,

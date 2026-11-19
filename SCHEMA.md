@@ -655,3 +655,20 @@ ExemptionRule is re-exported from its existing public API; its unchanged schema
 now lives in billingRules.ts to avoid a runtime dependency cycle. No new document
 type, configurable category registry, ledger or generic service-link contract is
 introduced. See [implementation and compatibility](../docs/billing-release-2ab-2026-11-18/README.md).
+
+## Integrated Billing (local implementation, 19 November 2026)
+
+Schema 7 and policy 17 add the financial permission charge:associate and two
+replicated records: append-only service_charge_allocation and the public
+coverage_financial_summary. Exact source IDs and explicit quantity units reserve
+existing purchased capacity; server acceptance is authoritative. A release names
+the original allocation and, for a physical return, the actual return entry.
+No historical source relationships or quantity units are inferred.
+
+Financial summaries project only amounts from existing immutable insurance
+allocations. Signed contractual adjustment and returned insured services are
+separate. Original charges and old decisions remain unchanged. Insurer receipts
+remain claim-level. The shared patientStatement projection supplies all statement
+formats. integratedBillingVersion 1 is negotiated independently of envelope
+versions, after active readers are compatible, their queues drained and all
+legacy JWTs expired. See ../docs/integrated-billing-2026-11-18/README.md.

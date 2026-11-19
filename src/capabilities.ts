@@ -26,6 +26,7 @@ export const Permission = z.enum([
   'stock_movement:create',
   // Billing (PRD §9.13)
   'charge:create',
+  'charge:associate',
   'payment:receive',
   'payment:waive',
   'payment:reverse',

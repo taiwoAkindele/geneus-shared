@@ -42,8 +42,8 @@ const patient = {
 };
 
 describe('the v6 envelope', () => {
-  it('is version 6 and retains explicit legacy versions', () => {
-    assert.equal(SCHEMA_VERSION, 6);
+  it('is version 7 and retains explicit legacy versions', () => {
+    assert.equal(SCHEMA_VERSION, 7);
     assert.equal(Patient.parse({ ...patient, schemaVersion: 3 }).schemaVersion, 3);
   });
 
@@ -51,7 +51,7 @@ describe('the v6 envelope', () => {
     const parsed = Patient.parse(patient);
 
     assert.equal(parsed.id, 'OOE-PHC-000047-K2');
-    assert.equal(parsed.schemaVersion, 6);
+    assert.equal(parsed.schemaVersion, 7);
   });
 
   /** A record still carrying the CouchDB key must fail loudly, not slip through as id-less. */
