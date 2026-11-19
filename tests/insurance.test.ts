@@ -277,7 +277,7 @@ describe('insurance records, permissions and rollout', () => {
   it('grants contract access by duty; a facility administrator holds every insurance duty', () => {
     assert.ok(!ROLE_PERMISSIONS.supervisor.some((p) => p.startsWith('insurance_contract') || p === 'coverage:confirm'));
     assert.ok(ROLE_PERMISSIONS.supervisor.includes('payment:refund'));
-    assert.deepEqual([...ROLE_PERMISSIONS.cashier].sort(), ['coverage:elect_self_pay', 'payment:receive']);
+    assert.deepEqual([...ROLE_PERMISSIONS.cashier].sort(), ['charge:associate','coverage:elect_self_pay', 'payment:receive']);
     assert.ok(ROLE_PERMISSIONS.insurance_officer.includes('coverage:confirm') && !ROLE_PERMISSIONS.insurance_officer.includes('insurance_contract:activate') && !ROLE_PERMISSIONS.insurance_officer.includes('payment:refund'));
     const admin = ROLE_PERMISSIONS.facility_admin;
     assert.ok(['insurance_contract:activate', 'insurance_contract:read', 'insurance_contract:manage', 'coverage:confirm', 'payment:refund'].every((p) => admin.includes(p)), 'an administrator performs every insurance function');

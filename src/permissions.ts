@@ -33,7 +33,7 @@ import { type ClinicalAction } from './facilityTypes.ts';
  * v5: combined staff roles and individually assigned permissions.
  * v4: billing — the cashier role, fees, charges, payments, waivers, reversals.
  */
-export const POLICY_VERSION = 16 as const;
+export const POLICY_VERSION = 17 as const;
 export const READ_PERMISSIONS: readonly Permission[] = ['patient_chart:read'];
 export const canReadPatientChart = (context: Pick<AuthorizationContext, 'permissions'>): boolean => context.permissions.includes('patient_chart:read');
 
@@ -83,16 +83,17 @@ const FRONT_DESK: readonly Permission[] = [
 ];
 
 /** Takes money and records no care (PRD §9.13.4). */
-const CASHIER: readonly Permission[] = ['payment:receive', 'coverage:elect_self_pay'];
+const CASHIER: readonly Permission[] = ['payment:receive', 'coverage:elect_self_pay', 'charge:associate'];
 
 /** Cancelling what is owed, or a payment already taken, is a supervisor's decision (PRD §9.13.4). */
-const BILLING_OVERSIGHT: readonly Permission[] = ['payment:waive', 'payment:reverse', 'payment:refund'];
+const BILLING_OVERSIGHT: readonly Permission[] = ['payment:waive', 'payment:reverse', 'payment:refund','charge:associate'];
 
 /**
  * Payer contracts and confirming insurance splits. Activating a contract is
  * deliberately not here: it is an administrator's separate step.
  */
 const INSURANCE_OFFICER: readonly Permission[] = [
+  'charge:associate',
   'insurance_contract:read', 'insurance_contract:manage', 'cover:record', 'cover:verify', 'coverage:elect_self_pay', 'coverage:confirm',
   // v16: recording payer money. Moving a payer's share to the patient and write-offs are not here.
   'insurance_remittance:record',

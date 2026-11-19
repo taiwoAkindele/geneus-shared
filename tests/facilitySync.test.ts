@@ -22,7 +22,7 @@ describe('facility compatibility and synchronized mutations', () => {
     assert.ok(facilityCompatibilityIssues({ ...request, policyVersion: POLICY_VERSION + 1 }, support).length);
     assert.deepEqual(facilityCompatibilityIssues({ ...request, schemaVersion: 5 }, support), []);
     assert.deepEqual(facilityCompatibilityIssues({ ...request, schemaVersion: 6 }, support), []);
-    assert.ok(facilityCompatibilityIssues({ ...request, schemaVersion: 7 }, support).length);
+    assert.ok(facilityCompatibilityIssues({ ...request, schemaVersion: 8 }, support).length);
     assert.ok(facilityCompatibilityIssues(legacy, support, true).length);
     assert.deepEqual(facilityCompatibilityIssues(legacy, undefined), []);
     const response = { token: 'synthetic', expiresOn: '2026-10-30T00:00:00Z', syncEndpoint: 'https://sync.example.org', serverTime: envelope.createdOn };
