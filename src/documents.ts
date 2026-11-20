@@ -1006,6 +1006,7 @@ export const FeeItem = baseEnvelope.extend({
   priceVersion: z.string().min(1).optional(),
   type: z.literal('fee_item'),
   name: text,
+  description: z.string().trim().max(1000).optional(),
   category: FeeCategory,
   departmentId: z.string().min(1).nullable().optional(),
   amountMinor: minorUnits,
@@ -1035,6 +1036,8 @@ export const Charge = baseEnvelope
     orderItemId: z.string().min(1).optional(),
     orderEntryId: z.string().min(1).optional(),
     type: z.literal('charge'),
+    /** Explicit manual bill grouping; presentation metadata, never a new balance. */
+    billId: z.string().uuid().optional(),
     patientId,
     feeItemId: z.string().min(1),
     description: text,

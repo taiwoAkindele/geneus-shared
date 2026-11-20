@@ -672,3 +672,7 @@ remain claim-level. The shared patientStatement projection supplies all statemen
 formats. integratedBillingVersion 1 is negotiated independently of envelope
 versions, after active readers are compatible, their queues drained and all
 legacy JWTs expired. See ../docs/integrated-billing-2026-11-18/README.md.
+
+## Billing design presentation metadata (19 November 2026)
+
+Optional Charge.billId (UUID) groups newly created manual bills. It is immutable charge metadata, not another ledger, balance or permission. A bill reference belongs to one facility, patient and currency. Legacy charges retain their original IDs, amounts, coverage and source links; grouping never guesses by patient/date/amount. Optional FeeItem.description is limited to 1000 characters and is separate from price and charging policy. Both optional fields are added by PostgreSQL migration 0043 and the derived SQLite / PowerSync schemas. No envelope or policy version changes are needed: older current readers strip optional unknown fields; strict legacy streams omit them. Older clients retain their existing financial view and do not gain the new grouping UX. Publish canonical shared, then update consumer gitlinks and deploy migration/rules before a new web client. These promotion operations remain unauthorized.
