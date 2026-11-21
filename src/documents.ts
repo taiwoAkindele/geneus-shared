@@ -1164,7 +1164,7 @@ export type BillingAdjustment = z.infer<typeof BillingAdjustment>;
 
 /** Verified provider receipt. Allocations live in payments. */
 export const IncomingTransfer = baseEnvelope.extend({
-  type: z.literal('incoming_transfer'), provider: z.literal('paystack'),
+  type: z.literal('incoming_transfer'), provider: z.string().regex(/^[a-z][a-z0-9_]{1,31}$/), // a registered payment provider id; new providers need no contract change
   mode: z.enum(['test', 'live']),
   providerReference: z.string().min(1), amountMinor: minorUnits.positive(),
   currency: currencyCode, receivedOn: isoDateTime, payerName: text.optional(),
