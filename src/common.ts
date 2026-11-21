@@ -111,6 +111,7 @@ export const DocType = z.enum([
   'cover_schedule',
   'patient_cover',
   'patient_contact',
+  'patient_message',
   'cover_check',
   'coverage_election',
   'coverage_allocation',
