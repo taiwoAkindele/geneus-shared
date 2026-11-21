@@ -497,6 +497,8 @@ export const Facility = baseEnvelope.extend({
   country: z.string().regex(/^[A-Z]{2}$/, 'Use a two-letter country code').optional(),
   address: z.string().trim().min(1).max(300).optional(),
   phone: z.string().trim().min(5).max(30).optional(),
+  /** Shown on bills and receipts and used as the reply-to address of patient emails. */
+  email: z.string().trim().toLowerCase().pipe(z.email()).pipe(z.string().max(200)).optional(),
   /** The currency new prices start in; each fee keeps its own. Naira when absent. */
   currency: z.string().regex(/^[A-Z]{3}$/, 'Use a three-letter currency code').optional(),
 });
@@ -510,6 +512,8 @@ export const FacilityDetailsUpdate = z.strictObject({
   country: z.string().regex(/^[A-Z]{2}$/),
   address: z.string().trim().max(300).optional(),
   phone: z.string().trim().max(30).optional(),
+  /** Blank clears it. */
+  email: z.union([z.literal(''), z.string().trim().toLowerCase().pipe(z.email()).pipe(z.string().max(200))]).optional(),
   currency: z.string().regex(/^[A-Z]{3}$/),
 });
 export type FacilityDetailsUpdate = z.infer<typeof FacilityDetailsUpdate>;
