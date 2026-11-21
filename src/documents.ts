@@ -1075,7 +1075,8 @@ export type Charge = z.infer<typeof Charge>;
  * (PRD §9.13.2); it is a payment so that it settles charges the same way and
  * appears in the same reports.
  */
-export const PaymentMethod = z.enum(['cash', 'transfer', 'pos', 'waiver']);
+/** `online`: paid by the patient through the hospital's payment provider checkout, from their bill link (always with `incomingTransferId`). */
+export const PaymentMethod = z.enum(['cash', 'transfer', 'pos', 'waiver', 'online']);
 export type PaymentMethod = z.infer<typeof PaymentMethod>;
 
 /** How much of a payment went to one charge. */
@@ -1173,6 +1174,10 @@ export const IncomingTransfer = baseEnvelope.extend({
   providerReference: z.string().min(1), amountMinor: minorUnits.positive(),
   currency: currencyCode, receivedOn: isoDateTime, payerName: text.optional(),
   receivingAccount: text.optional(), departmentId: z.string().min(1).optional(),
+  /** How the money came: a bank transfer into a receiving account (the default), or a patient paying a bill online. */
+  channel: z.enum(['bank_transfer', 'checkout']).optional(),
+  /** For a checkout: the bill the patient paid. Its money is applied to that bill; anything above what was due waits for staff. */
+  billKey: z.string().min(5).max(300).optional(),
 });
 export type IncomingTransfer = z.infer<typeof IncomingTransfer>;
 

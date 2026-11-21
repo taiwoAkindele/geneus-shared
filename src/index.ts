@@ -43,6 +43,8 @@ export * from './careServices.ts';
 export * from './insurance.ts';
 export * from './patientContact.ts';
 export * from './patientDocuments.ts';
+export * from './patientMessaging.ts';
+import { PatientMessage } from './patientMessaging.ts';
 import { PatientContact } from './patientContact.ts';
 
 import { Location, ServiceDefinition, ServiceOffering, PractitionerProfile, Credential, CapabilityDecision,
@@ -129,7 +131,7 @@ export const AnyDocument = z.union([
   BillingAdjustment,
   IncomingTransfer,
   BillingDepartment,
-  Refund, Payer, CoverSchedule, PatientCover, PatientContact, CoverCheck, CoverageElection, CoverageAllocation, ServiceCompletion,
+  Refund, Payer, CoverSchedule, PatientCover, PatientContact, PatientMessage, CoverCheck, CoverageElection, CoverageAllocation, ServiceCompletion,
 ]);
 export type AnyDocument = z.infer<typeof AnyDocument>;
 
@@ -176,7 +178,7 @@ export const SCHEMA_BY_TYPE = {
   billing_adjustment: BillingAdjustment,
   incoming_transfer: IncomingTransfer,
   billing_department: BillingDepartment,
-  refund: Refund, payer: Payer, cover_schedule: CoverSchedule, patient_cover: PatientCover, patient_contact: PatientContact,
+  refund: Refund, payer: Payer, cover_schedule: CoverSchedule, patient_cover: PatientCover, patient_contact: PatientContact, patient_message: PatientMessage,
   cover_check: CoverCheck, coverage_election: CoverageElection, coverage_allocation: CoverageAllocation,
   service_completion: ServiceCompletion,
 } as const satisfies Record<DocType, z.ZodType>;

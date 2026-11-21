@@ -38,7 +38,8 @@ export const currentPatientContact = (records: readonly PatientContact[], patien
   return mine.filter((r) => !replaced.has(r.id)).sort((a, b) => b.createdOn.localeCompare(a.createdOn) || b.id.localeCompare(a.id))[0];
 };
 
-export type MessageChannel = 'sms' | 'email';
+export const MessageChannel = z.enum(['sms', 'email']);
+export type MessageChannel = z.infer<typeof MessageChannel>;
 /** The channels bills and receipts can go to: those with contact details that the patient hasn't stopped. */
 export const availableChannels = (contact: PatientContact | undefined, phone: string | undefined): MessageChannel[] => {
   const channels: MessageChannel[] = [];
