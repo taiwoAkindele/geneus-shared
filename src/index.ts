@@ -42,6 +42,7 @@ export * from './facilityProjection.ts';
 export * from './careServices.ts';
 export * from './insurance.ts';
 export * from './patientContact.ts';
+export * from './patientDocuments.ts';
 import { PatientContact } from './patientContact.ts';
 
 import { Location, ServiceDefinition, ServiceOffering, PractitionerProfile, Credential, CapabilityDecision,
