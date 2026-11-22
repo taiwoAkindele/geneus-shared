@@ -89,5 +89,8 @@ export const Permission = z.enum([
 export type Permission = z.infer<typeof Permission>;
 
 /** The PIN-code claim is never a permission an admin can assign. */
-export const AssignablePermission = Permission.exclude(['pin_setup_code:claim', 'clinical_capability:review']);
+export const AssignablePermission = Permission.exclude([
+  'pin_setup_code:claim',
+  'clinical_capability:review',
+]);
 export type AssignablePermission = z.infer<typeof AssignablePermission>;

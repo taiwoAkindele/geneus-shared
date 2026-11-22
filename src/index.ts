@@ -17,9 +17,9 @@ export * from './careWorkflow.ts';
 export * from './documents.ts';
 export * from './billingCatalogue.ts';
 export * from './serviceAllocations.ts';
-import {ServiceChargeAllocation} from './serviceAllocations.ts';
+import { ServiceChargeAllocation } from './serviceAllocations.ts';
 export * from './patientStatements.ts';
-import {CoverageFinancialSummary} from './patientStatements.ts';
+import { CoverageFinancialSummary } from './patientStatements.ts';
 export * from './permissions.ts';
 export * from './api.ts';
 export * from './patientIdentity.ts';
@@ -47,16 +47,44 @@ export * from './patientMessaging.ts';
 import { PatientMessage } from './patientMessaging.ts';
 import { PatientContact } from './patientContact.ts';
 
-import { Location, ServiceDefinition, ServiceOffering, PractitionerProfile, Credential, CapabilityDecision,
-  ReviewerDelegation, ClinicalAuthorityBootstrap, ExternalClinicalReviewer, AuthoritySnapshot,
-  StaffAssignment, ServiceSession, SessionEvent, WorkOwnershipEvent, AppointmentReservation } from './facility.ts';
+import {
+  Location,
+  ServiceDefinition,
+  ServiceOffering,
+  PractitionerProfile,
+  Credential,
+  CapabilityDecision,
+  ReviewerDelegation,
+  ClinicalAuthorityBootstrap,
+  ExternalClinicalReviewer,
+  AuthoritySnapshot,
+  StaffAssignment,
+  ServiceSession,
+  SessionEvent,
+  WorkOwnershipEvent,
+  AppointmentReservation,
+} from './facility.ts';
 
 import { ClinicalEvent } from './clinical.ts';
 import { InpatientEvent, BedReadyEvent } from './inpatient.ts';
 import { WardCareEvent } from './wardCare.ts';
 import { LibraryDocument, VisitDocument } from './clinicalDocuments.ts';
-import { ResultTemplate, ResultPartDefinition, AnswerList, StandardTest, StandardTemplate } from './resultTemplates.ts';
-import { Payer, CoverSchedule, PatientCover, CoverCheck, CoverageElection, CoverageAllocation, ServiceCompletion } from './insurance.ts';
+import {
+  ResultTemplate,
+  ResultPartDefinition,
+  AnswerList,
+  StandardTest,
+  StandardTemplate,
+} from './resultTemplates.ts';
+import {
+  Payer,
+  CoverSchedule,
+  PatientCover,
+  CoverCheck,
+  CoverageElection,
+  CoverageAllocation,
+  ServiceCompletion,
+} from './insurance.ts';
 
 import {
   Patient,
@@ -68,7 +96,8 @@ import {
   Appointment,
   RegisterDefinition,
   RegisterEntry,
-  Referral, InboundReferral,
+  Referral,
+  InboundReferral,
   StockItem,
   StockMovement,
   Facility,
@@ -98,13 +127,32 @@ import {
 export const AnyDocument = z.union([
   ServiceChargeAllocation,
   CoverageFinancialSummary,
-  Location, ServiceDefinition, ServiceOffering, PractitionerProfile, Credential, CapabilityDecision,
-  ReviewerDelegation, ClinicalAuthorityBootstrap, ExternalClinicalReviewer, AuthoritySnapshot,
-  StaffAssignment, ServiceSession, SessionEvent, WorkOwnershipEvent, AppointmentReservation,
+  Location,
+  ServiceDefinition,
+  ServiceOffering,
+  PractitionerProfile,
+  Credential,
+  CapabilityDecision,
+  ReviewerDelegation,
+  ClinicalAuthorityBootstrap,
+  ExternalClinicalReviewer,
+  AuthoritySnapshot,
+  StaffAssignment,
+  ServiceSession,
+  SessionEvent,
+  WorkOwnershipEvent,
+  AppointmentReservation,
   ClinicalEvent,
-  InpatientEvent, BedReadyEvent, WardCareEvent,
-  LibraryDocument, VisitDocument,
-  ResultTemplate, ResultPartDefinition, AnswerList, StandardTest, StandardTemplate,
+  InpatientEvent,
+  BedReadyEvent,
+  WardCareEvent,
+  LibraryDocument,
+  VisitDocument,
+  ResultTemplate,
+  ResultPartDefinition,
+  AnswerList,
+  StandardTest,
+  StandardTemplate,
   Patient,
   PatientIdentityEvent,
   Visit,
@@ -114,7 +162,8 @@ export const AnyDocument = z.union([
   Appointment,
   RegisterDefinition,
   RegisterEntry,
-  Referral, InboundReferral,
+  Referral,
+  InboundReferral,
   StockItem,
   StockMovement,
   Facility,
@@ -131,26 +180,49 @@ export const AnyDocument = z.union([
   BillingAdjustment,
   IncomingTransfer,
   BillingDepartment,
-  Refund, Payer, CoverSchedule, PatientCover, PatientContact, PatientMessage, CoverCheck, CoverageElection, CoverageAllocation, ServiceCompletion,
+  Refund,
+  Payer,
+  CoverSchedule,
+  PatientCover,
+  PatientContact,
+  PatientMessage,
+  CoverCheck,
+  CoverageElection,
+  CoverageAllocation,
+  ServiceCompletion,
 ]);
 export type AnyDocument = z.infer<typeof AnyDocument>;
 
 /** Map of `type` → schema, for validating a record when its type is known. */
 export const SCHEMA_BY_TYPE = {
-  service_charge_allocation:ServiceChargeAllocation,
-  coverage_financial_summary:CoverageFinancialSummary,
+  service_charge_allocation: ServiceChargeAllocation,
+  coverage_financial_summary: CoverageFinancialSummary,
   ward_care_event: WardCareEvent,
-  location: Location, service_definition: ServiceDefinition, service_offering: ServiceOffering,
-  practitioner_profile: PractitionerProfile, credential: Credential, capability_decision: CapabilityDecision,
-  reviewer_delegation: ReviewerDelegation, clinical_authority_bootstrap: ClinicalAuthorityBootstrap,
-  external_clinical_reviewer: ExternalClinicalReviewer, authority_snapshot: AuthoritySnapshot,
-  staff_assignment: StaffAssignment, service_session: ServiceSession, session_event: SessionEvent,
-  work_ownership_event: WorkOwnershipEvent, appointment_reservation: AppointmentReservation,
+  location: Location,
+  service_definition: ServiceDefinition,
+  service_offering: ServiceOffering,
+  practitioner_profile: PractitionerProfile,
+  credential: Credential,
+  capability_decision: CapabilityDecision,
+  reviewer_delegation: ReviewerDelegation,
+  clinical_authority_bootstrap: ClinicalAuthorityBootstrap,
+  external_clinical_reviewer: ExternalClinicalReviewer,
+  authority_snapshot: AuthoritySnapshot,
+  staff_assignment: StaffAssignment,
+  service_session: ServiceSession,
+  session_event: SessionEvent,
+  work_ownership_event: WorkOwnershipEvent,
+  appointment_reservation: AppointmentReservation,
   clinical_event: ClinicalEvent,
-  inpatient_event: InpatientEvent, bed_ready_event: BedReadyEvent,
-  library_document: LibraryDocument, visit_document: VisitDocument,
-  result_template: ResultTemplate, result_part: ResultPartDefinition, answer_list: AnswerList,
-  standard_test: StandardTest, standard_template: StandardTemplate,
+  inpatient_event: InpatientEvent,
+  bed_ready_event: BedReadyEvent,
+  library_document: LibraryDocument,
+  visit_document: VisitDocument,
+  result_template: ResultTemplate,
+  result_part: ResultPartDefinition,
+  answer_list: AnswerList,
+  standard_test: StandardTest,
+  standard_template: StandardTemplate,
   patient: Patient,
   patient_identity_event: PatientIdentityEvent,
   visit: Visit,
@@ -178,8 +250,15 @@ export const SCHEMA_BY_TYPE = {
   billing_adjustment: BillingAdjustment,
   incoming_transfer: IncomingTransfer,
   billing_department: BillingDepartment,
-  refund: Refund, payer: Payer, cover_schedule: CoverSchedule, patient_cover: PatientCover, patient_contact: PatientContact, patient_message: PatientMessage,
-  cover_check: CoverCheck, coverage_election: CoverageElection, coverage_allocation: CoverageAllocation,
+  refund: Refund,
+  payer: Payer,
+  cover_schedule: CoverSchedule,
+  patient_cover: PatientCover,
+  patient_contact: PatientContact,
+  patient_message: PatientMessage,
+  cover_check: CoverCheck,
+  coverage_election: CoverageElection,
+  coverage_allocation: CoverageAllocation,
   service_completion: ServiceCompletion,
 } as const satisfies Record<DocType, z.ZodType>;
 

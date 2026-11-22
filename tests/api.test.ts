@@ -40,7 +40,10 @@ describe('facility registration', () => {
   it('requires the admin email and its verification code', () => {
     const { adminEmail: _email, ...withoutEmail } = registration;
     assert.equal(FacilityRegistration.safeParse(withoutEmail).success, false);
-    assert.equal(FacilityRegistration.safeParse({ ...registration, emailCode: '12345' }).success, false);
+    assert.equal(
+      FacilityRegistration.safeParse({ ...registration, emailCode: '12345' }).success,
+      false,
+    );
   });
 
   it('stores an email as typed on a phone would be compared: trimmed and lower-case', () => {
@@ -63,7 +66,10 @@ describe('device credential', () => {
   });
 
   it('carries no human identity — a device is where, not who', () => {
-    assert.equal(Object.keys(DeviceCredential.shape).some((key) => /staff|user|role/i.test(key)), false);
+    assert.equal(
+      Object.keys(DeviceCredential.shape).some((key) => /staff|user|role/i.test(key)),
+      false,
+    );
   });
 });
 
@@ -105,7 +111,9 @@ describe('upload', () => {
     const response = UploadResponse.parse({
       applied: 1,
       duplicates: 2,
-      rejected: [{ clientId: 8, table: 'patient', id: 'x', category: 'authorization', reason: 'no' }],
+      rejected: [
+        { clientId: 8, table: 'patient', id: 'x', category: 'authorization', reason: 'no' },
+      ],
       serverTime: '2026-09-12T09:30:00+01:00',
     });
 

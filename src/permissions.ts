@@ -35,15 +35,22 @@ import { type ClinicalAction } from './facilityTypes.ts';
  */
 export const POLICY_VERSION = 17 as const;
 export const READ_PERMISSIONS: readonly Permission[] = ['patient_chart:read'];
-export const canReadPatientChart = (context: Pick<AuthorizationContext, 'permissions'>): boolean => context.permissions.includes('patient_chart:read');
+export const canReadPatientChart = (context: Pick<AuthorizationContext, 'permissions'>): boolean =>
+  context.permissions.includes('patient_chart:read');
 
 /** Software actions are only one gate; approved clinical authority is checked separately. */
 export const CLINICAL_ACTION_PERMISSIONS = {
-  assess: 'clinical:assess', diagnose: 'clinical:diagnose', prescribe: 'clinical:prescribe',
-  collect_specimen: 'clinical:collect_specimen', perform_test: 'clinical:perform_test', record_result: 'clinical:record_result',
-  verify_result: 'clinical:verify_result', release_result: 'clinical:release_result', dispense: 'clinical:dispense', administer: 'clinical:administer',
+  assess: 'clinical:assess',
+  diagnose: 'clinical:diagnose',
+  prescribe: 'clinical:prescribe',
+  collect_specimen: 'clinical:collect_specimen',
+  perform_test: 'clinical:perform_test',
+  record_result: 'clinical:record_result',
+  verify_result: 'clinical:verify_result',
+  release_result: 'clinical:release_result',
+  dispense: 'clinical:dispense',
+  administer: 'clinical:administer',
 } as const satisfies Record<ClinicalAction, Permission>;
-
 
 const CLINICAL: readonly Permission[] = [
   'patient_chart:read',
@@ -83,10 +90,19 @@ const FRONT_DESK: readonly Permission[] = [
 ];
 
 /** Takes money and records no care (PRD §9.13.4). */
-const CASHIER: readonly Permission[] = ['payment:receive', 'coverage:elect_self_pay', 'charge:associate'];
+const CASHIER: readonly Permission[] = [
+  'payment:receive',
+  'coverage:elect_self_pay',
+  'charge:associate',
+];
 
 /** Cancelling what is owed, or a payment already taken, is a supervisor's decision (PRD §9.13.4). */
-const BILLING_OVERSIGHT: readonly Permission[] = ['payment:waive', 'payment:reverse', 'payment:refund','charge:associate'];
+const BILLING_OVERSIGHT: readonly Permission[] = [
+  'payment:waive',
+  'payment:reverse',
+  'payment:refund',
+  'charge:associate',
+];
 
 /**
  * Payer contracts and confirming insurance splits. Activating a contract is
@@ -94,7 +110,12 @@ const BILLING_OVERSIGHT: readonly Permission[] = ['payment:waive', 'payment:reve
  */
 const INSURANCE_OFFICER: readonly Permission[] = [
   'charge:associate',
-  'insurance_contract:read', 'insurance_contract:manage', 'cover:record', 'cover:verify', 'coverage:elect_self_pay', 'coverage:confirm',
+  'insurance_contract:read',
+  'insurance_contract:manage',
+  'cover:record',
+  'cover:verify',
+  'coverage:elect_self_pay',
+  'coverage:confirm',
   // v16: recording payer money. Moving a payer's share to the patient and write-offs are not here.
   'insurance_remittance:record',
 ];
@@ -103,7 +124,10 @@ const INSURANCE_OFFICER: readonly Permission[] = [
  * Granted by no role and never individually assignable. PIN claims use the
  * claim context; clinical review uses accepted scoped reviewer authority.
  */
-export const PROTECTED_PERMISSIONS: readonly Permission[] = ['pin_setup_code:claim', 'clinical_capability:review'];
+export const PROTECTED_PERMISSIONS: readonly Permission[] = [
+  'pin_setup_code:claim',
+  'clinical_capability:review',
+];
 
 /**
  * What each role may do. Roles are the PRD's job titles (§7.1, §14.1); the
@@ -116,25 +140,76 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   chew: CLINICAL,
   nurse: [...CLINICAL, 'admission:manage'],
   doctor: [...CLINICAL, 'admission:manage', 'referral:update'],
-  supervisor: [...CLINICAL, 'admission:manage', 'referral:update', 'roster:extend', ...BILLING_OVERSIGHT],
+  supervisor: [
+    ...CLINICAL,
+    'admission:manage',
+    'referral:update',
+    'roster:extend',
+    ...BILLING_OVERSIGHT,
+  ],
   records_officer: FRONT_DESK,
   cashier: CASHIER,
   insurance_officer: INSURANCE_OFFICER,
   // Explicitly reviewed v10 list: future permission additions must not auto-escalate administrators.
-  facility_admin: [...new Set<Permission>([
-    ...CLINICAL, ...FRONT_DESK, ...CASHIER, ...BILLING_OVERSIGHT,
-    'admission:manage', 'referral:update', 'unit:manage', 'location:manage', 'service:manage', 'result_template:manage', 'practitioner:manage', 'credential:manage', 'credential:read',
-    'staff_assignment:manage', 'service_session:manage', 'work_ownership:manage',
-    'stock_item:manage', 'fee_item:manage', 'staff:manage', 'staff:permission', 'staff:deactivate',
-    'roster:assign', 'roster:extend', 'device:enroll', 'device:revoke',
-    // v15: an administrator performs every insurance function, including preparing contracts and confirming splits.
-    'insurance_contract:activate', 'insurance_contract:read', 'insurance_contract:manage', 'coverage:confirm',
-    // v16: the separate approvals an insurance officer does not hold.
-    'coverage:approve_liability_change', 'insurance_remittance:record', 'billing:write_off',
-  ])],
-  laboratory_staff: ['patient_chart:read', 'patient:update', 'encounter:record', 'handoff:update', 'work_ownership:claim', 'service_session:operate',
-    'clinical:collect_specimen', 'clinical:perform_test', 'clinical:record_result', 'clinical:verify_result', 'clinical:release_result'],
-  pharmacy_staff: ['patient_chart:read', 'encounter:record', 'handoff:update', 'work_ownership:claim', 'service_session:operate', 'clinical:dispense'],
+  facility_admin: [
+    ...new Set<Permission>([
+      ...CLINICAL,
+      ...FRONT_DESK,
+      ...CASHIER,
+      ...BILLING_OVERSIGHT,
+      'admission:manage',
+      'referral:update',
+      'unit:manage',
+      'location:manage',
+      'service:manage',
+      'result_template:manage',
+      'practitioner:manage',
+      'credential:manage',
+      'credential:read',
+      'staff_assignment:manage',
+      'service_session:manage',
+      'work_ownership:manage',
+      'stock_item:manage',
+      'fee_item:manage',
+      'staff:manage',
+      'staff:permission',
+      'staff:deactivate',
+      'roster:assign',
+      'roster:extend',
+      'device:enroll',
+      'device:revoke',
+      // v15: an administrator performs every insurance function, including preparing contracts and confirming splits.
+      'insurance_contract:activate',
+      'insurance_contract:read',
+      'insurance_contract:manage',
+      'coverage:confirm',
+      // v16: the separate approvals an insurance officer does not hold.
+      'coverage:approve_liability_change',
+      'insurance_remittance:record',
+      'billing:write_off',
+    ]),
+  ],
+  laboratory_staff: [
+    'patient_chart:read',
+    'patient:update',
+    'encounter:record',
+    'handoff:update',
+    'work_ownership:claim',
+    'service_session:operate',
+    'clinical:collect_specimen',
+    'clinical:perform_test',
+    'clinical:record_result',
+    'clinical:verify_result',
+    'clinical:release_result',
+  ],
+  pharmacy_staff: [
+    'patient_chart:read',
+    'encounter:record',
+    'handoff:update',
+    'work_ownership:claim',
+    'service_session:operate',
+    'clinical:dispense',
+  ],
 };
 
 /**
@@ -142,8 +217,12 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
  * the device that writes it and the server that receives it name the same one.
  */
 export const paymentPermission = (payment: Pick<Payment, 'method' | 'reverses'>): Permission => {
-  if (payment.reverses) return 'payment:reverse';
-  if (payment.method === 'waiver') return 'payment:waive';
+  if (payment.reverses) {
+    return 'payment:reverse';
+  }
+  if (payment.method === 'waiver') {
+    return 'payment:waive';
+  }
   return 'payment:receive';
 };
 
@@ -152,29 +231,52 @@ export const paymentPermission = (payment: Pick<Payment, 'method' | 'reverses'>)
  * read-only removes mutation grants — the same rule `assertCanWrite` enforced
  * before v3, now expressed per capability.
  */
-export const permissionsFor = (role: Role, staffPermission: StaffPermission): readonly Permission[] =>
-  staffPermission === 'read_only' ? ROLE_PERMISSIONS[role].filter(permission => READ_PERMISSIONS.includes(permission)) : ROLE_PERMISSIONS[role];
+export const permissionsFor = (
+  role: Role,
+  staffPermission: StaffPermission,
+): readonly Permission[] =>
+  staffPermission === 'read_only'
+    ? ROLE_PERMISSIONS[role].filter((permission) => READ_PERMISSIONS.includes(permission))
+    : ROLE_PERMISSIONS[role];
 
 /** One primary role for attribution; additional duties contribute access too. */
 export type StaffRoles = Pick<Staff, 'role' | 'additionalRoles'>;
 export type StaffAccess = StaffRoles & Pick<Staff, 'permission' | 'additionalPermissions'>;
 
-export const rolesFor = (staff: StaffRoles): Role[] => [...new Set([staff.role, ...(staff.additionalRoles ?? [])])];
+export const rolesFor = (staff: StaffRoles): Role[] => [
+  ...new Set([staff.role, ...(staff.additionalRoles ?? [])]),
+];
 export const hasRole = (staff: StaffRoles, role: Role): boolean => rolesFor(staff).includes(role);
 
 /** Read-only removes mutations while preserving explicitly granted read access. */
 export const staffPermissions = (staff: StaffAccess): Permission[] => {
-  const assigned = (staff.additionalPermissions ?? []).filter((permission) => AssignablePermission.options.includes(permission));
-  const granted = [...new Set([...rolesFor(staff).flatMap((role) => ROLE_PERMISSIONS[role]), ...assigned])];
-  return staff.permission === 'read_only' ? granted.filter(permission => READ_PERMISSIONS.includes(permission)) : granted;
+  const assigned = (staff.additionalPermissions ?? []).filter((permission) =>
+    AssignablePermission.options.includes(permission),
+  );
+  const granted = [
+    ...new Set([...rolesFor(staff).flatMap((role) => ROLE_PERMISSIONS[role]), ...assigned]),
+  ];
+  return staff.permission === 'read_only'
+    ? granted.filter((permission) => READ_PERMISSIONS.includes(permission))
+    : granted;
 };
 
 /** A PIN reset must not let a lower-access colleague take over a more privileged account. */
 export const mayApprovePin = (approver: StaffAccess, target: StaffAccess): boolean => {
-  if (approver.permission !== 'read_write') return false;
+  if (approver.permission !== 'read_write') {
+    return false;
+  }
   const granted = staffPermissions(approver);
-  if (!hasRole(approver, 'facility_admin') && !hasRole(approver, 'supervisor') && !granted.includes('staff:manage')) return false;
-  if (hasRole(target, 'facility_admin') && !hasRole(approver, 'facility_admin')) return false;
+  if (
+    !hasRole(approver, 'facility_admin') &&
+    !hasRole(approver, 'supervisor') &&
+    !granted.includes('staff:manage')
+  ) {
+    return false;
+  }
+  if (hasRole(target, 'facility_admin') && !hasRole(approver, 'facility_admin')) {
+    return false;
+  }
   return staffPermissions(target).every((permission) => granted.includes(permission));
 };
 
@@ -218,7 +320,8 @@ export const HIGH_RISK_PERMISSIONS: readonly Permission[] = [
   'staff_assignment:manage',
 ];
 
-export const isHighRisk = (permission: Permission): boolean => HIGH_RISK_PERMISSIONS.includes(permission);
+export const isHighRisk = (permission: Permission): boolean =>
+  HIGH_RISK_PERMISSIONS.includes(permission);
 
 /**
  * Whether the device's last server contact is recent enough for `permission`.
@@ -231,7 +334,9 @@ export const isWithinOfflineWindow = (
   lastServerContactOn: string | undefined,
   now: number = Date.now(),
 ): boolean => {
-  if (!lastServerContactOn) return false;
+  if (!lastServerContactOn) {
+    return false;
+  }
   const elapsed = now - new Date(lastServerContactOn).getTime();
   const window = isHighRisk(permission)
     ? OFFLINE_AUTHORIZATION_POLICY.highRiskMs
@@ -261,7 +366,11 @@ export type AuthorizationContext = z.infer<typeof AuthorizationContext>;
 /** Why an action was refused — shared so both sides report the same reasons. */
 export type Denial =
   | { kind: 'not_granted'; permission: Permission }
-  | { kind: 'stale_authorization'; permission: Permission; lastServerContactOn: string | undefined };
+  | {
+      kind: 'stale_authorization';
+      permission: Permission;
+      lastServerContactOn: string | undefined;
+    };
 
 /**
  * The one decision both sides make: is `permission` in the context's set, and
@@ -273,9 +382,15 @@ export const decide = (
   permission: Permission,
   now: number = Date.now(),
 ): Denial | undefined => {
-  if (!context.permissions.includes(permission)) return { kind: 'not_granted', permission };
+  if (!context.permissions.includes(permission)) {
+    return { kind: 'not_granted', permission };
+  }
   if (!isWithinOfflineWindow(permission, context.lastServerContactOn, now)) {
-    return { kind: 'stale_authorization', permission, lastServerContactOn: context.lastServerContactOn };
+    return {
+      kind: 'stale_authorization',
+      permission,
+      lastServerContactOn: context.lastServerContactOn,
+    };
   }
   return undefined;
 };

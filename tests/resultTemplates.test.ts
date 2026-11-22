@@ -1,61 +1,207 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  AssignablePermission, EncounterEntry, FACILITY_DOCUMENT_POLICY, NumberPart, ROLE_PERMISSIONS, ResultPartDefinition, ResultTemplate, ResultTemplateDraft, StandardTemplate, StandardTest, TEXT_RESULT_PART, UploadRequest, labTestIssues, resultTemplateIssues,
-  hasCriticalFlag, labItemSummary, labPatientFacts, labReportIssues, parseDocument, rangeFor, templateForTest, templateResultType,
-  type LabReport, type LabReportContext, type ResultPart,
+  AssignablePermission,
+  EncounterEntry,
+  FACILITY_DOCUMENT_POLICY,
+  NumberPart,
+  ROLE_PERMISSIONS,
+  ResultPartDefinition,
+  ResultTemplate,
+  ResultTemplateDraft,
+  StandardTemplate,
+  StandardTest,
+  TEXT_RESULT_PART,
+  UploadRequest,
+  labTestIssues,
+  resultTemplateIssues,
+  hasCriticalFlag,
+  labItemSummary,
+  labPatientFacts,
+  labReportIssues,
+  parseDocument,
+  rangeFor,
+  templateForTest,
+  templateResultType,
+  type LabReport,
+  type LabReportContext,
+  type ResultPart,
 } from '../src/index.ts';
 
 const adult = { value: 18, unit: 'years' } as const;
-const haemoglobin = NumberPart.parse({ key: 'hb', label: 'Haemoglobin', kind: 'number', unit: 'g/dL', decimals: 1, required: true, ranges: [
-  { sex: 'female', ageFrom: adult, low: 12, high: 15 }, { sex: 'male', ageFrom: adult, low: 13, high: 17 },
-] });
-const parts: ResultPart[] = [haemoglobin, { key: 'film', label: 'Film comment', kind: 'text', required: false }];
+const haemoglobin = NumberPart.parse({
+  key: 'hb',
+  label: 'Haemoglobin',
+  kind: 'number',
+  unit: 'g/dL',
+  decimals: 1,
+  required: true,
+  ranges: [
+    { sex: 'female', ageFrom: adult, low: 12, high: 15 },
+    { sex: 'male', ageFrom: adult, low: 13, high: 17 },
+  ],
+});
+const parts: ResultPart[] = [
+  haemoglobin,
+  { key: 'film', label: 'Film comment', kind: 'text', required: false },
+];
 const template = ResultTemplate.parse({
-  id: 'result_template:fbc', type: 'result_template', facilityId: 'A', deviceId: 'server', createdBy: 'staff:A', createdOn: '2026-11-01T09:00:00Z',
-  name: 'Full blood count', status: 'active', parts, serviceDefinitionIds: ['service_definition:fbc'], source: 'standard', standardKey: 'fbc', revision: 2,
+  id: 'result_template:fbc',
+  type: 'result_template',
+  facilityId: 'A',
+  deviceId: 'server',
+  createdBy: 'staff:A',
+  createdOn: '2026-11-01T09:00:00Z',
+  name: 'Full blood count',
+  status: 'active',
+  parts,
+  serviceDefinitionIds: ['service_definition:fbc'],
+  source: 'standard',
+  standardKey: 'fbc',
+  revision: 2,
 });
-const woman = labPatientFacts({ sex: 'female', dateOfBirth: '1992-05-10', createdOn: '2026-01-01T00:00:00Z' }, '2026-11-02T10:00:00Z');
+const woman = labPatientFacts(
+  { sex: 'female', dateOfBirth: '1992-05-10', createdOn: '2026-01-01T00:00:00Z' },
+  '2026-11-02T10:00:00Z',
+);
 const context = (facts = woman): LabReportContext => ({
-  facts, template: (id, revision) => id === template.id && revision === 2 ? template : undefined,
-  serviceDefinitionFor: (orderItemId) => orderItemId === 'item:fbc' ? 'service_definition:fbc' : undefined,
+  facts,
+  template: (id, revision) => (id === template.id && revision === 2 ? template : undefined),
+  serviceDefinitionFor: (orderItemId) =>
+    orderItemId === 'item:fbc' ? 'service_definition:fbc' : undefined,
 });
-const report = (hb: number, extra: Partial<LabReport['items'][number]> = {}): LabReport => ({ patient: woman, items: [{
-  test: 'Full blood count', orderItemId: 'item:fbc', template: { id: template.id, revision: 2 },
-  values: [{ kind: 'number', key: 'hb', label: 'Haemoglobin', unit: 'g/dL', value: hb, range: rangeFor(haemoglobin, woman), flag: 'low' }], ...extra,
-}] });
-const rows = (r: LabReport) => r.items.map((item) => ({ test: item.test, orderItemId: item.orderItemId, result: labItemSummary(item, item.template ? template.parts : [TEXT_RESULT_PART]) }));
+const report = (hb: number, extra: Partial<LabReport['items'][number]> = {}): LabReport => ({
+  patient: woman,
+  items: [
+    {
+      test: 'Full blood count',
+      orderItemId: 'item:fbc',
+      template: { id: template.id, revision: 2 },
+      values: [
+        {
+          kind: 'number',
+          key: 'hb',
+          label: 'Haemoglobin',
+          unit: 'g/dL',
+          value: hb,
+          range: rangeFor(haemoglobin, woman),
+          flag: 'low',
+        },
+      ],
+      ...extra,
+    },
+  ],
+});
+const rows = (r: LabReport) =>
+  r.items.map((item) => ({
+    test: item.test,
+    orderItemId: item.orderItemId,
+    result: labItemSummary(item, item.template ? template.parts : [TEXT_RESULT_PART]),
+  }));
 
 describe('normal ranges', () => {
   it('chooses the range for the patient’s sex and age, and none when a fact is missing', () => {
-    assert.deepEqual(rangeFor(haemoglobin, woman), { sex: 'female', ageFrom: adult, low: 12, high: 15 });
-    assert.equal(rangeFor(haemoglobin, labPatientFacts({ sex: 'male', ageYears: 40, ageObservedOn: '2026-01-01', createdOn: '2026-01-01T00:00:00Z' }, '2026-11-02'))?.low, 13);
+    assert.deepEqual(rangeFor(haemoglobin, woman), {
+      sex: 'female',
+      ageFrom: adult,
+      low: 12,
+      high: 15,
+    });
+    assert.equal(
+      rangeFor(
+        haemoglobin,
+        labPatientFacts(
+          {
+            sex: 'male',
+            ageYears: 40,
+            ageObservedOn: '2026-01-01',
+            createdOn: '2026-01-01T00:00:00Z',
+          },
+          '2026-11-02',
+        ),
+      )?.low,
+      13,
+    );
     assert.equal(rangeFor(haemoglobin, { age: { years: 34 } }), undefined, 'sex not recorded');
     assert.equal(rangeFor(haemoglobin, { sex: 'female' }), undefined, 'age not recorded');
-    assert.equal(rangeFor(haemoglobin, { sex: 'female', age: { years: 10 } }), undefined, 'no children’s range set');
+    assert.equal(
+      rangeFor(haemoglobin, { sex: 'female', age: { years: 10 } }),
+      undefined,
+      'no children’s range set',
+    );
   });
   it('matches day and month bands only when a date of birth is known', () => {
-    const infant = NumberPart.parse({ key: 'wbc', label: 'White cells', kind: 'number', ranges: [{ ageTo: { value: 1, unit: 'months' }, low: 9, high: 30 }] });
-    const newborn = labPatientFacts({ dateOfBirth: '2026-10-20', createdOn: '2026-10-20T00:00:00Z' }, '2026-11-02');
+    const infant = NumberPart.parse({
+      key: 'wbc',
+      label: 'White cells',
+      kind: 'number',
+      ranges: [{ ageTo: { value: 1, unit: 'months' }, low: 9, high: 30 }],
+    });
+    const newborn = labPatientFacts(
+      { dateOfBirth: '2026-10-20', createdOn: '2026-10-20T00:00:00Z' },
+      '2026-11-02',
+    );
     assert.deepEqual(newborn, { age: { years: 0, months: 0, days: 13 } });
     assert.equal(rangeFor(infant, newborn)?.low, 9);
     assert.equal(rangeFor(infant, { age: { years: 0 } }), undefined);
   });
   it('refuses rows that cover the same patients, across age units', () => {
     const anyone = { low: 1, high: 2 };
-    assert.equal(NumberPart.safeParse({ key: 'x', label: 'X', kind: 'number', ranges: [anyone, { sex: 'female', ageFrom: adult, low: 1, high: 3 }] }).success, false);
-    assert.equal(NumberPart.safeParse({ key: 'x', label: 'X', kind: 'number', ranges: [{ ageTo: { value: 12, unit: 'months' }, ...anyone }, { ageFrom: { value: 1, unit: 'years' }, ...anyone }] }).success, true);
-    assert.equal(NumberPart.safeParse({ key: 'x', label: 'X', kind: 'number', ranges: [{ low: 5, high: 4 }] }).success, false);
+    assert.equal(
+      NumberPart.safeParse({
+        key: 'x',
+        label: 'X',
+        kind: 'number',
+        ranges: [anyone, { sex: 'female', ageFrom: adult, low: 1, high: 3 }],
+      }).success,
+      false,
+    );
+    assert.equal(
+      NumberPart.safeParse({
+        key: 'x',
+        label: 'X',
+        kind: 'number',
+        ranges: [
+          { ageTo: { value: 12, unit: 'months' }, ...anyone },
+          { ageFrom: { value: 1, unit: 'years' }, ...anyone },
+        ],
+      }).success,
+      true,
+    );
+    assert.equal(
+      NumberPart.safeParse({ key: 'x', label: 'X', kind: 'number', ranges: [{ low: 5, high: 4 }] })
+        .success,
+      false,
+    );
   });
 });
 
 describe('result templates', () => {
   it('needs distinct part keys and links tests only while in use', () => {
-    assert.equal(ResultTemplateDraft.safeParse({ name: 'FBC', status: 'active', parts: [haemoglobin, haemoglobin], serviceDefinitionIds: [] }).success, false);
-    assert.equal(ResultTemplateDraft.safeParse({ name: 'FBC', status: 'draft', parts, serviceDefinitionIds: ['service_definition:fbc'] }).success, false);
+    assert.equal(
+      ResultTemplateDraft.safeParse({
+        name: 'FBC',
+        status: 'active',
+        parts: [haemoglobin, haemoglobin],
+        serviceDefinitionIds: [],
+      }).success,
+      false,
+    );
+    assert.equal(
+      ResultTemplateDraft.safeParse({
+        name: 'FBC',
+        status: 'draft',
+        parts,
+        serviceDefinitionIds: ['service_definition:fbc'],
+      }).success,
+      false,
+    );
     assert.equal(parseDocument(template).success, true);
     assert.equal(templateForTest([template], 'service_definition:fbc')?.id, template.id);
-    assert.equal(templateForTest([{ ...template, status: 'archived' }], 'service_definition:fbc'), undefined);
+    assert.equal(
+      templateForTest([{ ...template, status: 'archived' }], 'service_definition:fbc'),
+      undefined,
+    );
     assert.equal(templateResultType(parts), 'Mixed');
     assert.equal(templateResultType([haemoglobin]), 'Numbers');
   });
@@ -73,90 +219,307 @@ describe('structured lab results', () => {
     assert.equal(rows(r)[0].result, 'Haemoglobin 10.8 g/dL (Low)');
   });
   it('refuses a range that is not the patient’s, a stale summary, or changed patient facts', () => {
-    const wrong = report(10.8); (wrong.items[0].values[0] as { range?: unknown }).range = { sex: 'male', ageFrom: adult, low: 13, high: 17 };
+    const wrong = report(10.8);
+    (wrong.items[0].values[0] as { range?: unknown }).range = {
+      sex: 'male',
+      ageFrom: adult,
+      low: 13,
+      high: 17,
+    };
     assert.match(labReportIssues(rows(wrong), wrong, context())[0], /normal range/);
     const r = report(10.8);
-    assert.match(labReportIssues([{ ...rows(r)[0], result: 'Haemoglobin 9.0 g/dL' }], r, context())[0], /summary/);
-    assert.match(labReportIssues(rows(r), r, context({ sex: 'male', age: woman.age }))[0], /sex or age/);
+    assert.match(
+      labReportIssues([{ ...rows(r)[0], result: 'Haemoglobin 9.0 g/dL' }], r, context())[0],
+      /summary/,
+    );
+    assert.match(
+      labReportIssues(rows(r), r, context({ sex: 'male', age: woman.age }))[0],
+      /sex or age/,
+    );
     const precise = report(10.85);
     assert.match(labReportIssues(rows(precise), precise, context())[0], /decimal/);
-    const relabelled = report(10.8); (relabelled.items[0].values[0] as { unit?: string }).unit = 'mmol/L';
-    assert.match(labReportIssues(rows(relabelled), relabelled, context())[0], /unit does not match/);
+    const relabelled = report(10.8);
+    (relabelled.items[0].values[0] as { unit?: string }).unit = 'mmol/L';
+    assert.match(
+      labReportIssues(rows(relabelled), relabelled, context())[0],
+      /unit does not match/,
+    );
   });
   it('refuses parts the template lacks, missing required parts, and a template not in use for the test', () => {
-    const extra = report(10.8, { values: [{ kind: 'number', key: 'hb', label: 'Haemoglobin', unit: 'g/dL', value: 10.8, range: rangeFor(haemoglobin, woman) }, { kind: 'text', key: 'other', label: 'Other', text: 'x' }] });
+    const extra = report(10.8, {
+      values: [
+        {
+          kind: 'number',
+          key: 'hb',
+          label: 'Haemoglobin',
+          unit: 'g/dL',
+          value: 10.8,
+          range: rangeFor(haemoglobin, woman),
+        },
+        { kind: 'text', key: 'other', label: 'Other', text: 'x' },
+      ],
+    });
     assert.match(labReportIssues(rows(extra), extra, context())[0], /not part of this template/);
-    const missing = report(10.8, { values: [{ kind: 'text', key: 'film', label: 'Film comment', text: 'Normocytic' }] });
+    const missing = report(10.8, {
+      values: [{ kind: 'text', key: 'film', label: 'Film comment', text: 'Normocytic' }],
+    });
     assert.match(labReportIssues(rows(missing), missing, context())[0], /Haemoglobin is required/);
     const unlisted = report(10.8, { orderItemId: 'item:custom' });
-    assert.match(labReportIssues(rows(unlisted), unlisted, context())[0], /not in use for this test/);
+    assert.match(
+      labReportIssues(rows(unlisted), unlisted, context())[0],
+      /not in use for this test/,
+    );
     const missingVersion = report(10.8, { template: { id: template.id, revision: 1 } });
-    assert.match(labReportIssues(rows(missingVersion), missingVersion, context())[0], /version is not available/);
+    assert.match(
+      labReportIssues(rows(missingVersion), missingVersion, context())[0],
+      /version is not available/,
+    );
   });
   it('keeps a test with no template as one free-text result', () => {
-    const plain: LabReport = { patient: woman, items: [{ test: 'Synthetic test', values: [{ kind: 'text', key: 'result', label: 'Result', text: 'Negative' }] }] };
+    const plain: LabReport = {
+      patient: woman,
+      items: [
+        {
+          test: 'Synthetic test',
+          values: [{ kind: 'text', key: 'result', label: 'Result', text: 'Negative' }],
+        },
+      ],
+    };
     assert.deepEqual(labReportIssues(rows(plain), plain, context()), []);
     assert.equal(rows(plain)[0].result, 'Negative');
   });
   it('detects a critical flag for the clinician’s alert', () => {
     assert.equal(hasCriticalFlag(report(10.8)), false);
-    const critical = report(5.1); (critical.items[0].values[0] as { flag?: string }).flag = 'critically_low';
+    const critical = report(5.1);
+    (critical.items[0].values[0] as { flag?: string }).flag = 'critically_low';
     assert.equal(hasCriticalFlag(critical), true);
   });
   it('belongs only on a lab result entry, and needs the result template workflow to upload', () => {
     const r = report(10.8);
-    const entry = { id: 'entry:lr', type: 'encounter_entry', facilityId: 'A', deviceId: 'device:A', createdBy: 'staff:A', createdOn: '2026-11-02T10:00:00Z', schemaVersion: 5, workflowVersion: 1, patientId: 'A-000001-K2', encounterId: 'encounter:A', actorRole: 'laboratory_staff', step: 'lab_results', values: { results: rows(r) }, labReport: r };
+    const entry = {
+      id: 'entry:lr',
+      type: 'encounter_entry',
+      facilityId: 'A',
+      deviceId: 'device:A',
+      createdBy: 'staff:A',
+      createdOn: '2026-11-02T10:00:00Z',
+      schemaVersion: 5,
+      workflowVersion: 1,
+      patientId: 'A-000001-K2',
+      encounterId: 'encounter:A',
+      actorRole: 'laboratory_staff',
+      step: 'lab_results',
+      values: { results: rows(r) },
+      labReport: r,
+    };
     assert.equal(EncounterEntry.safeParse(entry).success, true);
-    assert.equal(EncounterEntry.safeParse({ ...entry, step: 'vitals', values: { temperature: 37 } }).success, false);
-    const mutation = { clientId: 1, op: 'put', table: 'encounter_entry', id: entry.id, data: entry };
-    const base = { transactionId: 1, clinicalWorkflowVersion: 1, facilityContractVersion: 1, schemaVersion: 5, policyVersion: 13, mutations: [mutation] };
+    assert.equal(
+      EncounterEntry.safeParse({ ...entry, step: 'vitals', values: { temperature: 37 } }).success,
+      false,
+    );
+    const mutation = {
+      clientId: 1,
+      op: 'put',
+      table: 'encounter_entry',
+      id: entry.id,
+      data: entry,
+    };
+    const base = {
+      transactionId: 1,
+      clinicalWorkflowVersion: 1,
+      facilityContractVersion: 1,
+      schemaVersion: 5,
+      policyVersion: 13,
+      mutations: [mutation],
+    };
     assert.equal(UploadRequest.safeParse(base).success, false);
-    assert.equal(UploadRequest.safeParse({ ...base, resultTemplateWorkflowVersion: 1 }).success, true);
+    assert.equal(
+      UploadRequest.safeParse({ ...base, resultTemplateWorkflowVersion: 1 }).success,
+      true,
+    );
   });
 });
 
 describe('offline catalogue and template edits, checked on sync', () => {
-  const env = { facilityId: 'A', deviceId: 'device:A', createdBy: 'staff:A', createdOn: '2026-11-02T09:00:00Z' };
+  const env = {
+    facilityId: 'A',
+    deviceId: 'device:A',
+    createdBy: 'staff:A',
+    createdOn: '2026-11-02T09:00:00Z',
+  };
   const loinc = { system: 'http://loinc.org', code: '58410-2', label: 'Full blood count' };
-  const standardFbc = StandardTest.parse({ ...env, id: 'standard_test:A:fbc', type: 'standard_test', key: 'fbc', name: 'Full blood count', specimen: 'Whole blood (EDTA)', classification: 'Haematology', aliases: ['FBC'], concept: loinc });
-  const definition = (id: string, name: string, extra: Record<string, unknown> = {}) => ({ id, name, active: true, concept: { system: 'local', code: id, label: name }, investigation: { specimen: 'Blood', department: 'Haematology', aliases: [] as string[] }, ...extra });
+  const standardFbc = StandardTest.parse({
+    ...env,
+    id: 'standard_test:A:fbc',
+    type: 'standard_test',
+    key: 'fbc',
+    name: 'Full blood count',
+    specimen: 'Whole blood (EDTA)',
+    classification: 'Haematology',
+    aliases: ['FBC'],
+    concept: loinc,
+  });
+  const definition = (id: string, name: string, extra: Record<string, unknown> = {}) => ({
+    id,
+    name,
+    active: true,
+    concept: { system: 'local', code: id, label: name },
+    investigation: { specimen: 'Blood', department: 'Haematology', aliases: [] as string[] },
+    ...extra,
+  });
   it('accepts a standard test copied exactly, and refuses a forged or altered one', () => {
-    const adopted = definition('service_definition:1', 'Full blood count', { concept: loinc, investigation: { specimen: 'Whole blood (EDTA)', department: 'Haematology', aliases: ['FBC'] } });
+    const adopted = definition('service_definition:1', 'Full blood count', {
+      concept: loinc,
+      investigation: {
+        specimen: 'Whole blood (EDTA)',
+        department: 'Haematology',
+        aliases: ['FBC'],
+      },
+    });
     assert.deepEqual(labTestIssues(adopted, [], [standardFbc]), []);
-    assert.match(labTestIssues({ ...adopted, name: 'FBC (edited)' }, [], [standardFbc])[0], /exactly as the standard list/);
-    assert.match(labTestIssues({ ...adopted, concept: { ...loinc, code: '718-7' } }, [], [standardFbc])[0], /not on the standard list/);
-    assert.match(labTestIssues(definition('service_definition:2', 'Ferritin', { concept: { system: 'local', code: 'other', label: 'Ferritin' } }), [], [])[0], /own identity/);
+    assert.match(
+      labTestIssues({ ...adopted, name: 'FBC (edited)' }, [], [standardFbc])[0],
+      /exactly as the standard list/,
+    );
+    assert.match(
+      labTestIssues({ ...adopted, concept: { ...loinc, code: '718-7' } }, [], [standardFbc])[0],
+      /not on the standard list/,
+    );
+    assert.match(
+      labTestIssues(
+        definition('service_definition:2', 'Ferritin', {
+          concept: { system: 'local', code: 'other', label: 'Ferritin' },
+        }),
+        [],
+        [],
+      )[0],
+      /own identity/,
+    );
   });
   it('refuses a test whose name or other name another active test already uses', () => {
-    const existing = [definition('service_definition:1', 'Widal test', { investigation: { specimen: 'Serum', department: 'Microbiology', aliases: ['Widal'] } })];
-    assert.match(labTestIssues(definition('service_definition:2', ' widal '), existing, [])[0], /already called/);
-    assert.deepEqual(labTestIssues(definition('service_definition:1', 'Widal test'), existing, []), [], 'a test does not clash with itself');
-    assert.deepEqual(labTestIssues(definition('service_definition:3', 'Widal'), [{ ...existing[0], active: false }], []), []);
+    const existing = [
+      definition('service_definition:1', 'Widal test', {
+        investigation: { specimen: 'Serum', department: 'Microbiology', aliases: ['Widal'] },
+      }),
+    ];
+    assert.match(
+      labTestIssues(definition('service_definition:2', ' widal '), existing, [])[0],
+      /already called/,
+    );
+    assert.deepEqual(
+      labTestIssues(definition('service_definition:1', 'Widal test'), existing, []),
+      [],
+      'a test does not clash with itself',
+    );
+    assert.deepEqual(
+      labTestIssues(
+        definition('service_definition:3', 'Widal'),
+        [{ ...existing[0], active: false }],
+        [],
+      ),
+      [],
+    );
   });
   it('checks a template revision from a device: tests, one template per test, current library parts, and an exact standard copy', () => {
     const tests = [definition('service_definition:fbc', 'Full blood count')];
-    const shared = ResultPartDefinition.parse({ ...env, id: 'result_part:hb', type: 'result_part', part: haemoglobin, revision: 2 });
+    const shared = ResultPartDefinition.parse({
+      ...env,
+      id: 'result_part:hb',
+      type: 'result_part',
+      part: haemoglobin,
+      revision: 2,
+    });
     const linked = { ...haemoglobin, key: 'hb', required: true, libraryPartId: shared.id };
     const library = { parts: [shared], lists: [] };
-    const fbc = ResultTemplate.parse({ ...template, parts: [linked], revision: 1, serviceDefinitionIds: ['service_definition:fbc'] });
-    const standards = [StandardTemplate.parse({ ...env, id: 'standard_template:A:fbc', type: 'standard_template', key: 'fbc', name: 'Full blood count', tests: ['fbc'], parts: [linked] })];
+    const fbc = ResultTemplate.parse({
+      ...template,
+      parts: [linked],
+      revision: 1,
+      serviceDefinitionIds: ['service_definition:fbc'],
+    });
+    const standards = [
+      StandardTemplate.parse({
+        ...env,
+        id: 'standard_template:A:fbc',
+        type: 'standard_template',
+        key: 'fbc',
+        name: 'Full blood count',
+        tests: ['fbc'],
+        parts: [linked],
+      }),
+    ];
     const context = { templates: [], tests, library, standards };
     assert.deepEqual(resultTemplateIssues(fbc, context), []);
-    const other = ResultTemplate.parse({ ...fbc, id: 'result_template:other', name: 'Other', source: 'own', standardKey: undefined });
-    assert.match(resultTemplateIssues(other, { ...context, templates: [fbc] })[0], /already uses the template “Full blood count”/);
-    assert.match(resultTemplateIssues(ResultTemplate.parse({ ...fbc, serviceDefinitionIds: ['service_definition:gone'] }), context)[0], /not active tests/);
+    const other = ResultTemplate.parse({
+      ...fbc,
+      id: 'result_template:other',
+      name: 'Other',
+      source: 'own',
+      standardKey: undefined,
+    });
+    assert.match(
+      resultTemplateIssues(other, { ...context, templates: [fbc] })[0],
+      /already uses the template “Full blood count”/,
+    );
+    assert.match(
+      resultTemplateIssues(
+        ResultTemplate.parse({ ...fbc, serviceDefinitionIds: ['service_definition:gone'] }),
+        context,
+      )[0],
+      /not active tests/,
+    );
     const stale = { ...library, parts: [{ ...shared, part: { ...haemoglobin, unit: 'mmol/L' } }] };
-    assert.match(resultTemplateIssues(fbc, { ...context, library: stale }).join(' '), /changed\. Reopen/);
-    assert.match(resultTemplateIssues(ResultTemplate.parse({ ...fbc, name: 'FBC' }), context)[0], /exactly as the standard list/);
-    assert.deepEqual(resultTemplateIssues(ResultTemplate.parse({ ...fbc, name: 'FBC', revision: 2 }), context), [], 'a later revision may differ from the standard');
-    assert.match(resultTemplateIssues(ResultTemplate.parse({ ...fbc, id: 'result_template:again' }), { ...context, templates: [fbc] }).join(' '), /already added/);
+    assert.match(
+      resultTemplateIssues(fbc, { ...context, library: stale }).join(' '),
+      /changed\. Reopen/,
+    );
+    assert.match(
+      resultTemplateIssues(ResultTemplate.parse({ ...fbc, name: 'FBC' }), context)[0],
+      /exactly as the standard list/,
+    );
+    assert.deepEqual(
+      resultTemplateIssues(ResultTemplate.parse({ ...fbc, name: 'FBC', revision: 2 }), context),
+      [],
+      'a later revision may differ from the standard',
+    );
+    assert.match(
+      resultTemplateIssues(ResultTemplate.parse({ ...fbc, id: 'result_template:again' }), {
+        ...context,
+        templates: [fbc],
+      }).join(' '),
+      /already added/,
+    );
   });
   it('lets devices write templates but not the standard lists, and needs the template workflow to upload them', () => {
     assert.equal(FACILITY_DOCUMENT_POLICY.result_template.writer, 'device');
     assert.equal(FACILITY_DOCUMENT_POLICY.standard_test.writer, 'server');
-    const mutation = { clientId: 1, op: 'put', table: 'answer_list', id: 'answer_list:1', data: { ...env, id: 'answer_list:1', type: 'answer_list', name: 'Reactivity', answers: ['Non-reactive', 'Reactive'], revision: 1, schemaVersion: 5 } };
-    const request = { transactionId: 1, clinicalWorkflowVersion: 1, facilityContractVersion: 1, schemaVersion: 5, policyVersion: 13, mutations: [mutation] };
+    const mutation = {
+      clientId: 1,
+      op: 'put',
+      table: 'answer_list',
+      id: 'answer_list:1',
+      data: {
+        ...env,
+        id: 'answer_list:1',
+        type: 'answer_list',
+        name: 'Reactivity',
+        answers: ['Non-reactive', 'Reactive'],
+        revision: 1,
+        schemaVersion: 5,
+      },
+    };
+    const request = {
+      transactionId: 1,
+      clinicalWorkflowVersion: 1,
+      facilityContractVersion: 1,
+      schemaVersion: 5,
+      policyVersion: 13,
+      mutations: [mutation],
+    };
     assert.equal(UploadRequest.safeParse(request).success, false);
-    assert.equal(UploadRequest.safeParse({ ...request, resultTemplateWorkflowVersion: 1 }).success, true);
+    assert.equal(
+      UploadRequest.safeParse({ ...request, resultTemplateWorkflowVersion: 1 }).success,
+      true,
+    );
   });
 });

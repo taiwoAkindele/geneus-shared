@@ -1,5 +1,5 @@
-import {ExemptionRule} from './billingRules.ts';
-export {ExemptionRule} from './billingRules.ts';
+import { ExemptionRule } from './billingRules.ts';
+export { ExemptionRule } from './billingRules.ts';
 import { Disposition, InvestigationItem, InvestigationReview } from './careWorkflow.ts';
 /**
  * Geneus Health — shared contract: the document schemas.
@@ -10,7 +10,18 @@ import { Disposition, InvestigationItem, InvestigationReview } from './careWorkf
  * schema before it reaches PostgreSQL (see SCHEMA.md) — never hand-duplicated.
  */
 import { z } from 'zod';
-import { AppointmentAllocation, ClinicalActorContext, VisitType, FacilityDependency, FacilityTimeZone, FacilityWorkforcePolicy, OrganizationKind, RESTRICTED_FACILITY_DOCUMENT_TYPES, distinctRefs, facilityIdRef } from './facilityTypes.ts';
+import {
+  AppointmentAllocation,
+  ClinicalActorContext,
+  VisitType,
+  FacilityDependency,
+  FacilityTimeZone,
+  FacilityWorkforcePolicy,
+  OrganizationKind,
+  RESTRICTED_FACILITY_DOCUMENT_TYPES,
+  distinctRefs,
+  facilityIdRef,
+} from './facilityTypes.ts';
 import { AssignablePermission } from './capabilities.ts';
 import { provisionalPatientName, validCalendarDate, yearsBetween } from './patientIdentity.ts';
 import { LabReport } from './resultTemplates.ts';
@@ -38,69 +49,251 @@ export const Patient = baseEnvelope
     patientId,
     // NASADOR
     fullName: z.string().min(1),
-    address: z.string().trim().min(1).nullish().transform((v) => v ?? undefined).optional(),
-    sex: Sex.nullish().transform((v) => v ?? undefined).optional(),
+    address: z
+      .string()
+      .trim()
+      .min(1)
+      .nullish()
+      .transform((v) => v ?? undefined)
+      .optional(),
+    sex: Sex.nullish()
+      .transform((v) => v ?? undefined)
+      .optional(),
     identityStatus: z.enum(['identified', 'provisional']).default('identified'),
     /** Original circumstances are retained after later identification. */
-    provisionalReason: z.string().trim().min(3).max(500).nullish().transform((v) => v ?? undefined).optional(),
-    identifiedBy: z.string().min(1).nullish().transform((v) => v ?? undefined).optional(),
-    identifiedOn: isoDateTime.nullish().transform((v) => v ?? undefined).optional(),
-    identificationNote: z.string().trim().min(3).max(500).nullish().transform((v) => v ?? undefined).optional(),
+    provisionalReason: z
+      .string()
+      .trim()
+      .min(3)
+      .max(500)
+      .nullish()
+      .transform((v) => v ?? undefined)
+      .optional(),
+    identifiedBy: z
+      .string()
+      .min(1)
+      .nullish()
+      .transform((v) => v ?? undefined)
+      .optional(),
+    identifiedOn: isoDateTime
+      .nullish()
+      .transform((v) => v ?? undefined)
+      .optional(),
+    identificationNote: z
+      .string()
+      .trim()
+      .min(3)
+      .max(500)
+      .nullish()
+      .transform((v) => v ?? undefined)
+      .optional(),
     /** Exact provisional demographics reviewed when completing identification. */
-    identificationBase: z.strictObject({ fullName: z.string(), sex: Sex.nullable(), address: z.string().nullable(),
-      dateOfBirth: isoDate.nullable(), ageYears: z.number().int().nullable(), ageObservedOn: isoDate.nullable(),
-      phone: z.string().nullable(), nin: z.string().nullable(), legacyPaperRef: z.string().nullable(),
-    }).nullish().transform((v) => v ?? undefined).optional(),
-    dateOfBirth: isoDate.refine(validCalendarDate, 'Enter a valid calendar date').nullish().transform((v) => v ?? undefined).optional(),
+    identificationBase: z
+      .strictObject({
+        fullName: z.string(),
+        sex: Sex.nullable(),
+        address: z.string().nullable(),
+        dateOfBirth: isoDate.nullable(),
+        ageYears: z.number().int().nullable(),
+        ageObservedOn: isoDate.nullable(),
+        phone: z.string().nullable(),
+        nin: z.string().nullable(),
+        legacyPaperRef: z.string().nullable(),
+      })
+      .nullish()
+      .transform((v) => v ?? undefined)
+      .optional(),
+    dateOfBirth: isoDate
+      .refine(validCalendarDate, 'Enter a valid calendar date')
+      .nullish()
+      .transform((v) => v ?? undefined)
+      .optional(),
     /** True when DOB is a best-guess (elderly patient, no records — PRD §10). */
     dobEstimated: z.boolean().default(false),
-    ageYears: z.number().int().nonnegative().max(130).nullish().transform((v) => v ?? undefined).optional(),
-    ageObservedOn: isoDate.refine(validCalendarDate).nullish().transform((v) => v ?? undefined).optional(),
-    occupation: z.string().nullish().transform((v) => v ?? undefined).optional(),
-    religion: z.string().nullish().transform((v) => v ?? undefined).optional(),
+    ageYears: z
+      .number()
+      .int()
+      .nonnegative()
+      .max(130)
+      .nullish()
+      .transform((v) => v ?? undefined)
+      .optional(),
+    ageObservedOn: isoDate
+      .refine(validCalendarDate)
+      .nullish()
+      .transform((v) => v ?? undefined)
+      .optional(),
+    occupation: z
+      .string()
+      .nullish()
+      .transform((v) => v ?? undefined)
+      .optional(),
+    religion: z
+      .string()
+      .nullish()
+      .transform((v) => v ?? undefined)
+      .optional(),
     allergies: z.array(z.string()).default([]),
     // Strongest returning-patient signals (optional)
-    phone: z.string().nullish().transform((v) => v ?? undefined).optional(),
-    nin: z.string().nullish().transform((v) => v ?? undefined).optional(),
+    phone: z
+      .string()
+      .nullish()
+      .transform((v) => v ?? undefined)
+      .optional(),
+    nin: z
+      .string()
+      .nullish()
+      .transform((v) => v ?? undefined)
+      .optional(),
     /** Evidence reported by staff, not an external identity-provider verification. */
     identityEvidence: z.enum(['reported', 'document_seen']).optional(),
-    identityEvidenceNote: z.string().max(300).nullish().transform((v) => v ?? undefined).optional(),
+    identityEvidenceNote: z
+      .string()
+      .max(300)
+      .nullish()
+      .transform((v) => v ?? undefined)
+      .optional(),
     /** Old paper folder / card number captured at first digital visit (PRD §10.2). */
-    legacyPaperRef: z.string().nullish().transform((v) => v ?? undefined).optional(),
+    legacyPaperRef: z
+      .string()
+      .nullish()
+      .transform((v) => v ?? undefined)
+      .optional(),
   })
-  .refine((d) => d.identityStatus === 'provisional' || Boolean(d.dateOfBirth) || d.ageYears != null, {
-    message: 'Provide either dateOfBirth or ageYears',
-    path: ['ageYears'],
-  })
+  .refine(
+    (d) => d.identityStatus === 'provisional' || Boolean(d.dateOfBirth) || d.ageYears != null,
+    {
+      message: 'Provide either dateOfBirth or ageYears',
+      path: ['ageYears'],
+    },
+  )
   .superRefine((d, ctx) => {
     if (d.identityStatus === 'identified') {
-      if (!d.sex) ctx.addIssue({ code: 'custom', path: ['sex'], message: 'Record sex for an identified patient' });
-      if (!d.address) ctx.addIssue({ code: 'custom', path: ['address'], message: 'Record an address for an identified patient' });
-      if (d.provisionalReason && (!d.identifiedBy || !d.identifiedOn || !d.identificationNote || !d.identificationBase)) ctx.addIssue({ code: 'custom', path: ['identificationNote'], message: 'Later identification requires an attributed explanation and the reviewed provisional details' });
-      if (!d.provisionalReason && (d.identifiedBy || d.identifiedOn || d.identificationNote || d.identificationBase)) ctx.addIssue({ code: 'custom', path: ['provisionalReason'], message: 'Identification history requires an original provisional registration' });
+      if (!d.sex) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['sex'],
+          message: 'Record sex for an identified patient',
+        });
+      }
+      if (!d.address) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['address'],
+          message: 'Record an address for an identified patient',
+        });
+      }
+      if (
+        d.provisionalReason &&
+        (!d.identifiedBy || !d.identifiedOn || !d.identificationNote || !d.identificationBase)
+      ) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['identificationNote'],
+          message:
+            'Later identification requires an attributed explanation and the reviewed provisional details',
+        });
+      }
+      if (
+        !d.provisionalReason &&
+        (d.identifiedBy || d.identifiedOn || d.identificationNote || d.identificationBase)
+      ) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['provisionalReason'],
+          message: 'Identification history requires an original provisional registration',
+        });
+      }
     } else {
-      if (d.schemaVersion < 5) ctx.addIssue({ code: 'custom', path: ['schemaVersion'], message: 'Provisional registration requires schema 5' });
-      if (!d.provisionalReason) ctx.addIssue({ code: 'custom', path: ['provisionalReason'], message: 'Explain why identity is not yet known' });
-      if (d.fullName !== provisionalPatientName(d.patientId)) ctx.addIssue({ code: 'custom', path: ['fullName'], message: 'Use the distinct provisional patient label' });
-      if (d.identifiedBy || d.identifiedOn || d.identificationNote || d.identificationBase) ctx.addIssue({ code: 'custom', path: ['identifiedOn'], message: 'An unidentified patient cannot have a completed identification' });
+      if (d.schemaVersion < 5) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['schemaVersion'],
+          message: 'Provisional registration requires schema 5',
+        });
+      }
+      if (!d.provisionalReason) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['provisionalReason'],
+          message: 'Explain why identity is not yet known',
+        });
+      }
+      if (d.fullName !== provisionalPatientName(d.patientId)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['fullName'],
+          message: 'Use the distinct provisional patient label',
+        });
+      }
+      if (d.identifiedBy || d.identifiedOn || d.identificationNote || d.identificationBase) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['identifiedOn'],
+          message: 'An unidentified patient cannot have a completed identification',
+        });
+      }
     }
     const observed = d.ageObservedOn ?? d.createdOn.slice(0, 10);
-    if (d.dateOfBirth && d.dateOfBirth > observed) ctx.addIssue({ code: 'custom', path: ['dateOfBirth'], message: 'Date of birth cannot be after the age observation date' });
-    if (d.dateOfBirth && yearsBetween(d.dateOfBirth, observed) > 130) ctx.addIssue({ code: 'custom', path: ['dateOfBirth'], message: 'Check the birth date; age exceeds 130 years' });
-    if (d.dateOfBirth && d.ageYears !== undefined && d.ageObservedOn && yearsBetween(d.dateOfBirth, d.ageObservedOn) !== d.ageYears) ctx.addIssue({ code: 'custom', path: ['ageYears'], message: 'Age and date of birth do not agree' });
-    if (d.identityEvidence === 'document_seen' && !d.identityEvidenceNote?.trim()) ctx.addIssue({ code: 'custom', path: ['identityEvidenceNote'], message: 'Describe the identity evidence checked' });
+    if (d.dateOfBirth && d.dateOfBirth > observed) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['dateOfBirth'],
+        message: 'Date of birth cannot be after the age observation date',
+      });
+    }
+    if (d.dateOfBirth && yearsBetween(d.dateOfBirth, observed) > 130) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['dateOfBirth'],
+        message: 'Check the birth date; age exceeds 130 years',
+      });
+    }
+    if (
+      d.dateOfBirth &&
+      d.ageYears !== undefined &&
+      d.ageObservedOn &&
+      yearsBetween(d.dateOfBirth, d.ageObservedOn) !== d.ageYears
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['ageYears'],
+        message: 'Age and date of birth do not agree',
+      });
+    }
+    if (d.identityEvidence === 'document_seen' && !d.identityEvidenceNote?.trim()) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['identityEvidenceNote'],
+        message: 'Describe the identity evidence checked',
+      });
+    }
   });
 export type Patient = z.infer<typeof Patient>;
 
 /** Append-only review history; only the server may confirm a link or its removal. */
-export const PatientIdentityEvent = baseEnvelope.extend({
-  type: z.literal('patient_identity_event'),
-  patientId,
-  otherPatientId: patientId.optional(),
-  outcome: z.enum(['existing_selected', 'registration_distinct', 'review_requested', 'linked', 'distinct', 'unlinked']),
-  reason: z.string().trim().min(3).max(1000),
-  revision: z.number().int().positive().optional(),
-}).refine((d) => d.outcome === 'existing_selected' || Boolean(d.otherPatientId && d.otherPatientId !== d.patientId), { message: 'Choose two different patient records', path: ['otherPatientId'] });
+export const PatientIdentityEvent = baseEnvelope
+  .extend({
+    type: z.literal('patient_identity_event'),
+    patientId,
+    otherPatientId: patientId.optional(),
+    outcome: z.enum([
+      'existing_selected',
+      'registration_distinct',
+      'review_requested',
+      'linked',
+      'distinct',
+      'unlinked',
+    ]),
+    reason: z.string().trim().min(3).max(1000),
+    revision: z.number().int().positive().optional(),
+  })
+  .refine(
+    (d) =>
+      d.outcome === 'existing_selected' ||
+      Boolean(d.otherPatientId && d.otherPatientId !== d.patientId),
+    { message: 'Choose two different patient records', path: ['otherPatientId'] },
+  );
 export type PatientIdentityEvent = z.infer<typeof PatientIdentityEvent>;
 
 /* ================================================================== */
@@ -149,22 +342,32 @@ export type AppointmentStatus = z.infer<typeof AppointmentStatus>;
 /** Booking mode above is retained for older records; attendance is recorded separately. */
 export const AppointmentAttendance = z.enum(['booked', 'arrived', 'cancelled', 'no_show']);
 export type AppointmentAttendance = z.infer<typeof AppointmentAttendance>;
-export const AppointmentAction = z.enum(['arrived', 'cancelled', 'no_show', 'rescheduled', 'reopened']);
+export const AppointmentAction = z.enum([
+  'arrived',
+  'cancelled',
+  'no_show',
+  'rescheduled',
+  'reopened',
+]);
 export type AppointmentAction = z.infer<typeof AppointmentAction>;
-export const AppointmentActivity = z.object({
-  id: z.string().min(1),
-  action: AppointmentAction,
-  recordedBy: z.string().min(1),
-  recordedOn: isoDateTime,
-  fromAttendance: AppointmentAttendance,
-  toAttendance: AppointmentAttendance,
-  fromScheduledFor: isoDateTime.optional(),
-  toScheduledFor: isoDateTime.optional(),
-  reason: z.string().trim().min(1).optional(),
-}).strict();
+export const AppointmentActivity = z
+  .object({
+    id: z.string().min(1),
+    action: AppointmentAction,
+    recordedBy: z.string().min(1),
+    recordedOn: isoDateTime,
+    fromAttendance: AppointmentAttendance,
+    toAttendance: AppointmentAttendance,
+    fromScheduledFor: isoDateTime.optional(),
+    toScheduledFor: isoDateTime.optional(),
+    reason: z.string().trim().min(1).optional(),
+  })
+  .strict();
 export type AppointmentActivity = z.infer<typeof AppointmentActivity>;
 export const sameAppointmentTime = (left?: string, right?: string): boolean => {
-  if (!left || !right) return left === right;
+  if (!left || !right) {
+    return left === right;
+  }
   return Date.parse(left) === Date.parse(right);
 };
 
@@ -198,31 +401,116 @@ export const Appointment = baseEnvelope
     path: ['scheduledFor'],
   })
   .superRefine((appointment, context) => {
-    if (appointment.allocation && (!appointment.scheduledFor || Date.parse(appointment.allocation.endsAt) <= Date.parse(appointment.scheduledFor))) context.addIssue({ code: z.ZodIssueCode.custom, path: ['allocation'], message: 'A resource allocation needs a start and a later end' });
-    if (appointment.allocation && appointment.offeringId && appointment.allocation.offeringId !== appointment.offeringId) context.addIssue({ code: z.ZodIssueCode.custom, path: ['allocation', 'offeringId'], message: 'Reserve resources for the care service that was booked' });
+    if (
+      appointment.allocation &&
+      (!appointment.scheduledFor ||
+        Date.parse(appointment.allocation.endsAt) <= Date.parse(appointment.scheduledFor))
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['allocation'],
+        message: 'A resource allocation needs a start and a later end',
+      });
+    }
+    if (
+      appointment.allocation &&
+      appointment.offeringId &&
+      appointment.allocation.offeringId !== appointment.offeringId
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['allocation', 'offeringId'],
+        message: 'Reserve resources for the care service that was booked',
+      });
+    }
     const activity = appointment.activity ?? [];
     const ids = new Set<string>();
     for (let i = 0; i < activity.length; i++) {
-      const event = activity[i], previous = activity[i - 1];
-      const fail = (message: string) => context.addIssue({ code: z.ZodIssueCode.custom, path: ['activity', i], message });
-      if (ids.has(event.id)) fail('Each booking action needs a distinct identity');
+      const event = activity[i];
+      const previous = activity[i - 1];
+      const fail = (message: string) =>
+        context.addIssue({ code: z.ZodIssueCode.custom, path: ['activity', i], message });
+      if (ids.has(event.id)) {
+        fail('Each booking action needs a distinct identity');
+      }
       ids.add(event.id);
-      if (previous && (event.fromAttendance !== previous.toAttendance || !sameAppointmentTime(event.fromScheduledFor, previous.toScheduledFor))) fail('Booking history must continue from the preceding action');
-      if (!previous && event.fromAttendance !== 'booked') fail('Booking history must begin with a booked appointment');
-      if (previous && Date.parse(event.recordedOn) < Date.parse(previous.recordedOn)) fail('Booking action dates cannot go backwards');
-      if (Date.parse(event.recordedOn) < Date.parse(appointment.createdOn)) fail('Booking actions cannot predate the booking');
-      if (event.action !== 'arrived' && !event.reason) fail('Explain this booking change');
-      const expected = event.action === 'rescheduled' || event.action === 'reopened' ? 'booked' : event.action;
-      if (event.toAttendance !== expected) fail('The action and attendance state disagree');
-      if (event.action !== 'rescheduled' && !sameAppointmentTime(event.fromScheduledFor, event.toScheduledFor)) fail('Only rescheduling can change the booking time');
-      if (event.action === 'rescheduled' && (!event.toScheduledFor || sameAppointmentTime(event.toScheduledFor, event.fromScheduledFor) || Date.parse(event.toScheduledFor) <= Date.parse(event.recordedOn))) fail('Choose a different future date and time');
-      if (event.action === 'reopened' ? !['cancelled', 'no_show'].includes(event.fromAttendance) : ['cancelled', 'no_show'].includes(event.fromAttendance) && event.action !== 'rescheduled') fail('Reopen or reschedule this inactive booking first');
-      if (event.action === event.fromAttendance) fail('This attendance state is already recorded');
-      if (event.action === 'no_show' && (event.fromAttendance !== 'booked' || Date.parse(event.fromScheduledFor ?? appointment.createdOn) > Date.parse(event.recordedOn))) fail('Only a due booking without a recorded arrival can be marked no-show');
+      if (
+        previous &&
+        (event.fromAttendance !== previous.toAttendance ||
+          !sameAppointmentTime(event.fromScheduledFor, previous.toScheduledFor))
+      ) {
+        fail('Booking history must continue from the preceding action');
+      }
+      if (!previous && event.fromAttendance !== 'booked') {
+        fail('Booking history must begin with a booked appointment');
+      }
+      if (previous && Date.parse(event.recordedOn) < Date.parse(previous.recordedOn)) {
+        fail('Booking action dates cannot go backwards');
+      }
+      if (Date.parse(event.recordedOn) < Date.parse(appointment.createdOn)) {
+        fail('Booking actions cannot predate the booking');
+      }
+      if (event.action !== 'arrived' && !event.reason) {
+        fail('Explain this booking change');
+      }
+      const expected =
+        event.action === 'rescheduled' || event.action === 'reopened' ? 'booked' : event.action;
+      if (event.toAttendance !== expected) {
+        fail('The action and attendance state disagree');
+      }
+      if (
+        event.action !== 'rescheduled' &&
+        !sameAppointmentTime(event.fromScheduledFor, event.toScheduledFor)
+      ) {
+        fail('Only rescheduling can change the booking time');
+      }
+      if (
+        event.action === 'rescheduled' &&
+        (!event.toScheduledFor ||
+          sameAppointmentTime(event.toScheduledFor, event.fromScheduledFor) ||
+          Date.parse(event.toScheduledFor) <= Date.parse(event.recordedOn))
+      ) {
+        fail('Choose a different future date and time');
+      }
+      if (
+        event.action === 'reopened'
+          ? !['cancelled', 'no_show'].includes(event.fromAttendance)
+          : ['cancelled', 'no_show'].includes(event.fromAttendance) &&
+            event.action !== 'rescheduled'
+      ) {
+        fail('Reopen or reschedule this inactive booking first');
+      }
+      if (event.action === event.fromAttendance) {
+        fail('This attendance state is already recorded');
+      }
+      if (
+        event.action === 'no_show' &&
+        (event.fromAttendance !== 'booked' ||
+          Date.parse(event.fromScheduledFor ?? appointment.createdOn) >
+            Date.parse(event.recordedOn))
+      ) {
+        fail('Only a due booking without a recorded arrival can be marked no-show');
+      }
     }
     const last = activity[activity.length - 1];
-    if (last && (last.toAttendance !== (appointment.attendance ?? 'booked') || !sameAppointmentTime(last.toScheduledFor, appointment.scheduledFor))) context.addIssue({ code: z.ZodIssueCode.custom, path: ['activity'], message: 'The booking must match its latest action' });
-    if (!last && appointment.attendance && appointment.attendance !== 'booked') context.addIssue({ code: z.ZodIssueCode.custom, path: ['activity'], message: 'Attendance needs an attributed action' });
+    if (
+      last &&
+      (last.toAttendance !== (appointment.attendance ?? 'booked') ||
+        !sameAppointmentTime(last.toScheduledFor, appointment.scheduledFor))
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['activity'],
+        message: 'The booking must match its latest action',
+      });
+    }
+    if (!last && appointment.attendance && appointment.attendance !== 'booked') {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['activity'],
+        message: 'Attendance needs an attributed action',
+      });
+    }
   });
 export type Appointment = z.infer<typeof Appointment>;
 
@@ -252,10 +540,28 @@ export type RegisterFieldType = z.infer<typeof RegisterFieldType>;
 
 /** A fact a visit-linked register reads from the visit instead of asking staff for it. */
 export const VisitFact = z.enum([
-  'visit_date', 'patient_name', 'patient_id', 'age', 'sex', 'address', 'phone', 'new_or_revisit',
-  'weight', 'temperature', 'blood_pressure', 'complaints', 'diagnoses', 'tests', 'results',
-  'medicines_prescribed', 'medicines_dispensed', 'outcome', 'follow_up_date', 'seen_by',
-  'visit_type', 'injections',
+  'visit_date',
+  'patient_name',
+  'patient_id',
+  'age',
+  'sex',
+  'address',
+  'phone',
+  'new_or_revisit',
+  'weight',
+  'temperature',
+  'blood_pressure',
+  'complaints',
+  'diagnoses',
+  'tests',
+  'results',
+  'medicines_prescribed',
+  'medicines_dispensed',
+  'outcome',
+  'follow_up_date',
+  'seen_by',
+  'visit_type',
+  'injections',
 ]);
 export type VisitFact = z.infer<typeof VisitFact>;
 
@@ -320,7 +626,12 @@ export const RegisterDefinition = baseEnvelope.extend({
 export type RegisterDefinition = z.infer<typeof RegisterDefinition>;
 
 /** One field's recorded value — shape depends on the field's type. */
-export const RegisterEntryValue = z.union([z.string(), z.number(), z.boolean(), z.array(z.string())]);
+export const RegisterEntryValue = z.union([
+  z.string(),
+  z.number(),
+  z.boolean(),
+  z.array(z.string()),
+]);
 export type RegisterEntryValue = z.infer<typeof RegisterEntryValue>;
 
 /**
@@ -348,7 +659,10 @@ export const RegisterEntry = baseEnvelope.extend({
 });
 export type RegisterEntry = z.infer<typeof RegisterEntry>;
 
-const matchesFieldType = (field: RegisterFieldDef, value: RegisterEntryValue | undefined): boolean => {
+const matchesFieldType = (
+  field: RegisterFieldDef,
+  value: RegisterEntryValue | undefined,
+): boolean => {
   switch (field.type) {
     case 'text':
     case 'textarea':
@@ -356,13 +670,18 @@ const matchesFieldType = (field: RegisterFieldDef, value: RegisterEntryValue | u
     case 'phone':
       return typeof value === 'string';
     case 'number':
-      return typeof value === 'number' || (typeof value === 'string' && value.trim() !== '' && !Number.isNaN(Number(value)));
+      return (
+        typeof value === 'number' ||
+        (typeof value === 'string' && value.trim() !== '' && !Number.isNaN(Number(value)))
+      );
     case 'checkbox':
       return typeof value === 'boolean';
     case 'select':
       return typeof value === 'string' && (!field.options || field.options.includes(value));
     case 'multiselect':
-      return Array.isArray(value) && value.every((v) => !field.options || field.options.includes(v));
+      return (
+        Array.isArray(value) && value.every((v) => !field.options || field.options.includes(v))
+      );
     default:
       return true;
   }
@@ -380,14 +699,21 @@ export const validateRegisterEntry = (
 ): string[] => {
   const issues: string[] = [];
   for (const field of fields) {
-    if (field.type === 'section') continue;
-    const value = values[field.id];
-    const empty = value === undefined || value === '' || (Array.isArray(value) && value.length === 0);
-    if (empty) {
-      if (field.required) issues.push(`"${field.label}" is required`);
+    if (field.type === 'section') {
       continue;
     }
-    if (!matchesFieldType(field, value)) issues.push(`"${field.label}" has an invalid value for a ${field.type} field`);
+    const value = values[field.id];
+    const empty =
+      value === undefined || value === '' || (Array.isArray(value) && value.length === 0);
+    if (empty) {
+      if (field.required) {
+        issues.push(`"${field.label}" is required`);
+      }
+      continue;
+    }
+    if (!matchesFieldType(field, value)) {
+      issues.push(`"${field.label}" has an invalid value for a ${field.type} field`);
+    }
   }
   return issues;
 };
@@ -433,11 +759,24 @@ export const Referral = baseEnvelope.extend({
   notYetArrivedFlagged: z.boolean().default(false),
 });
 export type Referral = z.infer<typeof Referral>;
-export const InboundReferral = baseEnvelope.extend({
-  type: z.literal('inbound_referral'), sourceReferralId: z.string().min(1), fromFacilityId: z.string().min(1), senderPatientId: patientId,
-  tier1: Tier1Payload, sentOn: isoDateTime, status: z.enum(['received', 'arrived', 'closed']).default('received'),
-  localPatientId: patientId.optional(), localEncounterId: z.string().min(1).optional(), arrivedOn: isoDateTime.optional(), closedOn: isoDateTime.optional(),
-}).refine((v) => v.status === 'received' || Boolean(v.localPatientId && v.arrivedOn), 'Arrival requires a local patient and time')
+export const InboundReferral = baseEnvelope
+  .extend({
+    type: z.literal('inbound_referral'),
+    sourceReferralId: z.string().min(1),
+    fromFacilityId: z.string().min(1),
+    senderPatientId: patientId,
+    tier1: Tier1Payload,
+    sentOn: isoDateTime,
+    status: z.enum(['received', 'arrived', 'closed']).default('received'),
+    localPatientId: patientId.optional(),
+    localEncounterId: z.string().min(1).optional(),
+    arrivedOn: isoDateTime.optional(),
+    closedOn: isoDateTime.optional(),
+  })
+  .refine(
+    (v) => v.status === 'received' || Boolean(v.localPatientId && v.arrivedOn),
+    'Arrival requires a local patient and time',
+  )
   .refine((v) => v.status !== 'closed' || Boolean(v.closedOn), 'Closing requires a time');
 export type InboundReferral = z.infer<typeof InboundReferral>;
 
@@ -446,7 +785,12 @@ export type InboundReferral = z.infer<typeof InboundReferral>;
 /* ================================================================== */
 
 export const StockItem = baseEnvelope.extend({
-  feeItemId: z.string().min(1).nullish().transform((v) => v ?? undefined).optional(),
+  feeItemId: z
+    .string()
+    .min(1)
+    .nullish()
+    .transform((v) => v ?? undefined)
+    .optional(),
   type: z.literal('stock_item'),
   name: z.string().min(1),
   category: z
@@ -487,20 +831,29 @@ export const Facility = baseEnvelope.extend({
    * correction applies from the moment it is made: anything raised before
    * keeps the date it had. Absent on facilities that never changed it.
    */
-  timeZoneHistory: z.array(z.strictObject({ timeZone: FacilityTimeZone, from: z.string().min(1) })).max(100).optional(),
+  timeZoneHistory: z
+    .array(z.strictObject({ timeZone: FacilityTimeZone, from: z.string().min(1) }))
+    .max(100)
+    .optional(),
   /** Server-owned after readiness/mixed-client checks; never inferred from a legacy role. */
   workforcePolicy: FacilityWorkforcePolicy.optional(),
   level: z
     .enum(['chc', 'phc', 'general_hospital', 'teaching_hospital', 'specialist'])
     .default('phc'),
   /** ISO 3166-1 alpha-2; Nigeria when absent. */
-  country: z.string().regex(/^[A-Z]{2}$/, 'Use a two-letter country code').optional(),
+  country: z
+    .string()
+    .regex(/^[A-Z]{2}$/, 'Use a two-letter country code')
+    .optional(),
   address: z.string().trim().min(1).max(300).optional(),
   phone: z.string().trim().min(5).max(30).optional(),
   /** Shown on bills and receipts and used as the reply-to address of patient emails. */
   email: z.string().trim().toLowerCase().pipe(z.email()).pipe(z.string().max(200)).optional(),
   /** The currency new prices start in; each fee keeps its own. Naira when absent. */
-  currency: z.string().regex(/^[A-Z]{3}$/, 'Use a three-letter currency code').optional(),
+  currency: z
+    .string()
+    .regex(/^[A-Z]{3}$/, 'Use a three-letter currency code')
+    .optional(),
 });
 export type Facility = z.infer<typeof Facility>;
 /** What a hospital may change about itself. The code is its permanent identity and is not editable. */
@@ -513,26 +866,45 @@ export const FacilityDetailsUpdate = z.strictObject({
   address: z.string().trim().max(300).optional(),
   phone: z.string().trim().max(30).optional(),
   /** Blank clears it. */
-  email: z.union([z.literal(''), z.string().trim().toLowerCase().pipe(z.email()).pipe(z.string().max(200))]).optional(),
+  email: z
+    .union([
+      z.literal(''),
+      z.string().trim().toLowerCase().pipe(z.email()).pipe(z.string().max(200)),
+    ])
+    .optional(),
   currency: z.string().regex(/^[A-Z]{3}$/),
 });
 export type FacilityDetailsUpdate = z.infer<typeof FacilityDetailsUpdate>;
 
 /** Configurable per facility — no fixed list (PRD §9.7). */
-export const Unit = baseEnvelope.extend({
-  type: z.literal('unit'),
-  unitId: z.string().min(1),
-  name: z.string().min(1), // Registration, Consultation, Injection Room...
-  active: z.boolean().default(true),
-  /** Omitted on legacy units; resolve as a routable unit, never an inferred room. */
-  kind: OrganizationKind.optional(),
-  parentId: facilityIdRef.optional(),
-  routingEnabled: z.boolean().optional(),
-  revision: z.number().int().positive().optional(),
-}).superRefine((unit, context) => {
-  if (unit.parentId === unit.id || unit.parentId === unit.unitId) context.addIssue({ code: 'custom', path: ['parentId'], message: 'A unit cannot contain itself' });
-  if (unit.kind === 'department' && unit.routingEnabled === true) context.addIssue({ code: 'custom', path: ['routingEnabled'], message: 'Route care to a service unit, not a department' });
-});
+export const Unit = baseEnvelope
+  .extend({
+    type: z.literal('unit'),
+    unitId: z.string().min(1),
+    name: z.string().min(1), // Registration, Consultation, Injection Room...
+    active: z.boolean().default(true),
+    /** Omitted on legacy units; resolve as a routable unit, never an inferred room. */
+    kind: OrganizationKind.optional(),
+    parentId: facilityIdRef.optional(),
+    routingEnabled: z.boolean().optional(),
+    revision: z.number().int().positive().optional(),
+  })
+  .superRefine((unit, context) => {
+    if (unit.parentId === unit.id || unit.parentId === unit.unitId) {
+      context.addIssue({
+        code: 'custom',
+        path: ['parentId'],
+        message: 'A unit cannot contain itself',
+      });
+    }
+    if (unit.kind === 'department' && unit.routingEnabled === true) {
+      context.addIssue({
+        code: 'custom',
+        path: ['routingEnabled'],
+        message: 'Route care to a service unit, not a department',
+      });
+    }
+  });
 export type Unit = z.infer<typeof Unit>;
 
 export const Role = z.enum([
@@ -576,10 +948,19 @@ export const Staff = baseEnvelope.extend({
   fullName: z.string().trim().min(1),
   /** The role stamped on new clinical contributions. */
   role: Role,
-  additionalRoles: z.array(Role).max(Role.options.length)
-    .refine((roles) => new Set(roles).size === roles.length, 'Choose each role only once').optional(),
-  additionalPermissions: z.array(AssignablePermission).max(AssignablePermission.options.length)
-    .refine((permissions) => new Set(permissions).size === permissions.length, 'Choose each permission only once').optional(),
+  additionalRoles: z
+    .array(Role)
+    .max(Role.options.length)
+    .refine((roles) => new Set(roles).size === roles.length, 'Choose each role only once')
+    .optional(),
+  additionalPermissions: z
+    .array(AssignablePermission)
+    .max(AssignablePermission.options.length)
+    .refine(
+      (permissions) => new Set(permissions).size === permissions.length,
+      'Choose each permission only once',
+    )
+    .optional(),
   permission: StaffPermission.default('read_write'),
   /** Omitted on older staff records: scheduled shift sign-in is the default. */
   loginAccess: LoginAccess.optional(),
@@ -611,7 +992,13 @@ export const RosterShift = baseEnvelope.extend({
 export type RosterShift = z.infer<typeof RosterShift>;
 
 /** The fields a roster signature covers; changing any of them invalidates it. */
-export const ROSTER_SIGNED_FIELDS = ['staffId', 'facilityId', 'startsAt', 'endsAt', 'extendedUntil'] as const;
+export const ROSTER_SIGNED_FIELDS = [
+  'staffId',
+  'facilityId',
+  'startsAt',
+  'endsAt',
+  'extendedUntil',
+] as const;
 
 /**
  * The exact bytes geneus-server signs and the device verifies, as JSON with a
@@ -667,7 +1054,8 @@ export const PIN_SETUP_CODE_CLAIM_FIELDS = ['usedOn', 'usedOnDevice'] as const;
  * bytes, with the record's base64 `codeSalt` decoded to bytes, its
  * `codeIterations`, and a 32-byte output.
  */
-export const normalizePinSetupCode = (code: string): string => code.replace(/\s+/g, '').toUpperCase();
+export const normalizePinSetupCode = (code: string): string =>
+  code.replace(/\s+/g, '').toUpperCase();
 
 export const DeviceStatus = z.enum(['active', 'revoked']);
 export type DeviceStatus = z.infer<typeof DeviceStatus>;
@@ -772,7 +1160,12 @@ export const Encounter = baseEnvelope.extend({
   /** The care service this visit is for (a service_offering): the booking's, or chosen at registration. */
   offeringId: z.string().min(1).optional(),
   /** A continuing-care activity within one admission, never another outpatient attendance. */
-  inpatientContext: z.strictObject({ admissionId: z.string().min(1), purpose: z.enum(['nursing', 'review', 'discharge']) }).optional(),
+  inpatientContext: z
+    .strictObject({
+      admissionId: z.string().min(1),
+      purpose: z.enum(['nursing', 'review', 'discharge']),
+    })
+    .optional(),
 });
 export type Encounter = z.infer<typeof Encounter>;
 
@@ -797,9 +1190,19 @@ export const EncounterStep = z.enum([
 export type EncounterStep = z.infer<typeof EncounterStep>;
 
 /** Saving one of these steps closes the encounter: as an inpatient, or sent home. */
-export const CLOSING_STEPS = ['admission', 'follow_up', 'disposition'] as const satisfies readonly EncounterStep[];
+export const CLOSING_STEPS = [
+  'admission',
+  'follow_up',
+  'disposition',
+] as const satisfies readonly EncounterStep[];
 /** Reassessment is a new observation/note; other saved sections are corrected by amendment. */
-export const REPEATABLE_STEPS = ['vitals', 'complaint', 'disposition', 'lab_results', 'result_review'] as const satisfies readonly EncounterStep[];
+export const REPEATABLE_STEPS = [
+  'vitals',
+  'complaint',
+  'disposition',
+  'lab_results',
+  'result_review',
+] as const satisfies readonly EncounterStep[];
 
 const positive = z.number().positive();
 const text = z.string().trim().min(1);
@@ -836,26 +1239,100 @@ export const ENCOUNTER_STEP_VALUES = {
       message: 'Record at least one vital sign',
     }),
   complaint: z
-    .strictObject({ complaints: z.array(text).default([]), note: text.optional(), historyOfPresentIllness: text.optional(), examination: text.optional(), assessment: text.optional(), plan: text.optional() })
-    .refine((complaint) => complaint.complaints.length > 0 || Object.values(complaint).some((value) => typeof value === 'string' && value.length > 0), {
-      message: 'Record a complaint or a clinical note',
-    }),
-  lab_order: z.strictObject({ tests: z.array(text).min(1), items: z.array(InvestigationItem).min(1).optional(), reason: text.optional() }).refine((v) => !v.items || (new Set(v.items.map((i) => i.id)).size === v.items.length && v.items.length === v.tests.length && v.items.every((i, n) => i.name === v.tests[n])), 'Order item identities must be unique and match the requested tests'),
+    .strictObject({
+      complaints: z.array(text).default([]),
+      note: text.optional(),
+      historyOfPresentIllness: text.optional(),
+      examination: text.optional(),
+      assessment: text.optional(),
+      plan: text.optional(),
+    })
+    .refine(
+      (complaint) =>
+        complaint.complaints.length > 0 ||
+        Object.values(complaint).some((value) => typeof value === 'string' && value.length > 0),
+      {
+        message: 'Record a complaint or a clinical note',
+      },
+    ),
+  lab_order: z
+    .strictObject({
+      tests: z.array(text).min(1),
+      items: z.array(InvestigationItem).min(1).optional(),
+      reason: text.optional(),
+    })
+    .refine(
+      (v) =>
+        !v.items ||
+        (new Set(v.items.map((i) => i.id)).size === v.items.length &&
+          v.items.length === v.tests.length &&
+          v.items.every((i, n) => i.name === v.tests[n])),
+      'Order item identities must be unique and match the requested tests',
+    ),
   investigation_review: InvestigationReview,
-  result_review: z.strictObject({ resultEntryIds: z.array(text).min(1).refine((ids) => new Set(ids).size === ids.length, 'Review each result entry once'), note: text.optional() }),
-  prescription: z.strictObject({ decision: z.enum(['none_required', 'prescribed']), prescription: z.array(PrescriptionLine) }).refine((v) => v.decision === 'prescribed' ? v.prescription.length > 0 : v.prescription.length === 0, 'Record medications or explicitly select none required'),
-  injection_order: z.strictObject({ required: z.boolean(), drug: text.optional(), dose: text.optional(), route: InjectionRoute.optional(), instructions: text.optional() }).refine((v) => !v.required || Boolean(v.drug && v.dose && v.route), 'An injection order needs drug, dose and route'),
+  result_review: z.strictObject({
+    resultEntryIds: z
+      .array(text)
+      .min(1)
+      .refine((ids) => new Set(ids).size === ids.length, 'Review each result entry once'),
+    note: text.optional(),
+  }),
+  prescription: z
+    .strictObject({
+      decision: z.enum(['none_required', 'prescribed']),
+      prescription: z.array(PrescriptionLine),
+    })
+    .refine(
+      (v) =>
+        v.decision === 'prescribed' ? v.prescription.length > 0 : v.prescription.length === 0,
+      'Record medications or explicitly select none required',
+    ),
+  injection_order: z
+    .strictObject({
+      required: z.boolean(),
+      drug: text.optional(),
+      dose: text.optional(),
+      route: InjectionRoute.optional(),
+      instructions: text.optional(),
+    })
+    .refine(
+      (v) => !v.required || Boolean(v.drug && v.dose && v.route),
+      'An injection order needs drug, dose and route',
+    ),
   disposition: Disposition,
-  lab_results: z.strictObject({ results: z.array(z.strictObject({ test: text, result: text, orderItemId: text.optional() })).min(1) }),
-  diagnosis: z.strictObject({
-    diagnosis: text,
-    diagnoses: z.array(z.strictObject({ label: text, code: text.optional(), codingSystem: z.enum(['ICD-10', 'SNOMED CT', 'local']).optional(), certainty: z.enum(['unknown', 'suspected', 'confirmed']).default('unknown') }).refine((v) => !v.code || Boolean(v.codingSystem), 'Choose the coding system for this diagnosis code')).optional(),
-    prescription: z.array(PrescriptionLine).default([]),
-    giveInjection: z.boolean().default(false),
-    admit: z.boolean().default(false),
-    /** Why the clinician diagnosed before every ordered result was back and reviewed. */
-    pendingResultsReason: text.max(500).optional(),
-  }).refine((v) => !v.diagnoses?.length || v.diagnoses[0].label === v.diagnosis, 'The primary structured diagnosis must match the diagnosis'),
+  lab_results: z.strictObject({
+    results: z
+      .array(z.strictObject({ test: text, result: text, orderItemId: text.optional() }))
+      .min(1),
+  }),
+  diagnosis: z
+    .strictObject({
+      diagnosis: text,
+      diagnoses: z
+        .array(
+          z
+            .strictObject({
+              label: text,
+              code: text.optional(),
+              codingSystem: z.enum(['ICD-10', 'SNOMED CT', 'local']).optional(),
+              certainty: z.enum(['unknown', 'suspected', 'confirmed']).default('unknown'),
+            })
+            .refine(
+              (v) => !v.code || Boolean(v.codingSystem),
+              'Choose the coding system for this diagnosis code',
+            ),
+        )
+        .optional(),
+      prescription: z.array(PrescriptionLine).default([]),
+      giveInjection: z.boolean().default(false),
+      admit: z.boolean().default(false),
+      /** Why the clinician diagnosed before every ordered result was back and reviewed. */
+      pendingResultsReason: text.max(500).optional(),
+    })
+    .refine(
+      (v) => !v.diagnoses?.length || v.diagnoses[0].label === v.diagnosis,
+      'The primary structured diagnosis must match the diagnosis',
+    ),
   injection: z.strictObject({
     drug: text,
     dose: text,
@@ -884,9 +1361,15 @@ export const ENCOUNTER_STEP_VALUES = {
     /** The appointment booked for the review (PRD §9.8.1, step 7). */
     appointmentId: z.string().min(1).optional(),
   }),
-  amendment: z.strictObject({ note: text, correctedValues: z.record(z.string(), z.unknown()).optional(), previousAmendmentId: text.optional() }),
+  amendment: z.strictObject({
+    note: text,
+    correctedValues: z.record(z.string(), z.unknown()).optional(),
+    previousAmendmentId: text.optional(),
+  }),
 } as const satisfies Record<EncounterStep, z.ZodType>;
-export type EncounterStepValues = { [Step in EncounterStep]: z.infer<(typeof ENCOUNTER_STEP_VALUES)[Step]> };
+export type EncounterStepValues = {
+  [Step in EncounterStep]: z.infer<(typeof ENCOUNTER_STEP_VALUES)[Step]>;
+};
 
 /**
  * One saved, locked step (PRD §9.8.4). The envelope's `createdBy` / `createdOn`
@@ -921,7 +1404,16 @@ export const EncounterEntry = baseEnvelope
     labReport: LabReport.optional(),
   })
   .superRefine((entry, context) => {
-    if ((entry.pharmacyVersion === 1) !== Boolean(entry.step === 'dispense' && entry.values.supply)) context.addIssue({ code: 'custom', path: ['pharmacyVersion'], message: 'Quantity-based dispensing requires its pharmacy workflow version' });
+    if (
+      (entry.pharmacyVersion === 1) !==
+      Boolean(entry.step === 'dispense' && entry.values.supply)
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['pharmacyVersion'],
+        message: 'Quantity-based dispensing requires its pharmacy workflow version',
+      });
+    }
     if ((entry.step === 'amendment') !== Boolean(entry.amends)) {
       context.addIssue({
         code: 'custom',
@@ -929,8 +1421,16 @@ export const EncounterEntry = baseEnvelope
         message: 'An amendment must name the entry it amends, and only an amendment may',
       });
     }
-    if (entry.labReport && entry.step !== 'lab_results' && !(entry.step === 'amendment' && entry.values.correctedValues)) {
-      context.addIssue({ code: 'custom', path: ['labReport'], message: 'A structured result belongs to a lab result or its correction' });
+    if (
+      entry.labReport &&
+      entry.step !== 'lab_results' &&
+      !(entry.step === 'amendment' && entry.values.correctedValues)
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['labReport'],
+        message: 'A structured result belongs to a lab result or its correction',
+      });
     }
     const values = ENCOUNTER_STEP_VALUES[entry.step].safeParse(entry.values);
     for (const issue of values.success ? [] : values.error.issues) {
@@ -959,10 +1459,25 @@ export type EncounterEntry = z.infer<typeof EncounterEntry>;
 /** An amount in the currency's minor unit, e.g. kobo. */
 export const minorUnits = z.number().int().nonnegative();
 
-export const currencyCode = z.string().regex(/^[A-Z]{3}$/, 'Expected an ISO 4217 currency code like NGN');
+export const currencyCode = z
+  .string()
+  .regex(/^[A-Z]{3}$/, 'Expected an ISO 4217 currency code like NGN');
 
-export const LEGACY_FEE_CATEGORIES = ['registration', 'card', 'consultation', 'laboratory', 'procedure', 'other'] as const;
-export const FeeCategory = z.enum([...LEGACY_FEE_CATEGORIES, 'pharmacy', 'maternity', 'admission', 'imaging']);
+export const LEGACY_FEE_CATEGORIES = [
+  'registration',
+  'card',
+  'consultation',
+  'laboratory',
+  'procedure',
+  'other',
+] as const;
+export const FeeCategory = z.enum([
+  ...LEGACY_FEE_CATEGORIES,
+  'pharmacy',
+  'maternity',
+  'admission',
+  'imaging',
+]);
 export type FeeCategory = z.infer<typeof FeeCategory>;
 
 /**
@@ -988,10 +1503,27 @@ export type ExemptionFacts = {
 
 const matchesExemption = (rule: ExemptionRule, facts: ExemptionFacts): boolean => {
   // A rule never matches on a fact nobody recorded — a missing age is not "under 5".
-  if (rule.ageUnderYears !== undefined && (facts.ageYears === undefined || facts.ageYears >= rule.ageUnderYears)) return false;
-  if (rule.ageFromYears !== undefined && (facts.ageYears === undefined || facts.ageYears < rule.ageFromYears)) return false;
-  if (rule.sex !== undefined && facts.sex !== rule.sex) return false;
-  if (rule.visitTypes !== undefined && (facts.visitType === undefined || !rule.visitTypes.includes(facts.visitType))) return false;
+  if (
+    rule.ageUnderYears !== undefined &&
+    (facts.ageYears === undefined || facts.ageYears >= rule.ageUnderYears)
+  ) {
+    return false;
+  }
+  if (
+    rule.ageFromYears !== undefined &&
+    (facts.ageYears === undefined || facts.ageYears < rule.ageFromYears)
+  ) {
+    return false;
+  }
+  if (rule.sex !== undefined && facts.sex !== rule.sex) {
+    return false;
+  }
+  if (
+    rule.visitTypes !== undefined &&
+    (facts.visitType === undefined || !rule.visitTypes.includes(facts.visitType))
+  ) {
+    return false;
+  }
   return true;
 };
 
@@ -1000,8 +1532,10 @@ const matchesExemption = (rule: ExemptionRule, facts: ExemptionFacts): boolean =
  * the device that raises the charge and anything that later checks it apply
  * the facility's policy identically.
  */
-export const findExemption = (rules: readonly ExemptionRule[], facts: ExemptionFacts): ExemptionRule | undefined =>
-  rules.find((rule) => matchesExemption(rule, facts));
+export const findExemption = (
+  rules: readonly ExemptionRule[],
+  facts: ExemptionFacts,
+): ExemptionRule | undefined => rules.find((rule) => matchesExemption(rule, facts));
 
 /** One entry in the facility's fee schedule. Edited in place; charges keep the price they were raised at. */
 export const FeeItem = baseEnvelope.extend({
@@ -1061,11 +1595,22 @@ export const Charge = baseEnvelope
   .refine((charge) => charge.amountMinor === (charge.exemptionReason ? 0 : charge.listPriceMinor), {
     message: 'A charge owes its full price, or nothing when an exemption applies',
     path: ['amountMinor'],
-  }).refine((charge) => {
-    const snapshot = charge.feePriceVersion !== undefined || charge.quantity !== undefined || charge.unitPriceMinor !== undefined;
-    return !snapshot || Boolean(charge.feePriceVersion && charge.quantity !== undefined && charge.unitPriceMinor !== undefined
-      && Number.isSafeInteger(Math.round(charge.unitPriceMinor * charge.quantity))
-      && charge.listPriceMinor === Math.round(charge.unitPriceMinor * charge.quantity));
+  })
+  .refine((charge) => {
+    const snapshot =
+      charge.feePriceVersion !== undefined ||
+      charge.quantity !== undefined ||
+      charge.unitPriceMinor !== undefined;
+    return (
+      !snapshot ||
+      Boolean(
+        charge.feePriceVersion &&
+        charge.quantity !== undefined &&
+        charge.unitPriceMinor !== undefined &&
+        Number.isSafeInteger(Math.round(charge.unitPriceMinor * charge.quantity)) &&
+        charge.listPriceMinor === Math.round(charge.unitPriceMinor * charge.quantity),
+      )
+    );
   }, 'Keep the selected fee version, quantity and unit price together');
 export type Charge = z.infer<typeof Charge>;
 
@@ -1115,7 +1660,10 @@ export const Payment = baseEnvelope
     reverses: z.string().min(1).optional(),
   })
   .superRefine((payment, context) => {
-    const allocated = payment.allocations.reduce((sum, allocation) => sum + allocation.amountMinor, 0);
+    const allocated = payment.allocations.reduce(
+      (sum, allocation) => sum + allocation.amountMinor,
+      0,
+    );
     if (allocated !== payment.amountMinor) {
       context.addIssue({
         code: 'custom',
@@ -1125,10 +1673,18 @@ export const Payment = baseEnvelope
     }
     const chargeIds = payment.allocations.map((allocation) => allocation.chargeId);
     if (new Set(chargeIds).size !== chargeIds.length) {
-      context.addIssue({ code: 'custom', path: ['allocations'], message: 'Allocate to each charge once' });
+      context.addIssue({
+        code: 'custom',
+        path: ['allocations'],
+        message: 'Allocate to each charge once',
+      });
     }
     if ((payment.method === 'waiver' || payment.reverses) && !payment.reason) {
-      context.addIssue({ code: 'custom', path: ['reason'], message: 'Give a reason for a waiver or a reversal' });
+      context.addIssue({
+        code: 'custom',
+        path: ['reason'],
+        message: 'Give a reason for a waiver or a reversal',
+      });
     }
   });
 export type Payment = z.infer<typeof Payment>;
@@ -1141,39 +1697,61 @@ export type Payment = z.infer<typeof Payment>;
  * reversal remains the record of a payment taken in error.
  */
 export const RefundMethod = z.enum(['cash', 'transfer', 'pos']);
-export const Refund = baseEnvelope.extend({
-  type: z.literal('refund'),
-  patientId,
-  refundNumber,
-  method: RefundMethod,
-  amountMinor: minorUnits.positive(),
-  currency: currencyCode,
-  allocations: z.array(PaymentAllocation).min(1),
-  reason: text,
-  reference: text.optional(),
-}).superRefine((refund, context) => {
-  if (refund.allocations.reduce((sum, a) => sum + a.amountMinor, 0) !== refund.amountMinor) context.addIssue({ code: 'custom', path: ['allocations'], message: 'A refund must be allocated to charges in full' });
-  const ids = refund.allocations.map((a) => a.chargeId);
-  if (new Set(ids).size !== ids.length) context.addIssue({ code: 'custom', path: ['allocations'], message: 'Refund each charge once' });
-});
+export const Refund = baseEnvelope
+  .extend({
+    type: z.literal('refund'),
+    patientId,
+    refundNumber,
+    method: RefundMethod,
+    amountMinor: minorUnits.positive(),
+    currency: currencyCode,
+    allocations: z.array(PaymentAllocation).min(1),
+    reason: text,
+    reference: text.optional(),
+  })
+  .superRefine((refund, context) => {
+    if (refund.allocations.reduce((sum, a) => sum + a.amountMinor, 0) !== refund.amountMinor) {
+      context.addIssue({
+        code: 'custom',
+        path: ['allocations'],
+        message: 'A refund must be allocated to charges in full',
+      });
+    }
+    const ids = refund.allocations.map((a) => a.chargeId);
+    if (new Set(ids).size !== ids.length) {
+      context.addIssue({
+        code: 'custom',
+        path: ['allocations'],
+        message: 'Refund each charge once',
+      });
+    }
+  });
 export type Refund = z.infer<typeof Refund>;
 
 /** Append-only reduction: original price and approval remain visible. */
 export const BillingAdjustment = baseEnvelope.extend({
   dispenseEntryId: z.string().min(1).optional(),
-  type: z.literal('billing_adjustment'), patientId,
-  chargeId: z.string().min(1), kind: z.enum(['discount', 'waiver']),
-  amountMinor: minorUnits.positive(), reason: text,
+  type: z.literal('billing_adjustment'),
+  patientId,
+  chargeId: z.string().min(1),
+  kind: z.enum(['discount', 'waiver']),
+  amountMinor: minorUnits.positive(),
+  reason: text,
 });
 export type BillingAdjustment = z.infer<typeof BillingAdjustment>;
 
 /** Verified provider receipt. Allocations live in payments. */
 export const IncomingTransfer = baseEnvelope.extend({
-  type: z.literal('incoming_transfer'), provider: z.string().regex(/^[a-z][a-z0-9_]{1,31}$/), // a registered payment provider id; new providers need no contract change
+  type: z.literal('incoming_transfer'),
+  provider: z.string().regex(/^[a-z][a-z0-9_]{1,31}$/), // a registered payment provider id; new providers need no contract change
   mode: z.enum(['test', 'live']),
-  providerReference: z.string().min(1), amountMinor: minorUnits.positive(),
-  currency: currencyCode, receivedOn: isoDateTime, payerName: text.optional(),
-  receivingAccount: text.optional(), departmentId: z.string().min(1).optional(),
+  providerReference: z.string().min(1),
+  amountMinor: minorUnits.positive(),
+  currency: currencyCode,
+  receivedOn: isoDateTime,
+  payerName: text.optional(),
+  receivingAccount: text.optional(),
+  departmentId: z.string().min(1).optional(),
   /** How the money came: a bank transfer into a receiving account (the default), or a patient paying a bill online. */
   channel: z.enum(['bank_transfer', 'checkout']).optional(),
   /** For a checkout: the bill the patient paid. Its money is applied to that bill; anything above what was due waits for staff. */
@@ -1183,7 +1761,9 @@ export type IncomingTransfer = z.infer<typeof IncomingTransfer>;
 
 /** Receiving-account ownership and reporting group; independent of fee category. */
 export const BillingDepartment = baseEnvelope.extend({
-  type: z.literal('billing_department'), name: text, active: z.boolean().default(true),
+  type: z.literal('billing_department'),
+  name: text,
+  active: z.boolean().default(true),
   /** Preserve the financial id while linking the canonical accountable organization. */
   organizationUnitId: facilityIdRef.optional(),
   revision: z.number().int().positive().optional(),
@@ -1229,42 +1809,60 @@ export type ConflictingColumn = z.infer<typeof ConflictingColumn>;
  * `resolvedOn` / `resolvedBy` / `resolution` may be set from the device, by a
  * staff member holding `sync_rejection:resolve`.
  */
-export const SyncRejection = baseEnvelope.extend({
-  type: z.literal('sync_rejection'),
-  entityType: DocType,
-  entityId: z.string().min(1),
-  operation: SyncOperation,
-  category: RejectionCategory,
-  dependencies: z.array(FacilityDependency).min(1).optional(),
-  /** Evidence refusals must not leak their payload through the general reconcile stream. Server-owned. */
-  visibility: z.enum(['facility', 'restricted']).optional(),
-  visibleToStaffIds: distinctRefs.optional(),
-  /** Human-readable, e.g. "staff:manage is not granted to role nurse". */
-  reason: z.string().min(1),
-  /** Staff the rejected mutation was attributed to (its createdBy/updatedBy). */
-  attributedTo: z.string().optional(),
-  /** Device's clock for the mutation; the envelope's createdOn is the server's. */
-  occurredOn: isoDateTime.optional(),
-  /** Present for `conflict` only — the columns to reconcile, nothing more. */
-  conflicts: z.array(ConflictingColumn).optional(),
-  /**
-   * The whole record as the device sent it, for a refused `put`. Without it a
-   * refused insert would leave nothing to recover from — e.g. a patient whose
-   * offline-minted ID another device took first (PRD §10.1).
-   */
-  refusedRecord: z.record(z.string(), z.unknown()).optional(),
-  /**
-   * The fields a wholly refused `patch` tried to set, and their values — e.g. a
-   * phone number corrected by someone deactivated while the device was
-   * offline. A patch refused only in part keeps its clash in `conflicts`.
-   */
-  refusedChanges: z.record(z.string(), z.unknown()).optional(),
-  resolvedOn: isoDateTime.optional(),
-  resolvedBy: z.string().optional(),
-  resolution: z.string().optional(),
-}).superRefine((record, context) => {
-  if ((RESTRICTED_FACILITY_DOCUMENT_TYPES.some((type) => type === record.entityType) || record.visibility === 'restricted')
-    && (record.visibility !== 'restricted' || !record.visibleToStaffIds?.length)) context.addIssue({ code: 'custom', message: 'Restricted refusals require an explicit restricted delivery audience' });
-  if (record.category === 'dependency' && (!record.dependencies?.length || !(record.refusedRecord || record.refusedChanges))) context.addIssue({ code: 'custom', message: 'A dependency refusal must retain its references and original submitted payload' });
-});
+export const SyncRejection = baseEnvelope
+  .extend({
+    type: z.literal('sync_rejection'),
+    entityType: DocType,
+    entityId: z.string().min(1),
+    operation: SyncOperation,
+    category: RejectionCategory,
+    dependencies: z.array(FacilityDependency).min(1).optional(),
+    /** Evidence refusals must not leak their payload through the general reconcile stream. Server-owned. */
+    visibility: z.enum(['facility', 'restricted']).optional(),
+    visibleToStaffIds: distinctRefs.optional(),
+    /** Human-readable, e.g. "staff:manage is not granted to role nurse". */
+    reason: z.string().min(1),
+    /** Staff the rejected mutation was attributed to (its createdBy/updatedBy). */
+    attributedTo: z.string().optional(),
+    /** Device's clock for the mutation; the envelope's createdOn is the server's. */
+    occurredOn: isoDateTime.optional(),
+    /** Present for `conflict` only — the columns to reconcile, nothing more. */
+    conflicts: z.array(ConflictingColumn).optional(),
+    /**
+     * The whole record as the device sent it, for a refused `put`. Without it a
+     * refused insert would leave nothing to recover from — e.g. a patient whose
+     * offline-minted ID another device took first (PRD §10.1).
+     */
+    refusedRecord: z.record(z.string(), z.unknown()).optional(),
+    /**
+     * The fields a wholly refused `patch` tried to set, and their values — e.g. a
+     * phone number corrected by someone deactivated while the device was
+     * offline. A patch refused only in part keeps its clash in `conflicts`.
+     */
+    refusedChanges: z.record(z.string(), z.unknown()).optional(),
+    resolvedOn: isoDateTime.optional(),
+    resolvedBy: z.string().optional(),
+    resolution: z.string().optional(),
+  })
+  .superRefine((record, context) => {
+    if (
+      (RESTRICTED_FACILITY_DOCUMENT_TYPES.some((type) => type === record.entityType) ||
+        record.visibility === 'restricted') &&
+      (record.visibility !== 'restricted' || !record.visibleToStaffIds?.length)
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Restricted refusals require an explicit restricted delivery audience',
+      });
+    }
+    if (
+      record.category === 'dependency' &&
+      (!record.dependencies?.length || !(record.refusedRecord || record.refusedChanges))
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message: 'A dependency refusal must retain its references and original submitted payload',
+      });
+    }
+  });
 export type SyncRejection = z.infer<typeof SyncRejection>;

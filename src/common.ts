@@ -30,9 +30,7 @@ export const SCHEMA_VERSION = 7 as const;
 export const isoDateTime = z.string().datetime({ offset: true });
 
 /** Calendar date only, YYYY-MM-DD (used for DOB, register entry dates). */
-export const isoDate = z
-  .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected a date as YYYY-MM-DD');
+export const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected a date as YYYY-MM-DD');
 
 /* ------------------------------------------------------------------ */
 /* Shared enums                                                        */
@@ -156,7 +154,9 @@ export const receiptNumber = z
 
 /** A refund voucher: FACILITYCODE-F-SEQ. Minted by the server, online, so it needs no safety code. */
 export const REFUND_NUMBER_RE = /^[A-Z0-9]+(?:-[A-Z0-9]+)*-F-\d{6}$/;
-export const refundNumber = z.string().regex(REFUND_NUMBER_RE, 'Expected a refund number like OOE-PHC-F-000012');
+export const refundNumber = z
+  .string()
+  .regex(REFUND_NUMBER_RE, 'Expected a refund number like OOE-PHC-F-000012');
 
 /* ------------------------------------------------------------------ */
 /* The record envelope                                                 */
