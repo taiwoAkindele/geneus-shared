@@ -18,13 +18,16 @@ import {
 } from '../src/index.ts';
 
 export const NOW = Date.parse('2026-10-29T10:00:00Z');
+
 export const envelope = {
   facilityId: 'TEST-PHC',
   createdBy: 'staff:reviewer',
   createdOn: '2026-10-29T08:00:00Z',
   deviceId: 'device:test',
 };
+
 export const patientId = 'TEST-PHC-000047-K2';
+
 export const worker = Staff.parse({
   ...envelope,
   type: 'staff',
@@ -33,6 +36,7 @@ export const worker = Staff.parse({
   fullName: 'Example Nurse',
   role: 'nurse',
 });
+
 export const reviewer = Staff.parse({
   ...worker,
   id: 'staff:reviewer',
@@ -40,6 +44,7 @@ export const reviewer = Staff.parse({
   role: 'facility_admin',
   fullName: 'Example Reviewer',
 });
+
 // Deliberately different legacy id/unitId.
 export const unit = Unit.parse({
   ...envelope,
@@ -48,6 +53,7 @@ export const unit = Unit.parse({
   unitId: 'OPD',
   name: 'Outpatient',
 });
+
 export const location = Location.parse({
   ...envelope,
   type: 'location',
@@ -57,6 +63,7 @@ export const location = Location.parse({
   unitId: 'OPD',
   capacity: 2,
 });
+
 export const definition = ServiceDefinition.parse({
   ...envelope,
   type: 'service_definition',
@@ -65,6 +72,7 @@ export const definition = ServiceDefinition.parse({
   category: 'consultation',
   concept: { system: 'urn:geneus:local-service', code: 'consultation', label: 'Consultation' },
 });
+
 export const offering = ServiceOffering.parse({
   ...envelope,
   type: 'service_offering',
@@ -79,6 +87,7 @@ export const offering = ServiceOffering.parse({
   timeZone: 'Africa/Lagos',
   configuration: 'active',
 });
+
 export const credential = Credential.parse({
   ...envelope,
   type: 'credential',
@@ -97,6 +106,7 @@ export const credential = Credential.parse({
   checkedBy: reviewer.staffId,
   checkedOn: envelope.createdOn,
 });
+
 export const decision = CapabilityDecision.parse({
   ...envelope,
   type: 'capability_decision',
@@ -115,6 +125,7 @@ export const decision = CapabilityDecision.parse({
   credentialRevisionIds: [credential.id],
   reason: 'Independent synthetic evidence review',
 });
+
 export const assignment = StaffAssignment.parse({
   ...envelope,
   type: 'staff_assignment',
@@ -130,6 +141,7 @@ export const assignment = StaffAssignment.parse({
   status: 'active',
   requiredActions: ['assess'],
 });
+
 export const session = ServiceSession.parse({
   ...envelope,
   type: 'service_session',
@@ -147,6 +159,7 @@ export const session = ServiceSession.parse({
   resources: [{ locationId: location.id, mode: 'pooled', units: 1 }],
   maxAppointments: 3,
 });
+
 export const data: FacilityRecords = {
   units: [unit],
   locations: [location],
@@ -157,6 +170,7 @@ export const data: FacilityRecords = {
   sessions: [session],
   credentials: [credential],
 };
+
 export const appointment = Appointment.parse({
   ...envelope,
   type: 'appointment',
@@ -174,6 +188,7 @@ export const appointment = Appointment.parse({
     locations: [{ locationId: location.id, units: 1 }],
   },
 });
+
 export const handoff = Handoff.parse({
   ...envelope,
   type: 'handoff',
@@ -184,6 +199,7 @@ export const handoff = Handoff.parse({
   instruction: 'Synthetic clinical instruction',
   status: 'pending',
 });
+
 export const contextFor = (staff: Staff): AuthorizationContext => ({
   userId: staff.staffId,
   facilityId: staff.facilityId,
@@ -193,6 +209,7 @@ export const contextFor = (staff: Staff): AuthorizationContext => ({
   policyVersion: 10,
   lastServerContactOn: envelope.createdOn,
 });
+
 export const proofFor = (staff: Staff = worker): AuthorityProof => ({
   currentRevision: 1,
   signatureVerified: true,

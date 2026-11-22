@@ -1,7 +1,9 @@
 import { z } from 'zod';
+
 const ref = z.string().trim().min(1).max(200);
 const quantity = z.number().finite().positive().max(1_000_000);
 const minor = z.number().int().nonnegative().safe();
+
 /** One immutable supply, return, or attributed decision for an exact prescription line. */
 export const DispensingDetails = z
   .strictObject({
@@ -33,19 +35,24 @@ export const DispensingDetails = z
   })
   .superRefine((v, ctx) => {
     const issue = (message: string) => ctx.addIssue({ code: 'custom', message });
+
     if (v.action === 'supply') {
       if (!v.quantity || !v.unit || !v.source || !v.billing) {
         issue('Record the quantity, unit, source and billing decision');
       }
+
       if ((v.source === 'stock') !== Boolean(v.stockItemId)) {
         issue('Choose the stock item actually supplied');
       }
+
       if (v.source === 'outside' && v.billing !== 'outside') {
         issue('Outside supplies do not create a hospital medicine bill');
       }
+
       if (v.source !== 'outside' && v.billing === 'outside') {
         issue('A hospital supply needs a price or a billing follow-up reason');
       }
+
       if (v.billing === 'charge') {
         if (
           !v.feeItemId ||
@@ -63,9 +70,11 @@ export const DispensingDetails = z
       ) {
         issue('Only a priced supply can carry a medicine charge');
       }
+
       if (v.billing === 'unpriced' && !v.reason) {
         issue('Explain why this supply needs billing follow-up');
       }
+
       if (v.returnOf || v.restock !== undefined || v.creditMinor !== undefined || v.priceFor) {
         issue('A supply cannot contain return or later billing details');
       }
@@ -80,6 +89,7 @@ export const DispensingDetails = z
       ) {
         issue('Record the return quantity, original supply and reason');
       }
+
       if (
         v.source ||
         v.stockItemId ||
@@ -105,6 +115,7 @@ export const DispensingDetails = z
       ) {
         issue('Choose the unbilled supply and its configured selling price');
       }
+
       if (
         v.source ||
         v.stockItemId ||
@@ -118,6 +129,7 @@ export const DispensingDetails = z
       if (!v.reason) {
         issue('Record why this medicine remains pending or is complete');
       }
+
       if (
         v.quantity !== undefined ||
         v.unit ||
@@ -137,4 +149,5 @@ export const DispensingDetails = z
       }
     }
   });
+
 export type DispensingDetails = z.infer<typeof DispensingDetails>;

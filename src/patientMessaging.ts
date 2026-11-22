@@ -9,6 +9,7 @@ import { DocumentKind, DocumentLinkRequest } from './patientDocuments.ts';
 import { MessageChannel } from './patientContact.ts';
 
 export const PatientMessageStatus = z.enum(['queued', 'sent', 'delivered', 'failed']);
+
 export type PatientMessageStatus = z.infer<typeof PatientMessageStatus>;
 
 /** One send of a bill or receipt on one channel. Written and updated only by the server. */
@@ -32,6 +33,7 @@ export const PatientMessage = baseEnvelope.extend({
   sentOn: isoDateTime.optional(),
   deliveredOn: isoDateTime.optional(),
 });
+
 export type PatientMessage = z.infer<typeof PatientMessage>;
 
 /** Staff send a bill or receipt to the patient on the channels chosen (only those the patient hasn't stopped). */
@@ -44,7 +46,9 @@ export const SendToPatientRequest = z
     message: 'Choose each channel once',
     path: ['channels'],
   });
+
 export type SendToPatientRequest = z.infer<typeof SendToPatientRequest>;
+
 /** One entry per channel: queued for sending, or refused with a reason (e.g. the patient stopped it). */
 export type SendToPatientResponse = {
   messages: {

@@ -65,21 +65,28 @@ export const careServiceVisitIssues = (
   if (!record.offeringId) {
     return [];
   }
+
   const offering = data.offerings.find(
     (o) => o.id === record.offeringId && o.facilityId === record.facilityId,
   );
+
   if (!offering || isLabTestOffering(offering, data.definitions)) {
     return ['Choose a care service of this hospital'];
   }
+
   if (!options.recorded && offering.configuration !== 'active') {
     return [`${offering.name} is not an active care service`];
   }
+
   const kinds = offering.visitTypes ?? [];
+
   if (!kinds.length) {
     return [`${offering.name} does not take booked or registered visits`];
   }
+
   if (record.visitType && !kinds.includes(record.visitType)) {
     return [`${offering.name} does not record this kind of visit`];
   }
+
   return [];
 };

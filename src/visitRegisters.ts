@@ -15,6 +15,18 @@ import {
 } from './documents.ts';
 import { labPatientFacts } from './resultTemplates.ts';
 
+/** Structured diagnoses show their code; older entries hold one free-text diagnosis. */
+const diagnosisLabels = (
+  structured: readonly { label: string; code?: string }[],
+  legacy: { diagnosis: string } | undefined,
+): string[] => {
+  if (structured.length) {
+    return structured.map((item) => (item.code ? `${item.label} (${item.code})` : item.label));
+  }
+
+  return legacy ? [legacy.diagnosis] : [];
+};
+
 /**
  * Visit-linked registers are worked out from the visits themselves, on every
  * device the same way: nothing is copied, so a late result or a corrected
@@ -88,6 +100,7 @@ export const VISIT_TYPE_NAMES: Record<VisitType, string> = {
 };
 
 const escape = (word: string) => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 /**
  * Whether `text` mentions one of `words`, at the start of a word ("malaria"
  * finds "Malarial fever"). Short words must be the whole word, so "MP" finds
@@ -96,18 +109,24 @@ const escape = (word: string) => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 export const mentionsAny = (text: string, words: readonly string[]): boolean =>
   words.some((raw) => {
     const word = raw.trim();
+
     if (!word) {
       return false;
     }
+
     const end = word.length < 4 ? '(?![\\p{L}\\p{N}])' : '';
+
     return new RegExp(`(?<![\\p{L}\\p{N}])${escape(word)}${end}`, 'iu').test(text);
   });
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
 const showDate = (date: string) => {
   const [y, m, d] = date.split('-');
+
   return `${d} ${MONTHS[Number(m) - 1]} ${y}`;
 };
+
 const OUTCOMES = {
   home_care: 'Sent home',
   observation: 'Under observation',
@@ -116,8 +135,10 @@ const OUTCOMES = {
 } as const;
 
 const last = <T>(items: readonly T[]): T | undefined => items[items.length - 1];
+
 const latest = (entries: readonly EncounterEntry[], step: EncounterEntry['step']) =>
   last(entries.filter((entry) => entry.step === step));
+
 const parsed = <S extends keyof typeof ENCOUNTER_STEP_VALUES>(
   entry: EncounterEntry | undefined,
   step: S,
@@ -125,11 +146,14 @@ const parsed = <S extends keyof typeof ENCOUNTER_STEP_VALUES>(
   if (!entry) {
     return undefined;
   }
+
   const result = ENCOUNTER_STEP_VALUES[step].safeParse(entry.values);
+
   return result.success
     ? (result.data as ReturnType<(typeof ENCOUNTER_STEP_VALUES)[S]['parse']>)
     : undefined;
 };
+
 const all = <S extends keyof typeof ENCOUNTER_STEP_VALUES>(
   entries: readonly EncounterEntry[],
   step: S,
@@ -138,6 +162,7 @@ const all = <S extends keyof typeof ENCOUNTER_STEP_VALUES>(
     .filter((entry) => entry.step === step)
     .flatMap((entry) => {
       const values = parsed(entry, step);
+
       return values ? [values] : [];
     });
 
@@ -157,13 +182,10 @@ const listsFor = (entries: readonly EncounterEntry[]): VisitLists => {
   const structured = diagnosis?.diagnoses ?? [];
   const prescription = parsed(latest(entries, 'prescription'), 'prescription');
   const lines = prescription ? prescription.prescription : (diagnosis?.prescription ?? []);
+
   return {
     complaints: parsed(latest(entries, 'complaint'), 'complaint')?.complaints ?? [],
-    diagnoses: structured.length
-      ? structured.map((item) => (item.code ? `${item.label} (${item.code})` : item.label))
-      : diagnosis
-        ? [diagnosis.diagnosis]
-        : [],
+    diagnoses: diagnosisLabels(structured, diagnosis),
     codes: structured.flatMap((item) => (item.code ? [item.code] : [])),
     tests: all(entries, 'lab_order').flatMap((order) => order.tests),
     results: all(entries, 'lab_results').flatMap((values) =>
@@ -188,10 +210,13 @@ export const visitMatchesLink = (
   if (link.visits === 'every') {
     return true;
   }
+
   if (link.visits === 'visit_types') {
     return (link.visitTypes ?? []).includes(visitType);
   }
+
   const lists = listsFor(effectiveEncounterEntries(entries));
+
   if (
     lists.codes.some((code) =>
       link.codes.some((prefix) => code.toUpperCase().startsWith(prefix.toUpperCase())),
@@ -199,6 +224,7 @@ export const visitMatchesLink = (
   ) {
     return true;
   }
+
   return [...lists.diagnoses, ...lists.tests, ...lists.results].some((text) =>
     mentionsAny(text, link.words),
   );
@@ -206,15 +232,19 @@ export const visitMatchesLink = (
 
 const ageText = (patient: Patient, on: string) => {
   const age = labPatientFacts(patient, on).age;
+
   if (!age) {
     return '';
   }
+
   if (age.years >= 1 || age.months === undefined) {
     return `${age.years} ${age.years === 1 ? 'year' : 'years'}`;
   }
+
   if (age.months >= 1) {
     return `${age.months} ${age.months === 1 ? 'month' : 'months'}`;
   }
+
   return `${age.days ?? 0} ${age.days === 1 ? 'day' : 'days'}`;
 };
 
@@ -232,9 +262,12 @@ const factFor = (
   },
 ): string => {
   const { encounter, entries, patient, visitedOn } = context;
+
   const narrow = (items: string[]) =>
     (words?.length ? items.filter((item) => mentionsAny(item, words)) : items).join('; ');
+
   const vitals = parsed(latest(entries, 'vitals'), 'vitals');
+
   switch (fact) {
     case 'visit_date':
       return showDate(visitedOn);
@@ -276,26 +309,35 @@ const factFor = (
       return narrow(listsFor(entries).injections);
     case 'visit_type':
       return VISIT_TYPE_NAMES[context.visitType];
+
     case 'outcome': {
       const disposition = last(dispositionHeads(entries));
+
       if (disposition) {
         return OUTCOMES[disposition.values.kind as keyof typeof OUTCOMES] ?? '';
       }
+
       if (latest(entries, 'admission')) {
         return OUTCOMES.admission;
       }
+
       return latest(entries, 'follow_up') ? OUTCOMES.home_care : '';
     }
+
     case 'follow_up_date': {
       const disposition = last(dispositionHeads(entries));
+
       const date =
         typeof disposition?.values.followUpOn === 'string'
           ? disposition.values.followUpOn
           : parsed(latest(entries, 'follow_up'), 'follow_up')?.followUpOn;
+
       return date ? showDate(date) : '';
     }
+
     case 'seen_by': {
       const author = (latest(entries, 'diagnosis') ?? latest(entries, 'complaint'))?.createdBy;
+
       return author ? (context.names.get(author) ?? '') : '';
     }
   }
@@ -307,24 +349,32 @@ export const visitRegisterRows = (
   input: VisitRegisterInput,
 ): VisitRegisterRow[] => {
   const link = definition.visitLink;
+
   if (!link) {
     return [];
   }
+
   const localDate = input.localDate ?? ((iso: string) => iso.slice(0, 10));
   const names = input.staffNames ?? new Map<string, string>();
   const patients = new Map(input.patients.map((patient) => [patient.patientId, patient]));
+
   const booked = new Map(
     (input.appointments ?? []).map((appointment) => [appointment.id, appointment.visitType]),
   );
+
   const byVisit = new Map<string, EncounterEntry[]>();
+
   for (const entry of input.entries) {
     const group = byVisit.get(entry.encounterId) ?? [];
     group.push(entry);
     byVisit.set(entry.encounterId, group);
   }
+
   const firstVisit = new Map<string, Encounter>();
+
   for (const encounter of input.encounters.filter((visit) => !visit.inpatientContext)) {
     const first = firstVisit.get(encounter.patientId);
+
     if (
       !first ||
       encounter.openedOn < first.openedOn ||
@@ -333,7 +383,9 @@ export const visitRegisterRows = (
       firstVisit.set(encounter.patientId, encounter);
     }
   }
+
   const completions = new Map<string, RegisterEntry>();
+
   for (const entry of [...(input.completions ?? [])].sort(
     (a, b) => a.createdOn.localeCompare(b.createdOn) || a.id.localeCompare(b.id),
   )) {
@@ -341,28 +393,37 @@ export const visitRegisterRows = (
       completions.set(entry.encounterId, entry);
     }
   }
+
   const staffFields = definition.fields.filter(
     (field) => field.type !== 'section' && !field.fromVisit,
   );
+
   const seen = new Set<string>();
   const rows: VisitRegisterRow[] = [];
+
   for (const encounter of input.encounters) {
     if (encounter.inpatientContext) {
       continue;
     }
+
     if (seen.has(encounter.id)) {
       continue;
     }
+
     seen.add(encounter.id);
     const entries = effectiveEncounterEntries(byVisit.get(encounter.id) ?? []);
+
     const visitType =
       encounter.visitType ??
       (encounter.appointmentId ? booked.get(encounter.appointmentId) : undefined) ??
       'general';
+
     if (!visitMatchesLink(link, entries, visitType)) {
       continue;
     }
+
     const visitedOn = localDate(encounter.openedOn);
+
     const context = {
       encounter,
       entries,
@@ -372,18 +433,22 @@ export const visitRegisterRows = (
       names,
       visitType,
     };
+
     const completion = completions.get(encounter.id);
     const values: Record<string, RegisterEntryValue> = {};
+
     for (const field of definition.fields) {
       if (field.type === 'section') {
         continue;
       }
+
       if (field.fromVisit) {
         values[field.id] = factFor(field.fromVisit.fact, field.fromVisit.words, context);
       } else if (completion && completion.values[field.id] !== undefined) {
         values[field.id] = completion.values[field.id];
       }
     }
+
     rows.push({
       encounterId: encounter.id,
       patientId: encounter.patientId,
@@ -394,6 +459,7 @@ export const visitRegisterRows = (
       complete: !staffFields.length || Boolean(completion),
     });
   }
+
   return rows.sort(
     (a, b) => b.openedOn.localeCompare(a.openedOn) || b.encounterId.localeCompare(a.encounterId),
   );

@@ -70,6 +70,7 @@ describe('facility contracts and legacy boundaries', () => {
       Object.keys(FACILITY_DOCUMENT_POLICY).sort(),
       [...FACILITY_DOCUMENT_TYPES].sort(),
     );
+
     assert.deepEqual(
       Object.entries(FACILITY_DOCUMENT_POLICY)
         .filter(([, v]) => v.visibility === 'restricted')
@@ -77,16 +78,19 @@ describe('facility contracts and legacy boundaries', () => {
         .sort(),
       [...RESTRICTED_FACILITY_DOCUMENT_TYPES].sort(),
     );
+
     for (const v of [location, offering, credential, assignment, session, decision]) {
       assert.equal(parseDocument(v).success, true);
       assert.equal(AnyDocument.safeParse(v).success, true);
       assert.equal(parseDocument({ ...v, schemaVersion: 3 }).success, false);
     }
+
     assert.equal(Unit.parse({ ...unit, schemaVersion: 3 }).unitId, 'OPD');
     assert.equal(unitIsRoutable(unit), true);
     assert.equal(parseDocument({ type: '__proto__' }).success, false);
     assert.equal(parseDocument({ type: 'constructor' }).success, false);
   });
+
   it('rejects unknown privileged fields, invalid dates and duplicate/scopeless choices', () => {
     assert.equal(Location.safeParse({ ...location, approvedByAdmin: true }).success, false);
     assert.equal(FacilityDate.safeParse('2026-02-30').success, false);
@@ -97,6 +101,7 @@ describe('facility contracts and legacy boundaries', () => {
       ServiceOffering.safeParse({ ...offering, requiredActions: ['assess', 'assess'] }).success,
       false,
     );
+
     assert.equal(
       CapabilityDecision.safeParse({
         ...decision,
@@ -104,8 +109,10 @@ describe('facility contracts and legacy boundaries', () => {
       }).success,
       false,
     );
+
     assert.equal(Location.safeParse({ ...location, kind: 'bed', capacity: 2 }).success, false);
   });
+
   it('separates financial, professional, access, location and service identities', () => {
     assert.notEqual(unit.id, unit.unitId);
     assert.equal(
@@ -118,24 +125,29 @@ describe('facility contracts and legacy boundaries', () => {
       }).success,
       true,
     );
+
     assert.equal(
       Staff.safeParse({ ...worker, additionalPermissions: ['clinical_capability:review'] }).success,
       false,
     );
+
     assert.equal(
       ServiceOffering.safeParse({ ...offering, delivery: 'physical', locationIds: [] }).success,
       false,
     );
+
     assert.equal(
       ServiceOffering.parse({ ...offering, delivery: 'mobile', locationIds: [] }).resourceReadiness,
       'unassessed',
     );
   });
+
   it('requires bounded cover and coherent revision identities', () => {
     assert.equal(
       StaffAssignment.safeParse({ ...assignment, temporaryCover: true, endsAt: undefined }).success,
       false,
     );
+
     assert.equal(
       StaffAssignment.safeParse({
         ...assignment,
@@ -145,6 +157,7 @@ describe('facility contracts and legacy boundaries', () => {
       }).success,
       false,
     );
+
     assert.equal(StaffAssignment.safeParse({ ...assignment, version: 2 }).success, false);
     assert.equal(
       ClinicalAuthorityBootstrap.safeParse({
@@ -154,6 +167,7 @@ describe('facility contracts and legacy boundaries', () => {
       }).success,
       false,
     );
+
     assert.equal(
       ReviewerDelegation.safeParse({
         ...envelope,
@@ -170,15 +184,18 @@ describe('facility references, history and retirement', () => {
     for (const v of [location, offering, assignment, session, decision]) {
       assert.deepEqual(facilityReferenceIssues(v, data), [], v.type);
     }
+
     assert.ok(facilityReferenceIssues({ ...offering, facilityId: 'OTHER-PHC' }, data).length);
     assert.ok(
       facilityReferenceIssues(offering, { ...data, locations: [{ ...location, kind: 'virtual' }] })
         .length,
     );
+
     assert.ok(
       facilityReferenceIssues(offering, { ...data, units: [{ ...unit, kind: 'department' }] })
         .length,
     );
+
     const child = Unit.parse({
       ...unit,
       id: 'unit:child',
@@ -186,14 +203,17 @@ describe('facility references, history and retirement', () => {
       name: 'Child',
       parentId: 'OPD',
     });
+
     assert.deepEqual(unitHierarchyIssues(child, [unit]), []);
     assert.ok(unitHierarchyIssues(child, [{ ...unit, active: false }]).length);
     assert.ok(unitHierarchyIssues({ ...unit, parentId: 'CHILD' }, [unit, child]).length);
     assert.ok(
       unitHierarchyIssues({ ...child, parentId: undefined, name: '  OUTPATIENT ' }, [unit]).length,
     );
+
     assert.ok(unitHierarchyIssues({ ...child, unitId: unit.id }, [unit]).length);
   });
+
   it('retains competing heads and rejects a stale predecessor under a serialized write', () => {
     const v2 = StaffAssignment.parse({
       ...assignment,
@@ -202,6 +222,7 @@ describe('facility references, history and retirement', () => {
       version: 2,
       reason: 'Change duty',
     });
+
     const fork = { ...v2, id: 'assignment:fork:v2', createdOn: '2030-01-01T00:00:00Z' };
     assert.deepEqual(
       currentFacilityRevisions([assignment, v2, fork])
@@ -209,6 +230,7 @@ describe('facility references, history and retirement', () => {
         .sort(),
       [v2.id, fork.id].sort(),
     );
+
     assert.deepEqual(facilityHeadIssues(v2, [assignment]), []);
     assert.ok(facilityHeadIssues(v2, [v2]).length);
     assert.ok(facilityHeadIssues(assignment, [assignment]).length);
@@ -221,8 +243,10 @@ describe('facility references, history and retirement', () => {
       future.id,
     );
   });
+
   it('cannot approve against expired or superseded evidence, but allows an urgent revocation', () => {
     assert.ok(facilityReferenceIssues({ ...decision, endsAt: undefined }, data).length);
+
     const withdrawn = {
       ...credential,
       id: 'credential:one:v2',
@@ -231,9 +255,11 @@ describe('facility references, history and retirement', () => {
       verification: 'withdrawn' as const,
       reason: 'Withdrawn review',
     };
+
     assert.ok(
       facilityReferenceIssues(decision, { ...data, credentials: [credential, withdrawn] }).length,
     );
+
     const revoke = CapabilityDecision.parse({
       ...decision,
       id: 'capability:one:v2',
@@ -242,6 +268,7 @@ describe('facility references, history and retirement', () => {
       decision: 'revoke',
       credentialRevisionIds: [],
     });
+
     assert.deepEqual(
       facilityReferenceIssues(revoke, {
         ...data,
@@ -252,16 +279,20 @@ describe('facility references, history and retirement', () => {
       [],
     );
   });
+
   it('previews future work without mutating bookings, sessions, money or instructions', () => {
     const before = JSON.stringify({ data, appointment, handoff });
+
     const impact = facilityRetirementImpact(
       { type: 'service_offering', id: offering.id, facilityId: offering.facilityId },
       { ...data, appointments: [appointment], handoffs: [handoff] },
       NOW,
     );
+
     for (const id of [assignment.id, session.id, appointment.id, handoff.id]) {
       assert.ok(impact.some((r) => r.id === id));
     }
+
     assert.equal(JSON.stringify({ data, appointment, handoff }), before);
     assert.deepEqual(
       facilityRetirementImpact(
@@ -281,6 +312,7 @@ describe('sessions, resources and reservations', () => {
       startsAt: '2026-10-29T22:00:00+01:00',
       endsAt: '2026-10-30T06:00:00+01:00',
     });
+
     const roster = RosterShift.parse({
       ...envelope,
       type: 'roster_shift',
@@ -289,16 +321,20 @@ describe('sessions, resources and reservations', () => {
       startsAt: overnight.startsAt,
       endsAt: overnight.endsAt,
     });
+
     assert.deepEqual(
       sessionRosterIssues({ ...overnight, rosterShiftIds: [roster.id] }, [roster]),
       [],
     );
+
     assert.ok(
       sessionRosterIssues({ ...overnight, rosterShiftIds: [roster.id] }, [
         { ...roster, endsAt: '2026-10-30T05:00:00+01:00' },
       ]).length,
     );
+
     assert.ok(facilityReferenceIssues({ ...session, endsAt: '2026-12-10T00:00:00Z' }, data).length);
+
     const open = SessionEvent.parse({
       ...envelope,
       type: 'session_event',
@@ -307,6 +343,7 @@ describe('sessions, resources and reservations', () => {
       action: 'open',
       observedOn: envelope.createdOn,
     });
+
     const pause = SessionEvent.parse({
       ...open,
       id: 'intake:pause',
@@ -314,19 +351,23 @@ describe('sessions, resources and reservations', () => {
       action: 'pause',
       reason: 'Short pause',
     });
+
     assert.deepEqual(sessionEventIssues(pause, open), []);
     assert.ok(sessionEventIssues({ ...pause, action: 'resume' }, open).length);
     assert.ok(sessionEventIssues({ ...pause, offeringId: 'offering:other' }, open).length);
     assert.ok(sessionEventHeadIssues(pause, [pause]).length);
     assert.equal(worker.loginAccess, undefined);
   });
+
   it('finds aggregate pooled conflicts, respects boundaries and avoids false sums over disjoint intervals', () => {
     const resource = [{ locationId: location.id, mode: 'pooled' as const, units: 1 }];
+
     const interval = (start: string, end: string) => ({
       startsAt: `2026-10-29T${start}:00Z`,
       endsAt: `2026-10-29T${end}:00Z`,
       resources: resource,
     });
+
     const candidate = interval('09:00', '17:00');
     assert.ok(
       resourceCapacityIssues(
@@ -336,6 +377,7 @@ describe('sessions, resources and reservations', () => {
         location.facilityId,
       ).length,
     );
+
     assert.deepEqual(
       resourceCapacityIssues(
         candidate,
@@ -345,6 +387,7 @@ describe('sessions, resources and reservations', () => {
       ),
       [],
     );
+
     assert.ok(
       resourceCapacityIssues(
         candidate,
@@ -353,6 +396,7 @@ describe('sessions, resources and reservations', () => {
         location.facilityId,
       ).length,
     );
+
     assert.ok(
       resourceCapacityIssues(
         candidate,
@@ -362,15 +406,18 @@ describe('sessions, resources and reservations', () => {
       ).length,
     );
   });
+
   it('prevents simultaneous exclusive practitioner coverage but permits explicit on-call coverage', () => {
     const peer = { ...session, id: 'session:two:v1', sessionId: 'session:two', resources: [] };
     assert.ok(
       sessionConflictIssues(session, [peer], data.locations).some((s) => s.includes('Worker')),
     );
+
     const onCall = {
       ...peer,
       participants: peer.participants.map((p) => ({ ...p, commitment: 'on_call' as const })),
     };
+
     assert.deepEqual(sessionConflictIssues(session, [onCall], data.locations), []);
     assert.deepEqual(
       sessionConflictIssues(
@@ -381,6 +428,7 @@ describe('sessions, resources and reservations', () => {
       [],
     );
   });
+
   it('checks booking assignment, capacity, duration and future accepted conflicts', () => {
     assert.deepEqual(appointmentAllocationIssues(appointment, data), []);
     assert.ok(
@@ -388,12 +436,14 @@ describe('sessions, resources and reservations', () => {
         { ...appointment, id: 'appointment:other' },
       ]).some((s) => s.includes('Practitioner')),
     );
+
     assert.ok(
       appointmentAllocationIssues(appointment, {
         ...data,
         sessions: [{ ...session, status: 'cancelled' }],
       }).length,
     );
+
     assert.ok(
       appointmentAllocationIssues(
         {
@@ -403,6 +453,7 @@ describe('sessions, resources and reservations', () => {
         data,
       ).length,
     );
+
     assert.equal(
       Appointment.safeParse({
         ...appointment,
@@ -410,6 +461,7 @@ describe('sessions, resources and reservations', () => {
       }).success,
       false,
     );
+
     assert.equal(
       Appointment.safeParse({
         ...appointment,
@@ -417,10 +469,12 @@ describe('sessions, resources and reservations', () => {
       }).success,
       false,
     );
+
     const freePool = {
       ...appointment,
       allocation: { ...appointment.allocation!, staffId: undefined, assignmentId: undefined },
     };
+
     assert.ok(
       appointmentAllocationIssues(
         freePool,
@@ -429,6 +483,7 @@ describe('sessions, resources and reservations', () => {
       ).some((s) => s.includes('capacity')),
     );
   });
+
   it('ties server confirmation to the exact current proposal, independent of ISO formatting', () => {
     const reservation = AppointmentReservation.parse({
       ...envelope,
@@ -442,6 +497,7 @@ describe('sessions, resources and reservations', () => {
       status: 'accepted',
       revision: 1,
     });
+
     assert.equal(reservationMatchesAppointment(reservation, appointment), true);
     assert.equal(
       reservationMatchesAppointment(reservation, {
@@ -450,6 +506,7 @@ describe('sessions, resources and reservations', () => {
       }),
       true,
     );
+
     assert.equal(
       reservationMatchesAppointment(reservation, {
         ...appointment,
@@ -457,20 +514,24 @@ describe('sessions, resources and reservations', () => {
       }),
       false,
     );
+
     assert.equal(
       reservationMatchesAppointment({ ...reservation, facilityId: 'OTHER' }, appointment),
       false,
     );
+
     assert.equal(
       reservationMatchesAppointment({ ...reservation, status: 'released' }, appointment),
       false,
     );
   });
+
   it('keeps bookings within the parent session quota and protects reservations when replanning', () => {
     const pool = {
       ...appointment,
       allocation: { ...appointment.allocation!, staffId: undefined, assignmentId: undefined },
     };
+
     const peer = { ...pool, id: 'appointment:peer' };
     assert.ok(appointmentAllocationIssues(pool, data, [peer]).some((s) => s.includes('capacity')));
     assert.deepEqual(sessionBookingIssues(session, [appointment], data.locations, NOW), []);
@@ -478,6 +539,7 @@ describe('sessions, resources and reservations', () => {
       sessionBookingIssues({ ...session, status: 'cancelled' }, [appointment], data.locations, NOW)
         .length,
     );
+
     assert.ok(
       sessionBookingIssues(
         { ...session, endsAt: '2026-10-29T10:15:00Z' },
@@ -486,21 +548,25 @@ describe('sessions, resources and reservations', () => {
         NOW,
       ).length,
     );
+
     const exclusive = {
       ...session,
       resources: [{ ...session.resources[0], mode: 'exclusive' as const }],
     };
+
     const direct = { ...pool, allocation: { ...pool.allocation, sessionId: undefined } };
     assert.ok(
       appointmentAllocationIssues(direct, { ...data, sessions: [exclusive] }).some((s) =>
         s.includes('capacity'),
       ),
     );
+
     assert.ok(
       sessionConflictIssues(exclusive, [], data.locations, [direct]).some((s) =>
         s.includes('capacity'),
       ),
     );
+
     assert.ok(
       appointmentAllocationIssues(pool, {
         ...data,
@@ -523,6 +589,7 @@ describe('causal work ownership and accepted handover', () => {
     action: 'claim',
     ownerStaffId: worker.staffId,
   });
+
   const offer = WorkOwnershipEvent.parse({
     ...claim,
     id: 'work:offer',
@@ -531,10 +598,12 @@ describe('causal work ownership and accepted handover', () => {
     recipientStaffId: 'staff:other',
     reason: 'Next session',
   });
+
   it('retains the owner until the named recipient accepts and blocks premature/foreign acceptance', () => {
     assert.deepEqual(workOwnershipIssues(claim, handoff), []);
     assert.deepEqual(workOwnershipIssues(offer, handoff, claim), []);
     assert.equal(offer.ownerStaffId, worker.staffId);
+
     const accept = WorkOwnershipEvent.parse({
       ...claim,
       id: 'work:accept',
@@ -544,13 +613,16 @@ describe('causal work ownership and accepted handover', () => {
       action: 'accept_transfer',
       reason: 'Accepted work',
     });
+
     assert.deepEqual(workOwnershipIssues(accept, handoff, offer), []);
     assert.ok(
       workOwnershipIssues({ ...accept, createdBy: 'staff:stranger' }, handoff, offer).length,
     );
+
     assert.ok(workOwnershipIssues({ ...accept, previousId: claim.id }, handoff, claim).length);
     assert.equal(handoff.status, 'pending');
   });
+
   it('retains declined/released work honestly and checks current heads across service offers', () => {
     const decline = {
       ...claim,
@@ -560,10 +632,12 @@ describe('causal work ownership and accepted handover', () => {
       action: 'decline_transfer' as const,
       reason: 'Unavailable',
     };
+
     assert.deepEqual(workOwnershipIssues(decline, handoff, offer), []);
     assert.ok(
       workOwnershipIssues({ ...decline, ownerStaffId: 'staff:other' }, handoff, offer).length,
     );
+
     const release = {
       ...claim,
       id: 'work:release',
@@ -572,12 +646,14 @@ describe('causal work ownership and accepted handover', () => {
       ownerStaffId: undefined,
       reason: 'Return to service',
     };
+
     assert.deepEqual(workOwnershipIssues(release, handoff, claim), []);
     assert.ok(workOwnershipIssues({ ...claim, previousId: claim.id }, handoff, claim).length);
     assert.ok(workOwnershipHeadIssues({ ...claim, offeringId: 'offering:other' }, [claim]).length);
     assert.ok(workOwnershipIssues(claim, { ...handoff, patientId: 'TEST-PHC-000048-K3' }).length);
     assert.ok(workOwnershipIssues(claim, { ...handoff, status: 'done' }).length);
   });
+
   it('validates the destination, effective membership and receiver before a transfer', () => {
     assert.deepEqual(workOwnershipReferenceIssues(claim, handoff, data, NOW), []);
     assert.ok(workOwnershipReferenceIssues(offer, handoff, data, NOW).length);
@@ -585,16 +661,20 @@ describe('causal work ownership and accepted handover', () => {
       workOwnershipReferenceIssues(claim, { ...handoff, toUnitId: 'unit:foreign' }, data, NOW)
         .length,
     );
+
     assert.ok(
       workOwnershipReferenceIssues(claim, handoff, { ...data, assignments: [] }, NOW).length,
     );
+
     const other = Staff.parse({ ...worker, id: 'staff:other', staffId: 'staff:other' });
+
     const receiverAssignment = {
       ...assignment,
       id: 'assignment:other:v1',
       assignmentId: 'assignment:other',
       staffId: other.staffId,
     };
+
     // Outgoing shift/assignment can end before handover; only the new recipient needs current eligibility.
     assert.deepEqual(
       workOwnershipReferenceIssues(

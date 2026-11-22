@@ -25,12 +25,14 @@ const event = (id: string, previousId?: string) =>
     kind: 'problem',
     values: { label: 'Hypertension', status: 'active', certainty: 'confirmed' },
   });
+
 describe('longitudinal clinical contract', () => {
   it('selects a causal revision even when the device clock goes backwards', () => {
     const first = event('first');
     const second = { ...event('second', first.id), createdOn: '2026-10-24T09:00:00Z' };
     assert.deepEqual(currentClinicalEvents([second, first]), [second]);
   });
+
   it('keeps competing offline revisions visible for reconciliation', () => {
     const first = event('first');
     assert.equal(
@@ -38,6 +40,7 @@ describe('longitudinal clinical contract', () => {
       2,
     );
   });
+
   it('rejects invalid dates, empty history, and medication stop dates before start', () => {
     assert.equal(CLINICAL_VALUES.history.safeParse({}).success, false);
     assert.equal(
@@ -49,6 +52,7 @@ describe('longitudinal clinical contract', () => {
       }).success,
       false,
     );
+
     assert.equal(
       CLINICAL_VALUES.medication.safeParse({
         drug: 'Medication',
@@ -61,10 +65,12 @@ describe('longitudinal clinical contract', () => {
       false,
     );
   });
+
   it('rejects values for the wrong kind and self-referencing versions', () => {
     assert.equal(ClinicalEvent.safeParse({ ...event('a'), kind: 'allergy' }).success, false);
     assert.equal(ClinicalEvent.safeParse({ ...event('a'), previousId: 'a' }).success, false);
   });
+
   it('applies structured corrections causally without mutating the original', () => {
     const original: EncounterEntry = {
       ...event('entry'),
@@ -73,6 +79,7 @@ describe('longitudinal clinical contract', () => {
       step: 'vitals',
       values: { temperatureC: 39 },
     };
+
     const correction: EncounterEntry = {
       ...original,
       id: 'correction',
@@ -80,6 +87,7 @@ describe('longitudinal clinical contract', () => {
       amends: original.id,
       values: { note: 'Correct reading', correctedValues: { temperatureC: 38 } },
     };
+
     const latest: EncounterEntry = {
       ...correction,
       id: 'latest',
@@ -90,14 +98,18 @@ describe('longitudinal clinical contract', () => {
         previousAmendmentId: correction.id,
       },
     };
+
     assert.equal(
       effectiveEncounterEntries([original, correction, latest])[0].values.temperatureC,
       37,
     );
+
     assert.equal(original.values.temperatureC, 39);
   });
+
   it('retains legacy allergies until reviewed, and respects a structured refutation without rewriting demographics', () => {
     const patient = { patientId: 'OOE-PHC-000047-K2', allergies: ['Penicillin', 'Sulfa'] };
+
     const reviewed = ClinicalEvent.parse({
       ...event('allergy'),
       kind: 'allergy',
@@ -109,14 +121,17 @@ describe('longitudinal clinical contract', () => {
         status: 'inactive',
       },
     });
+
     assert.equal(currentAllergies([], [patient]).length, 2);
     assert.deepEqual(
       currentAllergies([reviewed], [patient]).map((allergy) => allergy.allergen),
       ['Sulfa'],
     );
+
     assert.deepEqual(unreviewedLegacyAllergies([reviewed], [patient]), [
       { patientId: patient.patientId, allergen: 'Sulfa' },
     ]);
+
     assert.deepEqual(patient.allergies, ['Penicillin', 'Sulfa']);
   });
 });

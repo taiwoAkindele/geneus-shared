@@ -37,10 +37,12 @@ export const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected a date 
 /* ------------------------------------------------------------------ */
 
 export const Sex = z.enum(['male', 'female']);
+
 export type Sex = z.infer<typeof Sex>;
 
 /** Where care was delivered — facility building vs off-site outreach (PRD §9.5). */
 export const Setting = z.enum(['facility', 'outreach']);
+
 export type Setting = z.infer<typeof Setting>;
 
 /**
@@ -115,6 +117,7 @@ export const DocType = z.enum([
   'coverage_allocation',
   'service_completion',
 ]);
+
 export type DocType = z.infer<typeof DocType>;
 
 /* ------------------------------------------------------------------ */
@@ -133,6 +136,7 @@ export type DocType = z.infer<typeof DocType>;
  * shared FORMAT contract — it validates, it does not generate.
  */
 export const PATIENT_ID_RE = /^[A-Z0-9]+(?:-[A-Z0-9]+)*-\d{6}-[A-Z0-9]{2}$/;
+
 export const patientId = z
   .string()
   .regex(PATIENT_ID_RE, 'Expected a Patient ID like OOE-PHC-000047-K2');
@@ -148,12 +152,14 @@ export const patientId = z
  * same number. Format only — this contract validates, it does not mint.
  */
 export const RECEIPT_NUMBER_RE = /^[A-Z0-9]+(?:-[A-Z0-9]+)*-R-\d{6}-[A-Z0-9]{2}$/;
+
 export const receiptNumber = z
   .string()
   .regex(RECEIPT_NUMBER_RE, 'Expected a receipt number like OOE-PHC-R-000123-K2');
 
 /** A refund voucher: FACILITYCODE-F-SEQ. Minted by the server, online, so it needs no safety code. */
 export const REFUND_NUMBER_RE = /^[A-Z0-9]+(?:-[A-Z0-9]+)*-F-\d{6}$/;
+
 export const refundNumber = z
   .string()
   .regex(REFUND_NUMBER_RE, 'Expected a refund number like OOE-PHC-F-000012');
@@ -190,6 +196,7 @@ export const baseEnvelope = z.object({
   updatedBy: z.string().optional(),
   updatedOn: isoDateTime.optional(),
 });
+
 export type BaseEnvelope = z.infer<typeof baseEnvelope>;
 
 /**

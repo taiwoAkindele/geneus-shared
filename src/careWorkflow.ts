@@ -4,7 +4,9 @@ import type { EncounterEntry } from './documents.ts';
 import { ExemptionRule } from './billingRules.ts';
 
 const text = z.string().trim().min(1);
+
 export const CLINICAL_WORKFLOW_VERSION = 1 as const;
+
 export const InvestigationItem = z
   .strictObject({
     id: text,
@@ -44,7 +46,9 @@ export const InvestigationItem = z
     (v) => (v.priceMinor === undefined) === (v.currency === undefined),
     'Price and currency must be recorded together',
   );
+
 export type InvestigationItem = z.infer<typeof InvestigationItem>;
+
 export const InvestigationReview = z
   .strictObject({
     decision: z.enum(['none_required', 'ordered']),
@@ -55,6 +59,7 @@ export const InvestigationReview = z
     (v) => (v.decision === 'ordered' ? Boolean(v.orderEntryId) : !v.orderEntryId),
     'An ordered decision must reference its lab order',
   );
+
 export const Disposition = z
   .strictObject({
     kind: z.enum(['home_care', 'observation', 'referral', 'admission']),
@@ -75,6 +80,7 @@ export const Disposition = z
         path: ['responsibleService'],
       });
     }
+
     if (v.kind === 'observation' && !v.reassessOn) {
       ctx.addIssue({
         code: 'custom',
@@ -82,6 +88,7 @@ export const Disposition = z
         path: ['reassessOn'],
       });
     }
+
     if (v.kind === 'referral' && (!v.toFacilityId || !v.referralId)) {
       ctx.addIssue({
         code: 'custom',
@@ -90,7 +97,9 @@ export const Disposition = z
       });
     }
   });
+
 export type Disposition = z.infer<typeof Disposition>;
+
 export const NEW_CARE_STEPS = [
   'investigation_review',
   'result_review',
@@ -98,6 +107,7 @@ export const NEW_CARE_STEPS = [
   'injection_order',
   'disposition',
 ] as const;
+
 export const closesEncounter = (entry: {
   step: string;
   values: Record<string, unknown>;
@@ -105,6 +115,7 @@ export const closesEncounter = (entry: {
   entry.step === 'admission' ||
   entry.step === 'follow_up' ||
   (entry.step === 'disposition' && entry.values.kind !== 'observation');
+
 export const POST_CONSULTATION_STEPS = [
   'lab_results',
   'result_review',
@@ -112,9 +123,11 @@ export const POST_CONSULTATION_STEPS = [
   'injection',
   'amendment',
 ] as const;
+
 export const dispositionHeads = (entries: readonly EncounterEntry[]) => {
   const dispositions = entries.filter((e) => e.step === 'disposition');
   const replaced = new Set(dispositions.map((e) => e.values.previousEntryId));
+
   return dispositions.filter((e) => !replaced.has(e.id));
 };
 
@@ -125,12 +138,15 @@ export const dispositionHeads = (entries: readonly EncounterEntry[]) => {
  */
 export const outstandingResults = (prior: readonly EncounterEntry[]) => {
   const order = [...prior].reverse().find((p) => p.step === 'lab_order');
+
   if (!order) {
     return { pending: [] as string[], unreviewed: [] as string[] };
   }
+
   const tests = order.values.tests as string[];
   const items = order.values.items as InvestigationItem[] | undefined;
   const results = prior.filter((p) => p.step === 'lab_results');
+
   const done = new Set(
     results.flatMap((p) =>
       (p.values.results as { test: string; orderItemId?: string }[]).map(
@@ -138,11 +154,13 @@ export const outstandingResults = (prior: readonly EncounterEntry[]) => {
       ),
     ),
   );
+
   const reviewed = new Set(
     prior
       .filter((p) => p.step === 'result_review')
       .flatMap((p) => p.values.resultEntryIds as string[]),
   );
+
   return {
     pending: tests.filter((test, index) => !done.has(items?.[index]?.id ?? test)),
     unreviewed: results.filter((p) => !reviewed.has(p.id)).map((p) => p.id),
@@ -160,33 +178,42 @@ export const careEntryIssues = (
   ward = false,
 ): string[] => {
   const latest = (step: string) => [...prior].reverse().find((p) => p.step === step);
+
   if (!ward) {
     if (['admission', 'follow_up'].includes(entry.step)) {
       return ['Record an explicit disposition for this consultation'];
     }
+
     if (entry.step === 'complaint' && !latest('vitals')) {
       return ['Record at least one vital sign before the complaint'];
     }
+
     if (['investigation_review', 'lab_order'].includes(entry.step) && !latest('complaint')) {
       return ['Record the complaint and clinical note before deciding on tests'];
     }
+
     if (entry.step === 'diagnosis') {
       if (!latest('investigation_review') && !latest('lab_order')) {
         return ['Record the testing decision before the diagnosis'];
       }
+
       const { pending, unreviewed } = outstandingResults(prior);
+
       if ((pending.length || unreviewed.length) && !entry.values.pendingResultsReason) {
         return [
           'Review every ordered test result before the diagnosis, or record why you are continuing without them',
         ];
       }
     }
+
     if (['prescription', 'injection_order'].includes(entry.step) && !latest('diagnosis')) {
       return ['Record the diagnosis before treatment decisions'];
     }
+
     if (entry.step === 'disposition' && (!latest('prescription') || !latest('injection_order'))) {
       return ['Record the medication and injection decisions before disposition'];
     }
+
     if (
       entry.step === 'diagnosis' &&
       ((entry.values.prescription as unknown[] | undefined)?.length ||
@@ -195,26 +222,34 @@ export const careEntryIssues = (
     ) {
       return ['Record medication, injection orders and disposition independently of diagnosis'];
     }
+
     if (entry.step === 'disposition') {
       if (!latest('diagnosis') || !latest('investigation_review')) {
         return ['Sign the assessment and investigation decision before recording disposition'];
       }
+
       const heads = dispositionHeads(prior);
+
       if (heads.length > 1) {
         return ['Competing dispositions need reconciliation before another decision'];
       }
+
       const previous = heads[0];
+
       if ((previous?.id ?? undefined) !== entry.values.previousEntryId) {
         return ['Disposition changed. Review the latest decision before continuing'];
       }
+
       if (previous && previous.values.kind !== 'observation') {
         return ['This disposition is complete; add an attributed amendment'];
       }
+
       if (entry.values.kind === 'referral' && !entry.values.referralId) {
         return ['Create the linked referral before completing disposition'];
       }
     }
   }
+
   if (entry.step === 'investigation_review') {
     if (
       entry.values.decision === 'ordered' &&
@@ -222,15 +257,18 @@ export const careEntryIssues = (
     ) {
       return ['The testing decision must reference this encounter’s laboratory order'];
     }
+
     if (entry.values.decision === 'none_required' && latest('lab_order')) {
       return [
         'An investigation order already exists; cancel it explicitly rather than recording none required',
       ];
     }
   }
+
   if (entry.step === 'injection' && latest('injection_order')?.values.required === false) {
     return ['No injection was ordered'];
   }
+
   if (
     entry.workflowVersion === 1 &&
     entry.step === 'injection' &&
@@ -238,11 +276,14 @@ export const careEntryIssues = (
   ) {
     return ['Sign an injection order before recording administration'];
   }
+
   if (entry.step === 'result_review') {
     const ids = entry.values.resultEntryIds as string[];
+
     const reviewed = prior
       .filter((p) => p.step === 'result_review')
       .flatMap((p) => p.values.resultEntryIds as string[]);
+
     if (
       ids.some(
         (id) =>
@@ -252,6 +293,7 @@ export const careEntryIssues = (
       return ['Review only existing results that have not already been acknowledged'];
     }
   }
+
   if (entry.step === 'dispense' && !entry.values.supply) {
     if (
       !entry.values.supply &&
@@ -261,9 +303,11 @@ export const careEntryIssues = (
         'This prescription uses quantity-based dispensing. Upgrade and open Pharmacy to continue',
       ];
     }
+
     const medication = latest('prescription') ?? latest('diagnosis');
     const prescription = medication?.values.prescription as { drug: string }[] | undefined;
     const lines = entry.values.lines as { drug: string }[];
+
     if (
       !prescription?.length ||
       lines.length !== prescription.length ||
@@ -272,20 +316,26 @@ export const careEntryIssues = (
       return ['Dispensing must identify the signed prescription lines'];
     }
   }
+
   if (entry.step === 'lab_results' && (entry.workflowVersion === 1 || latest('lab_order'))) {
     const order = latest('lab_order');
+
     if (!order) {
       return ['A result must reference an existing laboratory order'];
     }
+
     const items = order.values.items as InvestigationItem[] | undefined;
+
     const results = entry.values.results as {
       test: string;
       result: string;
       orderItemId?: string;
     }[];
+
     const priorResults = prior
       .filter((p) => p.step === 'lab_results')
       .flatMap((p) => p.values.results as { test: string; orderItemId?: string }[]);
+
     if (
       results.some((r) =>
         items
@@ -295,6 +345,7 @@ export const careEntryIssues = (
     ) {
       return ['Each result must identify a requested investigation'];
     }
+
     if (
       new Set(results.map((r) => r.orderItemId ?? r.test)).size !== results.length ||
       results.some((r) =>
@@ -304,16 +355,21 @@ export const careEntryIssues = (
       return ['This investigation already has a result; correct it through an amendment'];
     }
   }
+
   return [];
 };
 
 export const OrganizationCreate = z.strictObject({ actorStaffId: text, name: text.max(200) });
+
 export const OrganizationActor = z.strictObject({ actorStaffId: text });
+
 export const OrganizationJoin = OrganizationActor.extend({ code: text });
+
 export const StaffProvisionRequest = OrganizationActor.extend({
   staffId: text,
   toFacilityId: text,
 });
+
 export const StaffProvisionAccept = OrganizationActor.extend({
   role: z.enum([
     'doctor',
@@ -326,11 +382,13 @@ export const StaffProvisionAccept = OrganizationActor.extend({
   ]),
   permission: z.enum(['read_only', 'read_write']),
 });
+
 export type OrganizationSummary = {
   id: string;
   name: string;
   facilities: { id: string; name: string }[];
 };
+
 export type ProvisionRequestSummary = {
   id: string;
   fromFacilityId: string;

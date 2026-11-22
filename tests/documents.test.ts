@@ -214,6 +214,7 @@ describe('roster signatures', () => {
       startsAt: '2026-09-12T07:00:00.000Z',
       endsAt: '2026-09-12T15:00:00.000Z',
     };
+
     assert.equal(rosterSignaturePayload(fromPostgres), rosterSignaturePayload(shift));
   });
 
@@ -312,6 +313,7 @@ describe('encounters', () => {
     const withoutReason = entry('dispense', {
       lines: [{ drug: 'Artemether-Lumefantrine', dispensed: false }],
     });
+
     const withReason = entry('dispense', {
       lines: [{ drug: 'Artemether-Lumefantrine', dispensed: false, reason: 'Out of stock' }],
     });
@@ -327,7 +329,9 @@ describe('encounters', () => {
       { note: 'Temperature was 37.9, not 38.9' },
       { amends: 'encounter_entry:vitals' },
     );
+
     const unlinked = entry('amendment', { note: 'Temperature was 37.9' });
+
     const linkedVitals = entry(
       'vitals',
       { temperatureC: 37.9 },
@@ -376,6 +380,7 @@ describe('appointments', () => {
       Appointment.parse({ ...appointment, visitType: 'antenatal' }).visitType,
       'antenatal',
     );
+
     assert.equal(Appointment.safeParse(appointment).success, true);
     assert.equal(Appointment.safeParse({ ...appointment, visitType: 'surgery' }).success, false);
   });
@@ -434,6 +439,7 @@ describe('billing', () => {
       ExemptionRule.safeParse({ reason: 'Impossible', ageFromYears: 10, ageUnderYears: 5 }).success,
       false,
     );
+
     assert.equal(ExemptionRule.safeParse({ reason: 'Elderly', ageFromYears: 65 }).success, true);
   });
 
@@ -460,6 +466,7 @@ describe('billing', () => {
         findExemption(rules, { ageYears: 28, sex: 'female', visitType: 'general' }),
         undefined,
       );
+
       assert.equal(findExemption(rules, { ageYears: 5, sex: 'male' }), undefined);
     });
 
@@ -476,6 +483,7 @@ describe('billing', () => {
       Charge.safeParse({ ...charge, amountMinor: 0, exemptionReason: 'Under-5 policy' }).success,
       true,
     );
+
     assert.equal(Charge.safeParse({ ...charge, amountMinor: 0 }).success, false);
     assert.equal(Charge.safeParse({ ...charge, amountMinor: 100000 }).success, false);
     assert.equal(Charge.safeParse({ ...charge, exemptionReason: 'Under-5 policy' }).success, false);
@@ -487,6 +495,7 @@ describe('billing', () => {
 
   it('refuses a payment whose allocations do not add up, or name a charge twice', () => {
     const short = { ...payment, allocations: [{ chargeId: charge.id, amountMinor: 100000 }] };
+
     const twice = {
       ...payment,
       allocations: [
@@ -508,6 +517,7 @@ describe('billing', () => {
       Payment.safeParse({ ...waiver, reason: 'Destitute — approved by supervisor' }).success,
       true,
     );
+
     assert.equal(Payment.safeParse(reversal).success, false);
     assert.equal(Payment.safeParse({ ...reversal, reason: 'Entered twice' }).success, true);
   });

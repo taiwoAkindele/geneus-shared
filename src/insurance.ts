@@ -35,10 +35,23 @@ import {
 } from './documents.ts';
 import { dispensingDetails } from './pharmacy.ts';
 
+const exclusionReason = (patientLiability: string | undefined) => {
+  if (patientLiability === 'not_billable') {
+    return 'not_billable_to_patient' as const;
+  }
+
+  if (patientLiability === 'patient_pays') {
+    return 'excluded_patient_pays' as const;
+  }
+
+  return 'exclusion_liability_not_configured' as const;
+};
+
 const text = z.string().trim().min(1);
 
 /** Negotiated with devices and the server, like the pharmacy and ward-care workflows. */
 export const INSURANCE_WORKFLOW_VERSION = 1 as const;
+
 /**
  * A hospital's insurance state. `setup` lets authorised staff prepare payers,
  * contracts, documents, imports and submission settings without changing a
@@ -47,7 +60,9 @@ export const INSURANCE_WORKFLOW_VERSION = 1 as const;
  * Leaving `active` keeps every confirmed obligation (confirmed splits stay).
  */
 export const InsuranceState = z.enum(['off', 'setup', 'active']);
+
 export type InsuranceState = z.infer<typeof InsuranceState>;
+
 export const insuranceConfigurable = (state: InsuranceState | undefined) =>
   state === 'setup' || state === 'active';
 
@@ -57,6 +72,7 @@ export const INSURANCE_UPLOAD_TYPES = [
   'cover_check',
   'coverage_election',
 ] as const;
+
 /**
  * Synced only to devices that negotiated the insurance workflow: an older client
  * cannot read them, so it never receives them. Refunds ride with them because an
@@ -72,6 +88,7 @@ export const INSURANCE_SYNCED_TYPES = [
   'refund',
   'service_completion',
 ] as const;
+
 /** Stored on every confirmed snapshot. A change to the arithmetic is a new version. */
 export const CALCULATION_VERSION = 1 as const;
 
@@ -80,6 +97,7 @@ export const CALCULATION_VERSION = 1 as const;
 /* ------------------------------------------------------------------ */
 
 export const PayerKind = z.enum(['national_scheme', 'state_scheme', 'hmo', 'company', 'other']);
+
 export type PayerKind = z.infer<typeof PayerKind>;
 
 /**
@@ -89,15 +107,19 @@ export type PayerKind = z.infer<typeof PayerKind>;
  * reason. `not_allowed` is a contractual prohibition nobody can override.
  */
 export const SelfPayElectionRule = z.enum(['allowed', 'not_allowed']);
+
 export type SelfPayElectionRule = z.infer<typeof SelfPayElectionRule>;
 
 export const Arrangement = z.enum(['per_service', 'capitation', 'per_diem', 'package']);
+
 export type Arrangement = z.infer<typeof Arrangement>;
+
 /** Calculated in calculation version 1. The others are modelled and never produce money. */
 export const SUPPORTED_ARRANGEMENTS = [
   'per_service',
   'capitation',
 ] as const satisfies readonly Arrangement[];
+
 export const isSupportedArrangement = (
   arrangement: Arrangement,
 ): arrangement is (typeof SUPPORTED_ARRANGEMENTS)[number] =>
@@ -119,6 +141,7 @@ export const FixedCopayBasis = z.enum([
   'per_visit',
   'per_claim',
 ]);
+
 export type FixedCopayBasis = z.infer<typeof FixedCopayBasis>;
 
 /** A percentage applies to the tariff of the units supplied, so it needs no basis. */
@@ -127,6 +150,7 @@ export const Copay = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('percent'), basisPoints }),
   z.strictObject({ kind: z.literal('fixed'), amountMinor: minorUnits, basis: FixedCopayBasis }),
 ]);
+
 export type Copay = z.infer<typeof Copay>;
 
 /**
@@ -146,6 +170,7 @@ export const PlanRule = z.discriminatedUnion('coverage', [
     patientLiability: z.enum(['patient_pays', 'not_billable']).optional(),
   }),
 ]);
+
 export type PlanRule = z.infer<typeof PlanRule>;
 
 const feeItemKey = z.string().min(1).max(200);
@@ -163,6 +188,7 @@ export const ContractPlan = z.strictObject({
     items: z.record(feeItemKey, PlanRule).default({}),
   }),
 });
+
 export type ContractPlan = z.infer<typeof ContractPlan>;
 
 /** What a hospital edits. Ids, versions and status are the server's. */
@@ -200,7 +226,9 @@ export const PayerContractTerms = z
         message: 'The contract must end on or after it starts',
       });
     }
+
     const codes = terms.plans.map((plan) => plan.planCode);
+
     if (new Set(codes).size !== codes.length) {
       context.addIssue({
         code: 'custom',
@@ -209,6 +237,7 @@ export const PayerContractTerms = z
       });
     }
   });
+
 export type PayerContractTerms = z.infer<typeof PayerContractTerms>;
 
 /** One immutable version once active. Id convention `${contractId}:v${version}`. */
@@ -231,8 +260,11 @@ export const PayerContractVersion = z.strictObject({
   endedBy: z.string().min(1).optional(),
   endReason: z.string().min(1).optional(),
 });
+
 export type PayerContractVersion = z.infer<typeof PayerContractVersion>;
+
 export const contractIdFor = (payerId: string) => `contract:${payerId}`;
+
 export const contractVersionId = (contractId: string, version: number) =>
   `${contractId}:v${version}`;
 
@@ -251,9 +283,11 @@ export const PatientAmount = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('percent_of_list'), basisPoints }),
   z.strictObject({ kind: z.literal('fixed_per_unit_capped_at_list'), amountMinor: minorUnits }),
 ]);
+
 export type PatientAmount = z.infer<typeof PatientAmount>;
 
 export const NotConfiguredPart = z.enum(['arrangement', 'rule', 'tariff']);
+
 export const ScheduleLine = z.discriminatedUnion('status', [
   z.strictObject({
     status: z.literal('covered'),
@@ -278,6 +312,7 @@ export const ScheduleLine = z.discriminatedUnion('status', [
     ]),
   }),
 ]);
+
 export type ScheduleLine = z.infer<typeof ScheduleLine>;
 
 export const Payer = baseEnvelope.extend({
@@ -288,6 +323,7 @@ export const Payer = baseEnvelope.extend({
   code: z.string().trim().min(1).max(30),
   active: z.boolean().default(true),
 });
+
 export type Payer = z.infer<typeof Payer>;
 
 /** Server-written when a contract version is activated: one per plan. Insert-only. */
@@ -309,6 +345,7 @@ export const CoverSchedule = baseEnvelope.extend({
   items: z.record(feeItemKey, ScheduleLine),
   categories: z.partialRecord(FeeCategory, ScheduleLine),
 });
+
 export type CoverSchedule = z.infer<typeof CoverSchedule>;
 
 /** A patient's membership of a payer plan. Insert-only: a change is a new record that `replaces` the old. */
@@ -330,6 +367,7 @@ export const PatientCover = baseEnvelope
     message: 'Cover must end on or after it starts',
     path: ['validTo'],
   });
+
 export type PatientCover = z.infer<typeof PatientCover>;
 
 export const CoverCheckMethod = z.enum([
@@ -340,6 +378,7 @@ export const CoverCheckMethod = z.enum([
   'letter',
   'other',
 ]);
+
 /** Evidence that someone checked cover, and for which dates. Insert-only. */
 export const CoverCheck = baseEnvelope
   .extend({
@@ -358,6 +397,7 @@ export const CoverCheck = baseEnvelope
     message: 'The checked period must end on or after it starts',
     path: ['coversTo'],
   });
+
 export type CoverCheck = z.infer<typeof CoverCheck>;
 
 /**
@@ -382,6 +422,7 @@ export const CoverageElection = baseEnvelope
     if (new Set(election.chargeIds).size !== election.chargeIds.length) {
       context.addIssue({ code: 'custom', path: ['chargeIds'], message: 'Name each charge once' });
     }
+
     if (election.kind === 'self_pay') {
       if (!election.reason) {
         context.addIssue({
@@ -390,6 +431,7 @@ export const CoverageElection = baseEnvelope
           message: 'Say why the patient is paying without insurance',
         });
       }
+
       if (!election.patientAgreed) {
         context.addIssue({
           code: 'custom',
@@ -397,6 +439,7 @@ export const CoverageElection = baseEnvelope
           message: 'Record that the patient agreed to pay',
         });
       }
+
       if (election.reason === 'not_eligible' && !election.coverCheckId) {
         context.addIssue({
           code: 'custom',
@@ -412,6 +455,7 @@ export const CoverageElection = baseEnvelope
       });
     }
   });
+
 export type CoverageElection = z.infer<typeof CoverageElection>;
 
 /**
@@ -432,6 +476,7 @@ export const CoverageAllocation = baseEnvelope.extend({
   basis: z.enum(['visit', 'routine_bulk', 'exception']),
   supersedes: z.string().min(1).optional(),
 });
+
 export type CoverageAllocation = z.infer<typeof CoverageAllocation>;
 
 /* ------------------------------------------------------------------ */
@@ -443,8 +488,10 @@ export const roundHalfUp = (value: number): number => {
   if (!Number.isFinite(value) || value < 0) {
     throw new Error('Amounts must be finite and non-negative');
   }
+
   return Math.floor(value + 0.5 + 1e-9);
 };
+
 /** Integer percentage of an integer amount, half up, with no floating-point step. */
 export const percentOf = (amountMinor: number, bp: number): number =>
   Math.floor((amountMinor * bp + 5_000) / 10_000);
@@ -452,8 +499,10 @@ export const percentOf = (amountMinor: number, bp: number): number =>
 /** A co-pay calculation version 1 can perform: none, a percentage, or a fixed amount per unit. */
 export const calculableCopay = (copay: Copay): boolean =>
   copay.kind !== 'fixed' || copay.basis === 'per_unit';
+
 type CopayFeature =
   'copay_per_charge' | 'copay_per_dispense' | 'copay_per_visit' | 'copay_per_claim';
+
 const unsupportedCopay = (copay: Copay): CopayFeature | undefined =>
   copay.kind === 'fixed' && copay.basis !== 'per_unit'
     ? (`copay_${copay.basis}` as CopayFeature)
@@ -464,11 +513,17 @@ export const copayPerUnit = (copay: Copay, unitTariffMinor: number): number => {
   if (!calculableCopay(copay)) {
     throw new Error('This co-pay basis is not calculable in version 1');
   }
-  return copay.kind === 'none'
-    ? 0
-    : copay.kind === 'percent'
-      ? percentOf(unitTariffMinor, copay.basisPoints)
-      : Math.min(copay.amountMinor, unitTariffMinor);
+
+  if (copay.kind === 'none') {
+    return 0;
+  }
+
+  if (copay.kind === 'percent') {
+    return percentOf(unitTariffMinor, copay.basisPoints);
+  }
+
+  // A fixed co-pay never exceeds the tariff itself.
+  return Math.min(copay.amountMinor, unitTariffMinor);
 };
 
 /** The patient's share of one charge from a schedule line amount. Same formula on device and server. */
@@ -480,13 +535,16 @@ export const patientShareFor = (
   if (amount.kind === 'per_unit') {
     return roundHalfUp(amount.amountMinor * units);
   }
+
   if (amount.kind === 'percent_of_list') {
     return percentOf(listPriceMinor, amount.basisPoints);
   }
+
   return Math.min(roundHalfUp(amount.amountMinor * units), listPriceMinor);
 };
 
 type Resolved = { arrangement?: Arrangement; rule?: PlanRule; tariffMinor?: number };
+
 const resolveTerms = (
   terms: PayerContractTerms,
   plan: ContractPlan,
@@ -513,23 +571,31 @@ export const scheduleLineFor = (
   category: FeeCategory,
 ): ScheduleLine => {
   const { arrangement, rule, tariffMinor } = resolveTerms(terms, plan, feeItemId, category);
+
   if (rule?.coverage === 'excluded') {
     return { status: 'excluded', patientLiability: rule.patientLiability ?? 'not_configured' };
   }
+
   if (!arrangement) {
     return { status: 'not_configured', missing: 'arrangement' };
   }
+
   if (!isSupportedArrangement(arrangement)) {
     return { status: 'unsupported', feature: arrangement };
   }
+
   if (!rule) {
     return { status: 'not_configured', missing: 'rule' };
   }
+
   const copayFeature = unsupportedCopay(rule.copay);
+
   if (copayFeature) {
     return { status: 'unsupported', feature: copayFeature };
   }
+
   const approvalRequired = rule.approvalRequired;
+
   if (tariffMinor !== undefined) {
     return {
       status: 'covered',
@@ -538,9 +604,11 @@ export const scheduleLineFor = (
       patient: { kind: 'per_unit', amountMinor: copayPerUnit(rule.copay, tariffMinor) },
     };
   }
+
   if (arrangement === 'per_service') {
     return { status: 'not_configured', missing: 'tariff' };
   }
+
   // Capitation without a tariff: the co-pay can only be stated against the list price.
   if (rule.copay.kind === 'none') {
     return {
@@ -550,6 +618,7 @@ export const scheduleLineFor = (
       patient: { kind: 'per_unit', amountMinor: 0 },
     };
   }
+
   if (rule.copay.kind === 'percent') {
     return {
       status: 'covered',
@@ -558,6 +627,7 @@ export const scheduleLineFor = (
       patient: { kind: 'percent_of_list', basisPoints: rule.copay.basisPoints },
     };
   }
+
   return {
     status: 'covered',
     arrangement,
@@ -587,13 +657,16 @@ export const buildScheduleLines = (
   categoryOf: (feeItemId: string) => FeeCategory | undefined,
 ) => {
   const items: Record<string, ScheduleLine> = {};
+
   for (const feeItemId of mentionedItems(terms, plan)) {
     const category = categoryOf(feeItemId);
     items[feeItemId] = category
       ? scheduleLineFor(terms, plan, feeItemId, category)
       : { status: 'not_configured', missing: 'arrangement' };
   }
+
   const categories: Partial<Record<FeeCategory, ScheduleLine>> = {};
+
   // Do not introduce unknown enum keys into older facilities' activated schedules.
   for (const category of FeeCategory.options.filter(
     (c) =>
@@ -603,6 +676,7 @@ export const buildScheduleLines = (
   )) {
     categories[category] = scheduleLineFor(terms, plan, undefined, category);
   }
+
   return { items, categories };
 };
 
@@ -612,6 +686,7 @@ export type UnsupportedTerm = {
   feature: string;
   planCode?: string;
 };
+
 /**
  * What activation must point out by name: every arrangement and every co-pay
  * basis calculation version 1 cannot calculate. Those services stay undetermined.
@@ -626,10 +701,12 @@ export const unsupportedArrangements = (terms: PayerContractTerms): UnsupportedT
   ...terms.plans.flatMap((plan) => [
     ...Object.entries(plan.rules.categories).flatMap(([key, rule]) => {
       const feature = rule?.coverage === 'covered' ? unsupportedCopay(rule.copay) : undefined;
+
       return feature ? [{ scope: 'category' as const, key, feature, planCode: plan.planCode }] : [];
     }),
     ...Object.entries(plan.rules.items).flatMap(([key, rule]) => {
       const feature = rule.coverage === 'covered' ? unsupportedCopay(rule.copay) : undefined;
+
       return feature ? [{ scope: 'item' as const, key, feature, planCode: plan.planCode }] : [];
     }),
   ]),
@@ -666,49 +743,56 @@ export const computeAllocation = (input: {
 }): ComputeResult => {
   const { terms, charge, units } = input;
   const plan = terms.plans.find((candidate) => candidate.planCode === input.planCode);
+
   if (!plan) {
     return { ok: false, reason: 'not_configured', detail: 'plan' };
   }
+
   if (charge.currency !== terms.currency) {
     return { ok: false, reason: 'not_configured', detail: 'currency' };
   }
+
   const { arrangement, rule, tariffMinor } = resolveTerms(
     terms,
     plan,
     charge.feeItemId,
     charge.category,
   );
+
   if (rule?.coverage === 'excluded') {
     return {
       ok: false,
-      reason:
-        rule.patientLiability === 'not_billable'
-          ? 'not_billable_to_patient'
-          : rule.patientLiability === 'patient_pays'
-            ? 'excluded_patient_pays'
-            : 'exclusion_liability_not_configured',
+      reason: exclusionReason(rule.patientLiability),
     };
   }
+
   if (!arrangement) {
     return { ok: false, reason: 'not_configured', detail: 'arrangement' };
   }
+
   if (!isSupportedArrangement(arrangement)) {
     return { ok: false, reason: 'unsupported_arrangement', detail: arrangement };
   }
+
   if (!rule) {
     return { ok: false, reason: 'not_configured', detail: 'rule' };
   }
+
   if (!calculableCopay(rule.copay)) {
     return { ok: false, reason: 'unsupported_arrangement', detail: unsupportedCopay(rule.copay) };
   }
+
   if (units === undefined || !(units > 0)) {
     return { ok: false, reason: 'quantity_unavailable' };
   }
+
   const list = charge.listPriceMinor;
+
   if (tariffMinor !== undefined) {
     const tariffTotal = roundHalfUp(tariffMinor * units);
     const patient = roundHalfUp(copayPerUnit(rule.copay, tariffMinor) * units);
     const remainder = tariffTotal - patient;
+
     return {
       ok: true,
       rule,
@@ -723,14 +807,19 @@ export const computeAllocation = (input: {
       },
     };
   }
+
   if (arrangement === 'per_service') {
     return { ok: false, reason: 'not_configured', detail: 'tariff' };
   }
+
   const line = scheduleLineFor(terms, plan, charge.feeItemId, charge.category);
+
   if (line.status !== 'covered') {
     return { ok: false, reason: 'not_configured', detail: 'rule' };
   }
+
   const patient = patientShareFor(line.patient, units, list);
+
   return {
     ok: true,
     rule,
@@ -780,13 +869,17 @@ export const chargeUnits = (
   if (charge.quantity !== undefined) {
     return charge.quantity;
   }
+
   if (!charge.dispenseEntryId) {
     return 1;
   }
+
   if (!dispenseEntry || dispenseEntry.id !== charge.dispenseEntryId) {
     return undefined;
   }
+
   const quantity = dispensingDetails(dispenseEntry)?.quantity;
+
   return quantity !== undefined && quantity > 0 ? quantity : undefined;
 };
 
@@ -797,6 +890,7 @@ export const chargeUnits = (
  * date: the caller gets `undefined`, never a UTC guess.
  */
 const dateFormats = new Map<string, Intl.DateTimeFormat>();
+
 export const serviceDateOf = (
   createdOn: string,
   timeZone: string | undefined,
@@ -804,8 +898,10 @@ export const serviceDateOf = (
   if (!timeZone) {
     return undefined;
   }
+
   // Building a formatter is far costlier than using one; billing dates thousands of charges at a time.
   let format = dateFormats.get(timeZone);
+
   if (!format) {
     format = new Intl.DateTimeFormat('en-CA', {
       timeZone,
@@ -813,8 +909,10 @@ export const serviceDateOf = (
       month: '2-digit',
       day: '2-digit',
     });
+
     dateFormats.set(timeZone, format);
   }
+
   return format.format(new Date(createdOn));
 };
 
@@ -836,6 +934,7 @@ export const UndeterminedReason = z.enum([
   'facility_timezone_missing',
   'self_pay_not_permitted',
 ]);
+
 export type UndeterminedReason = z.infer<typeof UndeterminedReason>;
 
 export type CoverageEstimate =
@@ -882,6 +981,7 @@ export const currentAllocation = (
 ): CoverageAllocation | undefined => {
   const mine = allocations.filter((allocation) => allocation.chargeId === chargeId);
   const superseded = new Set(mine.map((allocation) => allocation.supersedes).filter(Boolean));
+
   return mine.filter((allocation) => !superseded.has(allocation.id)).sort(byNewest)[0];
 };
 
@@ -893,6 +993,7 @@ export const coversOn = (
 ): PatientCover[] => {
   const mine = covers.filter((cover) => cover.patientId === patientId);
   const replaced = new Set(mine.map((cover) => cover.replaces).filter(Boolean));
+
   return mine.filter(
     (cover) =>
       !replaced.has(cover.id) &&
@@ -933,6 +1034,7 @@ export const selfPayPermitted = (
 ): boolean => {
   if (election.reason === 'not_eligible') {
     const check = records.checks.find((c) => c.id === election.coverCheckId);
+
     return Boolean(
       check &&
       check.coverId === cover.id &&
@@ -941,6 +1043,7 @@ export const selfPayPermitted = (
       serviceDate <= check.coversTo,
     );
   }
+
   return (
     scheduleOn(cover.payerId, cover.planCode, serviceDate, records.schedules)?.selfPayElection ===
     'allowed'
@@ -976,52 +1079,72 @@ export const estimateCoverage = (input: {
   billingActive: boolean;
 }): CoverageEstimate => {
   const { charge, records } = input;
+
   if (charge.amountMinor === 0) {
     return { state: 'exempt' };
   }
+
   const confirmed = currentAllocation(charge.id, records.allocations);
+
   if (confirmed) {
     return confirmed.state === 'finalised'
       ? { state: 'finalised', allocation: confirmed }
       : { state: 'self_pay_confirmed', allocation: confirmed };
   }
+
   if (!input.billingActive) {
     return { state: 'self_pay' };
   }
 
   const allCovers = records.covers.filter((c) => c.patientId === charge.patientId);
+
   if (!input.serviceDate) {
     return allCovers.length
       ? { state: 'undetermined', reason: 'facility_timezone_missing' }
       : { state: 'self_pay' };
   }
+
   const serviceDate = input.serviceDate;
   const valid = coversOn(charge.patientId, serviceDate, records.covers);
+
   const elections = records.elections
     .filter((e) => e.patientId === charge.patientId && e.chargeIds.includes(charge.id))
     .sort(byNewest);
+
   const selfPay = elections.find((e) => e.kind === 'self_pay');
+
   if (selfPay) {
     const cover = allCovers.find((c) => c.id === selfPay.coverId);
+
     if (cover) {
       // A recorded choice always stays on record; it counts only while the rule in force on the date of service permits it.
       if (selfPayPermitted(selfPay, cover, serviceDate, records)) {
         return { state: 'self_pay_elected', election: selfPay, cover };
       }
+
       return { state: 'undetermined', reason: 'self_pay_not_permitted', cover };
     }
   }
+
   if (!valid.length) {
     return { state: 'self_pay' };
   }
+
   const chosen = elections.find(
     (e) => e.kind === 'use_cover' && valid.some((c) => c.id === e.coverId),
   );
-  const cover = chosen
-    ? valid.find((c) => c.id === chosen.coverId)!
-    : valid.length === 1
-      ? valid[0]
-      : undefined;
+
+  // The patient's chosen cover wins; a single valid cover needs no choice.
+  const coverFor = () => {
+    if (chosen) {
+      return valid.find((c) => c.id === chosen.coverId)!;
+    }
+
+    return valid.length === 1 ? valid[0] : undefined;
+  };
+
+  const cover = coverFor();
+
   if (!cover) {
     return { state: 'undetermined', reason: 'choose_cover' };
   }
@@ -1035,20 +1158,25 @@ export const estimateCoverage = (input: {
         serviceDate <= c.coversTo,
     )
     .sort(byNewest)[0];
+
   if (!check) {
     return { state: 'undetermined', reason: 'cover_not_checked', cover };
   }
+
   if (check.result === 'pending') {
     return { state: 'undetermined', reason: 'check_pending', cover, check };
   }
+
   if (check.result === 'not_eligible') {
     return { state: 'undetermined', reason: 'not_eligible', cover, check };
   }
 
   const schedule = scheduleOn(cover.payerId, cover.planCode, serviceDate, records.schedules);
+
   if (!schedule) {
     return { state: 'undetermined', reason: 'not_configured', detail: 'contract', cover, check };
   }
+
   if (schedule.currency !== charge.currency) {
     return {
       state: 'undetermined',
@@ -1059,7 +1187,9 @@ export const estimateCoverage = (input: {
       schedule,
     };
   }
+
   const line = schedule.items[charge.feeItemId] ?? schedule.categories[charge.category];
+
   if (!line) {
     return {
       state: 'undetermined',
@@ -1070,6 +1200,7 @@ export const estimateCoverage = (input: {
       schedule,
     };
   }
+
   if (line.status === 'not_configured') {
     return {
       state: 'undetermined',
@@ -1080,6 +1211,7 @@ export const estimateCoverage = (input: {
       schedule,
     };
   }
+
   if (line.status === 'unsupported') {
     return {
       state: 'undetermined',
@@ -1090,10 +1222,12 @@ export const estimateCoverage = (input: {
       schedule,
     };
   }
+
   if (line.status === 'excluded') {
     if (line.patientLiability === 'patient_pays') {
       return { state: 'not_covered', cover, check, schedule };
     }
+
     return {
       state: 'undetermined',
       reason:
@@ -1105,9 +1239,11 @@ export const estimateCoverage = (input: {
       schedule,
     };
   }
+
   if (input.units === undefined || !(input.units > 0)) {
     return { state: 'undetermined', reason: 'quantity_unavailable', cover, check, schedule };
   }
+
   return {
     state: 'estimated',
     cover,
@@ -1183,24 +1319,30 @@ export const indexCoverageRecords = (
 ): ((patientId: string) => CoverageRecords) => {
   const group = <T extends { patientId: string }>(items: readonly T[]) => {
     const map = new Map<string, T[]>();
+
     for (const item of items) {
       const list = map.get(item.patientId);
+
       if (list) {
         list.push(item);
       } else {
         map.set(item.patientId, [item]);
       }
     }
+
     return map;
   };
+
   const covers = group(records.covers);
   const checks = group(records.checks);
   const elections = group(records.elections);
   const allocations = group(records.allocations);
   const empty: never[] = [];
   const cache = new Map<string, CoverageRecords>();
+
   return (patientId) => {
     let found = cache.get(patientId);
+
     if (!found) {
       found = {
         covers: covers.get(patientId) ?? empty,
@@ -1209,8 +1351,10 @@ export const indexCoverageRecords = (
         allocations: allocations.get(patientId) ?? empty,
         schedules: records.schedules,
       };
+
       cache.set(patientId, found);
     }
+
     return found;
   };
 };
@@ -1242,7 +1386,9 @@ export const InsuranceDocumentType = z.enum([
   'payer_decision',
   'dispute_correspondence',
 ]);
+
 export type InsuranceDocumentType = z.infer<typeof InsuranceDocumentType>;
+
 export const DocumentVerification = z.enum(['unverified', 'verified', 'rejected']);
 
 /** The metadata staff send with an upload; the server adds identity, version and checksums. */
@@ -1256,6 +1402,7 @@ export const InsuranceDocumentUpload = z.strictObject({
   effectiveFrom: isoDate.optional(),
   notes: text.max(2000).optional(),
 });
+
 export type InsuranceDocumentUpload = z.infer<typeof InsuranceDocumentUpload>;
 
 export const InsuranceDocument = InsuranceDocumentUpload.extend({
@@ -1271,19 +1418,25 @@ export const InsuranceDocument = InsuranceDocumentUpload.extend({
   uploadedBy: z.string().min(1),
   uploadedOn: z.string().min(1),
 });
+
 export type InsuranceDocument = z.infer<typeof InsuranceDocument>;
 
 /** How a payer's claims leave the hospital. Only manual submission exists today. */
 export const SubmissionMethod = z.enum(['manual', 'direct']);
+
 export const SubmissionChannel = z.enum(['portal', 'email', 'physical', 'other']);
+
 export const ClaimFormat = z.enum(['csv', 'xlsx', 'pdf']);
+
 export const DiagnosisRequirement = z.enum([
   'codes_verified',
   'codes_as_entered',
   'free_text',
   'not_required',
 ]);
+
 export type DiagnosisRequirement = z.infer<typeof DiagnosisRequirement>;
+
 export const SubmissionProfile = z
   .strictObject({
     method: SubmissionMethod,
@@ -1323,6 +1476,7 @@ export const SubmissionProfile = z
     if (profile.channel === 'portal' && !profile.portalUrl) {
       context.addIssue({ code: 'custom', path: ['portalUrl'], message: 'Give the portal address' });
     }
+
     if (profile.channel === 'email' && !profile.recipient) {
       context.addIssue({
         code: 'custom',
@@ -1331,7 +1485,9 @@ export const SubmissionProfile = z
       });
     }
   });
+
 export type SubmissionProfile = z.infer<typeof SubmissionProfile>;
+
 export const StoredSubmissionProfile = z.strictObject({
   payerId: z.string().min(1),
   profile: SubmissionProfile,
@@ -1339,6 +1495,7 @@ export const StoredSubmissionProfile = z.strictObject({
   updatedBy: z.string().min(1),
   updatedOn: z.string().min(1),
 });
+
 export type StoredSubmissionProfile = z.infer<typeof StoredSubmissionProfile>;
 
 /** What a hospital still needs before insurance billing can be switched on, as the server sees it. */
@@ -1354,12 +1511,14 @@ export type InsuranceSetupKind =
   | 'devices_ready'
   | 'submission_method_per_payer'
   | 'contract_document_verified';
+
 export type DeviceBlockReason =
   | 'no_insurance_support'
   | 'unsent_changes'
   | 'not_seen_in_24_hours'
   | 'never_reported'
   | 'revoked_with_unsent_changes';
+
 export type SetupDevice = {
   deviceId: string;
   label?: string;
@@ -1367,7 +1526,9 @@ export type SetupDevice = {
   pendingMutationCount?: number;
   lastReportedOn?: string;
 };
+
 export type SetupPerson = { staffId: string; name: string; email: 'none' | 'pending' | 'verified' };
+
 export type InsuranceSetupItem = {
   kind: InsuranceSetupKind;
   ok: boolean;
@@ -1384,7 +1545,9 @@ export type InsuranceSetupItem = {
 
 /** A hospital administrator's request that Geneus switch insurance billing on, and Geneus's decision. */
 export const ActivationRequestStatus = z.enum(['requested', 'approved', 'rejected', 'withdrawn']);
+
 export type ActivationRequestStatus = z.infer<typeof ActivationRequestStatus>;
+
 export type InsuranceActivationRequest = {
   id: string;
   facilityId: string;
@@ -1397,6 +1560,7 @@ export type InsuranceActivationRequest = {
   decidedOn?: string;
   decisionNote?: string;
 };
+
 export type InsuranceSetupStatus = {
   state: InsuranceState;
   timeZone?: string;
@@ -1419,7 +1583,9 @@ export const ImportKind = z.enum([
   'diagnosis_catalogue',
   'remittance',
 ]);
+
 export type ImportKind = z.infer<typeof ImportKind>;
+
 export const IMPORT_LIMITS = {
   maxFileBytes: 5 * 1024 * 1024,
   maxRows: 5000,
@@ -1429,6 +1595,7 @@ export const IMPORT_LIMITS = {
 } as const;
 
 const headerCell = z.string().max(200);
+
 export const ImportTemplateSave = z.strictObject({
   kind: ImportKind,
   payerId: z.string().min(1).optional(),
@@ -1454,13 +1621,16 @@ export const ImportTemplateSave = z.strictObject({
     .optional(),
   expectedRevision: z.number().int().positive().optional(),
 });
+
 export type ImportTemplateSave = z.infer<typeof ImportTemplateSave>;
+
 export const ImportTemplate = ImportTemplateSave.omit({ expectedRevision: true }).extend({
   id: z.string().min(1),
   revision: z.number().int().positive(),
   updatedBy: z.string().min(1),
   updatedOn: z.string().min(1),
 });
+
 export type ImportTemplate = z.infer<typeof ImportTemplate>;
 
 /** Starts with a character a spreadsheet would treat as a formula. Such text is refused as a code. */
@@ -1480,6 +1650,7 @@ export const TariffImportLine = z.strictObject({
   /** The 1-based row in the file, for the audit trail and error messages. */
   sourceRow: z.number().int().positive(),
 });
+
 export type TariffImportLine = z.infer<typeof TariffImportLine>;
 
 /**
@@ -1504,6 +1675,7 @@ export const TariffImport = z
   })
   .superRefine((value, context) => {
     const seen = new Set<string>();
+
     for (const [index, line] of value.lines.entries()) {
       if (seen.has(line.feeItemId)) {
         context.addIssue({
@@ -1512,10 +1684,13 @@ export const TariffImport = z
           message: `Row ${line.sourceRow} prices a service already priced by an earlier row`,
         });
       }
+
       seen.add(line.feeItemId);
     }
   });
+
 export type TariffImport = z.infer<typeof TariffImport>;
+
 /** `payloadSha256` is the server's own checksum of the validated rows it applied; the file checksum in the request is only what the browser reported. */
 export type TariffImportResult = {
   contractVersionId: string;
@@ -1542,12 +1717,15 @@ export const InsuranceBillingPeriod = z.strictObject({
   from: z.string().min(1),
   to: z.string().min(1).optional(),
 });
+
 export type InsuranceBillingPeriod = z.infer<typeof InsuranceBillingPeriod>;
+
 export const inBillingPeriod = (
   at: string,
   periods: readonly InsuranceBillingPeriod[],
 ): boolean => {
   const t = Date.parse(at);
+
   return (
     Number.isFinite(t) &&
     periods.some((p) => Date.parse(p.from) <= t && (!p.to || t < Date.parse(p.to)))
@@ -1566,7 +1744,9 @@ export const inBillingPeriod = (
  * Synced and insert-only: a correction is a new record that `replaces` it.
  */
 export const ServiceCompletionStatus = z.enum(['completed', 'not_done']);
+
 export type ServiceCompletionStatus = z.infer<typeof ServiceCompletionStatus>;
+
 export const ServiceCompletion = baseEnvelope
   .extend({
     type: z.literal('service_completion'),
@@ -1583,6 +1763,7 @@ export const ServiceCompletion = baseEnvelope
     message: 'Say why the service was not done',
     path: ['note'],
   });
+
 export type ServiceCompletion = z.infer<typeof ServiceCompletion>;
 
 /** The roles that perform services. An insurance officer, cashier or administrator records no clinical evidence. */
@@ -1612,11 +1793,13 @@ export const currentCompletions = (
 ): Map<string, ServiceCompletion> => {
   const replaced = new Set(completions.map((c) => c.replaces).filter(Boolean));
   const current = new Map<string, ServiceCompletion>();
+
   for (const c of [...completions].sort((a, b) => a.createdOn.localeCompare(b.createdOn))) {
     if (!replaced.has(c.id)) {
       current.set(c.chargeId, c);
     }
   }
+
   return current;
 };
 
@@ -1626,6 +1809,7 @@ export const currentCompletions = (
  * attended, not that a consultation took place.
  */
 export const CONSULTING_ROLES: readonly Role[] = ['doctor', 'chew'];
+
 const NOT_CONSULTATION_STEPS = new Set<string>([
   'vitals',
   'amendment',
@@ -1633,6 +1817,7 @@ const NOT_CONSULTATION_STEPS = new Set<string>([
   'lab_results',
   'injection',
 ]);
+
 const isConsultationEvidence = (entry: EncounterEntry) =>
   CONSULTING_ROLES.includes(entry.actorRole) && !NOT_CONSULTATION_STEPS.has(entry.step);
 
@@ -1656,41 +1841,53 @@ export const serviceFulfillment = (
   },
 ): FulfillmentEvidence => {
   const c = evidence.completion;
+
   if (c?.status === 'not_done') {
     return { kind: 'not_done', completionId: c.id, reason: c.note ?? '' };
   }
+
   if (charge.category === 'registration' || charge.category === 'card') {
     return { kind: 'administrative' };
   }
+
   const associated = (evidence.associations ?? []).filter(
     (a) => a.chargeId === charge.id && a.acceptedOn,
   );
+
   if (associated.length) {
     const allocations = associated.filter((a) => a.action === 'allocate');
     const entries = evidence.associatedEntries ?? [];
     const ids: string[] = [];
     const events: EncounterEntry[] = [];
     let performed = 0;
+
     for (const a of allocations) {
       const released = associated
         .filter((r) => r.reversesId === a.id)
         .reduce((n, r) => n + r.quantity, 0);
+
       const net = Math.max(0, a.quantity - released);
+
       if (net <= 0) {
         continue;
       }
+
       if (a.sourceKind === 'pharmacy') {
         const entry = entries.find(
           (e) => e.id === a.sourceEntryId && e.patientId === charge.patientId,
         );
+
         const supply = entry?.values.supply as { action?: string; quantity?: number } | undefined;
+
         const returned = entries.reduce((n, e) => {
           const d = e.values.supply as
             { action?: string; returnOf?: string; quantity?: number } | undefined;
+
           return (
             n + (d?.action === 'return' && d.returnOf === a.sourceEntryId ? (d.quantity ?? 0) : 0)
           );
         }, 0);
+
         const resolved = (evidence.associations ?? [])
           .filter(
             (r) =>
@@ -1700,9 +1897,11 @@ export const serviceFulfillment = (
               r.sourceEntryId === a.sourceEntryId,
           )
           .reduce((n, r) => n + r.quantity, 0);
+
         if (returned > resolved + 0.000001) {
           return { kind: 'missing', ordered: true };
         }
+
         if (entry && supply?.action === 'supply') {
           performed += Math.min(net, Math.max(0, (supply.quantity ?? 0) - returned));
           ids.push(a.id);
@@ -1717,6 +1916,7 @@ export const serviceFulfillment = (
               (r) => r.orderItemId === a.sourceItemId,
             ),
         );
+
         if (result) {
           performed += net;
           ids.push(a.id);
@@ -1724,15 +1924,18 @@ export const serviceFulfillment = (
         }
       }
     }
+
     const credited = associated
       .filter((a) => a.action === 'release' && a.creditReturnedUnits)
       .reduce((n, a) => n + a.quantity, 0);
+
     if (
       charge.quantity !== undefined &&
       performed + 0.000001 >= charge.quantity - credited &&
       performed > 0
     ) {
       const latest = events.sort((a, b) => b.createdOn.localeCompare(a.createdOn))[0];
+
       return {
         kind: 'association',
         allocationIds: ids,
@@ -1741,14 +1944,18 @@ export const serviceFulfillment = (
         by: latest.createdBy,
       };
     }
+
     return { kind: 'missing', ordered: true };
   }
+
   if (charge.dispenseEntryId && evidence.dispense) {
     const source =
       (evidence.dispense.values.supply as { priceFor?: string } | undefined)?.priceFor ??
       evidence.dispense.id;
+
     const laterReturn = (evidence.associatedEntries ?? []).some((e) => {
       const d = e.values.supply as { action?: string; returnOf?: string } | undefined;
+
       return (
         e.schemaVersion >= 7 &&
         e.patientId === charge.patientId &&
@@ -1757,9 +1964,11 @@ export const serviceFulfillment = (
         Date.parse(e.createdOn) >= Date.parse(charge.createdOn)
       );
     });
+
     if (laterReturn) {
       return { kind: 'missing', ordered: true };
     }
+
     return {
       kind: 'dispense',
       entryId: evidence.dispense.id,
@@ -1767,6 +1976,7 @@ export const serviceFulfillment = (
       by: evidence.dispense.createdBy,
     };
   }
+
   if (charge.orderItemId) {
     const result = evidence.results.find(
       (e) =>
@@ -1775,6 +1985,7 @@ export const serviceFulfillment = (
           (r) => r.orderItemId === charge.orderItemId,
         ),
     );
+
     if (result) {
       return {
         kind: 'result',
@@ -1785,6 +1996,7 @@ export const serviceFulfillment = (
     }
   } else if (!charge.dispenseEntryId && charge.category === 'consultation') {
     const seen = evidence.visitEntries.find(isConsultationEvidence);
+
     if (seen) {
       return {
         kind: 'visit',
@@ -1795,6 +2007,7 @@ export const serviceFulfillment = (
       };
     }
   }
+
   // A consultation's completion counts only from someone who consults.
   if (
     c?.status === 'completed' &&
@@ -1808,6 +2021,7 @@ export const serviceFulfillment = (
       role: c.actorRole,
     };
   }
+
   return { kind: 'missing', ordered: Boolean(charge.orderItemId || charge.dispenseEntryId) };
 };
 
@@ -1818,7 +2032,9 @@ export const serviceFulfillment = (
  * Only `approved` with a reference, in force on the date of service, passes.
  */
 export const AuthorizationKind = z.enum(['pre_authorization', 'referral']);
+
 export type AuthorizationKind = z.infer<typeof AuthorizationKind>;
+
 /**
  * `emergency_exception`: care was given before the payer's approval because it
  * could not wait. Care goes on; the claim stays blocked until the payer's own
@@ -1830,7 +2046,9 @@ export const AuthorizationStatus = z.enum([
   'denied',
   'emergency_exception',
 ]);
+
 export type AuthorizationStatus = z.infer<typeof AuthorizationStatus>;
+
 export const AuthorizationInput = z
   .strictObject({
     patientId: z.string().min(1),
@@ -1865,6 +2083,7 @@ export const AuthorizationInput = z
         message: 'It must end on or after it starts',
       });
     }
+
     if (a.status === 'approved' && !a.reference) {
       context.addIssue({
         code: 'custom',
@@ -1872,6 +2091,7 @@ export const AuthorizationInput = z
         message: "An approval needs the payer's code or referral number",
       });
     }
+
     if (
       a.kind === 'pre_authorization' &&
       !a.feeItemIds.length &&
@@ -1884,6 +2104,7 @@ export const AuthorizationInput = z
         message: 'Say which services or visit the authorization covers',
       });
     }
+
     if (a.status === 'emergency_exception' && a.kind !== 'pre_authorization') {
       context.addIssue({
         code: 'custom',
@@ -1891,6 +2112,7 @@ export const AuthorizationInput = z
         message: 'An emergency exception applies to a prior authorization',
       });
     }
+
     if (a.status === 'emergency_exception' && !a.note) {
       context.addIssue({
         code: 'custom',
@@ -1898,6 +2120,7 @@ export const AuthorizationInput = z
         message: "Say why care could not wait for the payer's approval",
       });
     }
+
     for (const id of Object.keys(a.approvedQuantities)) {
       if (!a.feeItemIds.includes(id)) {
         context.addIssue({
@@ -1907,6 +2130,7 @@ export const AuthorizationInput = z
         });
       }
     }
+
     if (a.requestedOn && a.requestedOn > a.validTo) {
       context.addIssue({
         code: 'custom',
@@ -1915,7 +2139,9 @@ export const AuthorizationInput = z
       });
     }
   });
+
 export type AuthorizationInput = z.infer<typeof AuthorizationInput>;
+
 export type ClaimAuthorization = AuthorizationInput & {
   id: string;
   recordedBy: string;
@@ -1933,6 +2159,7 @@ export type ClaimAuthorization = AuthorizationInput & {
  *   acknowledged — the payer confirmed receipt (not approval).
  */
 export const ClaimState = z.enum(['draft', 'ready', 'exported', 'submitted', 'acknowledged']);
+
 export type ClaimState = z.infer<typeof ClaimState>;
 
 export type ClaimIssueCode =
@@ -1958,6 +2185,7 @@ export type ClaimIssueCode =
   | 'submission_method_missing'
   | 'payer_code_missing'
   | 'attachment_missing';
+
 export type ClaimIssue = {
   code: ClaimIssueCode;
   blocking: boolean;
@@ -1994,9 +2222,13 @@ export const CLAIM_EXPORT_FIELDS = [
   'listPrice',
   'fulfilledOn',
 ] as const;
+
 export type ClaimExportField = (typeof CLAIM_EXPORT_FIELDS)[number];
+
 export const ClaimExportFormat = z.enum(['date_iso', 'date_dmy', 'amount_major', 'amount_minor']);
+
 export type ClaimExportFormat = z.infer<typeof ClaimExportFormat>;
+
 export const DEFAULT_CLAIM_COLUMNS: readonly ClaimExportField[] = [
   'claimNumber',
   'claimStatus',
@@ -2027,7 +2259,9 @@ export const ClaimSubmissionInput = z.strictObject({
   note: text.max(1000).optional(),
   requestKey: z.string().min(8).max(100),
 });
+
 export type ClaimSubmissionInput = z.infer<typeof ClaimSubmissionInput>;
+
 export const ClaimAcknowledgementInput = z.strictObject({
   submissionId: z.string().min(1),
   reference: text.max(200).optional(),
@@ -2036,6 +2270,7 @@ export const ClaimAcknowledgementInput = z.strictObject({
   note: text.max(1000).optional(),
   requestKey: z.string().min(8).max(100),
 });
+
 export type ClaimAcknowledgementInput = z.infer<typeof ClaimAcknowledgementInput>;
 
 export type ClaimLineView = {
@@ -2057,6 +2292,7 @@ export type ClaimLineView = {
   /** The payer's latest decision on this service, when it decided per service. */
   decision?: { approvedMinor: number; reasonCode?: string; reason?: string };
 };
+
 export type ClaimDecisionView = {
   id: string;
   claimId: string;
@@ -2069,6 +2305,7 @@ export type ClaimDecisionView = {
   recordedBy: string;
   recordedOn: string;
 };
+
 export type ClaimView = {
   id: string;
   claimNumber: string;
@@ -2129,12 +2366,15 @@ export const approvalNeeded = (input: {
 }): ApprovalNotice | undefined => {
   for (const cover of coversOn(input.patientId, input.date, input.records.covers)) {
     const schedule = scheduleOn(cover.payerId, cover.planCode, input.date, input.records.schedules);
+
     if (!schedule) {
       continue;
     }
+
     const line =
       (input.feeItemId ? schedule.items[input.feeItemId] : undefined) ??
       schedule.categories[input.category];
+
     if (line?.status === 'covered' && line.approvalRequired) {
       return {
         coverId: cover.id,
@@ -2144,6 +2384,7 @@ export const approvalNeeded = (input: {
       };
     }
   }
+
   return undefined;
 };
 
@@ -2159,6 +2400,7 @@ export const approvalNeeded = (input: {
  */
 export type DiagnosisVerification =
   'catalogue_verified' | 'format_checked' | 'format_invalid' | 'not_in_catalogue' | 'not_coded';
+
 export type ClaimDiagnosis = {
   label: string;
   code?: string;
@@ -2168,18 +2410,23 @@ export type ClaimDiagnosis = {
 };
 
 const ICD10_FORMAT = /^[A-TV-Z][0-9][0-9A-Z](\.[0-9A-Z]{1,4})?$/;
+
 export const diagnosisSystemKey = (system: string | undefined) =>
   (system ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+
 /** A code's shape for its system. ICD-10 has a known shape; other systems are only bounded. */
 export const diagnosisCodeWellFormed = (codingSystem: string, code: string): boolean => {
   const value = code.trim().toUpperCase();
+
   if (!value || value.length > 20 || formulaLike(value)) {
     return false;
   }
+
   return diagnosisSystemKey(codingSystem) === 'ICD10'
     ? ICD10_FORMAT.test(value)
     : /^[A-Z0-9.\-]+$/.test(value);
 };
+
 export const normaliseDiagnosisCode = (code: string) => code.trim().toUpperCase();
 
 /**
@@ -2196,34 +2443,43 @@ export const assessClaimDiagnoses = (input: {
   lookup: (code: string) => string | undefined;
 }): { diagnoses: ClaimDiagnosis[]; issues: ClaimIssue[] } => {
   const issues: ClaimIssue[] = [];
+
   const diagnoses: ClaimDiagnosis[] = input.recorded.map((d) => {
     if (!d.code) {
       return { label: d.label, verification: 'not_coded' };
     }
+
     const code = normaliseDiagnosisCode(d.code);
     const system = d.codingSystem ?? input.codeSystem;
+
     const base = {
       label: d.label,
       code,
       ...(d.codingSystem ? { codingSystem: d.codingSystem } : {}),
     };
+
     if (!diagnosisCodeWellFormed(system, code)) {
       return { ...base, verification: 'format_invalid' };
     }
+
     if (
       diagnosisSystemKey(system) === diagnosisSystemKey(input.codeSystem) &&
       input.catalogueSize > 0
     ) {
       const found = input.lookup(code);
+
       return found !== undefined
         ? { ...base, verification: 'catalogue_verified', catalogueDescription: found }
         : { ...base, verification: 'not_in_catalogue' };
     }
+
     return { ...base, verification: 'format_checked' };
   });
+
   if (input.requirement === 'not_required') {
     return { diagnoses, issues };
   }
+
   if (!diagnoses.length) {
     return {
       diagnoses,
@@ -2237,15 +2493,18 @@ export const assessClaimDiagnoses = (input: {
       ],
     };
   }
+
   if (input.requirement === 'free_text') {
     return { diagnoses, issues };
   }
+
   const ofSystem = diagnoses.filter(
     (d) =>
       d.code &&
       diagnosisSystemKey(d.codingSystem ?? input.codeSystem) ===
         diagnosisSystemKey(input.codeSystem),
   );
+
   if (!ofSystem.length) {
     return {
       diagnoses,
@@ -2258,7 +2517,9 @@ export const assessClaimDiagnoses = (input: {
       ],
     };
   }
+
   const malformed = ofSystem.filter((d) => d.verification === 'format_invalid');
+
   if (malformed.length) {
     issues.push({
       code: 'diagnosis_code_format',
@@ -2266,6 +2527,7 @@ export const assessClaimDiagnoses = (input: {
       message: `Not a valid ${input.codeSystem} code: ${malformed.map((d) => d.code).join(', ')}`,
     });
   }
+
   if (input.requirement === 'codes_verified') {
     if (input.catalogueSize === 0) {
       issues.push({
@@ -2275,6 +2537,7 @@ export const assessClaimDiagnoses = (input: {
       });
     } else {
       const unknown = ofSystem.filter((d) => d.verification === 'not_in_catalogue');
+
       if (unknown.length) {
         issues.push({
           code: 'diagnosis_code_not_in_catalogue',
@@ -2284,6 +2547,7 @@ export const assessClaimDiagnoses = (input: {
       }
     }
   }
+
   return { diagnoses, issues };
 };
 
@@ -2297,6 +2561,7 @@ export const DiagnosisCatalogueLine = z.strictObject({
   description: z.string().trim().min(1).max(500),
   sourceRow: z.number().int().positive(),
 });
+
 /**
  * A diagnosis code list the hospital holds a licence for, imported through the
  * column-mapping screen. Geneus ships none: the licence reference names the
@@ -2319,8 +2584,10 @@ export const DiagnosisCatalogueImport = z
   })
   .superRefine((value, context) => {
     const seen = new Set<string>();
+
     for (const [index, line] of value.lines.entries()) {
       const code = normaliseDiagnosisCode(line.code);
+
       if (!diagnosisCodeWellFormed(value.codeSystem, code)) {
         context.addIssue({
           code: 'custom',
@@ -2328,6 +2595,7 @@ export const DiagnosisCatalogueImport = z
           message: `Row ${line.sourceRow}: "${line.code}" is not a ${value.codeSystem} code`,
         });
       }
+
       if (seen.has(code)) {
         context.addIssue({
           code: 'custom',
@@ -2335,10 +2603,13 @@ export const DiagnosisCatalogueImport = z
           message: `Row ${line.sourceRow} repeats ${code}`,
         });
       }
+
       seen.add(code);
     }
   });
+
 export type DiagnosisCatalogueImport = z.infer<typeof DiagnosisCatalogueImport>;
+
 export type DiagnosisCatalogueSummary = {
   codeSystem: string;
   edition: string;
@@ -2365,7 +2636,9 @@ export type DiagnosisCatalogueSummary = {
  * contract-clause change, needs `coverage:approve_liability_change`.
  */
 export const LiabilityGround = z.enum(['patient_election', 'not_eligible', 'contract_clause']);
+
 export type LiabilityGround = z.infer<typeof LiabilityGround>;
+
 export const LiabilityChange = z
   .strictObject({
     ground: LiabilityGround,
@@ -2384,6 +2657,7 @@ export const LiabilityChange = z
         message: 'Record how the patient agreed to pay',
       });
     }
+
     if (v.ground === 'not_eligible' && !v.coverCheckId) {
       context.addIssue({
         code: 'custom',
@@ -2391,6 +2665,7 @@ export const LiabilityChange = z
         message: 'Name the check that found the cover not eligible',
       });
     }
+
     if (v.ground === 'contract_clause' && !v.contractClause) {
       context.addIssue({
         code: 'custom',
@@ -2399,6 +2674,7 @@ export const LiabilityChange = z
       });
     }
   });
+
 export type LiabilityChange = z.infer<typeof LiabilityChange>;
 
 /* ------------------------------------------------------------------ */
@@ -2417,7 +2693,9 @@ export const PayerDecisionKind = z.enum([
   'returned',
   'denied',
 ]);
+
 export type PayerDecisionKind = z.infer<typeof PayerDecisionKind>;
+
 export const PayerDecisionInput = z
   .strictObject({
     claimId: z.string().min(1),
@@ -2451,6 +2729,7 @@ export const PayerDecisionInput = z
         message: 'Enter what the payer approved, in total or for each service',
       });
     }
+
     if (d.lines.length && d.approvedMinor !== undefined) {
       context.addIssue({
         code: 'custom',
@@ -2458,6 +2737,7 @@ export const PayerDecisionInput = z
         message: 'Give the approval per service or in total, not both',
       });
     }
+
     if (d.decision !== 'partially_approved' && d.approvedMinor !== undefined) {
       context.addIssue({
         code: 'custom',
@@ -2465,6 +2745,7 @@ export const PayerDecisionInput = z
         message: 'Only a partial approval states its own total',
       });
     }
+
     if (['queried', 'returned'].includes(d.decision) && d.lines.length) {
       context.addIssue({
         code: 'custom',
@@ -2472,17 +2753,21 @@ export const PayerDecisionInput = z
         message: 'A query or return approves nothing yet',
       });
     }
+
     if (d.decision !== 'approved' && !d.reason && !d.reasonCode) {
       context.addIssue({ code: 'custom', path: ['reason'], message: "Record the payer's reason" });
     }
   });
+
 export type PayerDecisionInput = z.infer<typeof PayerDecisionInput>;
 
 export const RemittanceMethod = z.enum(['transfer', 'cheque', 'cash', 'other']);
+
 export const RemittanceAllocationInput = z.strictObject({
   claimId: z.string().min(1),
   amountMinor: z.number().int().positive(),
 });
+
 /**
  * Money received from a payer. Never a patient payment: it settles the payer's
  * share of claims and nothing a patient owes. One remittance may pay many
@@ -2515,6 +2800,7 @@ export const RemittanceInput = z
   })
   .superRefine((r, context) => {
     const total = r.allocations.reduce((n, a) => n + a.amountMinor, 0);
+
     if (total > r.amountMinor) {
       context.addIssue({
         code: 'custom',
@@ -2522,6 +2808,7 @@ export const RemittanceInput = z
         message: 'More is allocated than was received',
       });
     }
+
     if (new Set(r.allocations.map((a) => a.claimId)).size !== r.allocations.length) {
       context.addIssue({
         code: 'custom',
@@ -2530,7 +2817,9 @@ export const RemittanceInput = z
       });
     }
   });
+
 export type RemittanceInput = z.infer<typeof RemittanceInput>;
+
 export const RemittanceAllocate = z
   .strictObject({
     remittanceId: z.string().min(1),
@@ -2541,13 +2830,16 @@ export const RemittanceAllocate = z
     (r) => new Set(r.allocations.map((a) => a.claimId)).size === r.allocations.length,
     'Allocate to each claim once',
   );
+
 export type RemittanceAllocate = z.infer<typeof RemittanceAllocate>;
+
 /** A remittance recorded in error is reversed whole, never edited; the corrected one is recorded again. */
 export const RemittanceReverse = z.strictObject({
   remittanceId: z.string().min(1),
   reason: text.min(3).max(1000),
   requestKey: z.string().min(8).max(100),
 });
+
 export type RemittanceReverse = z.infer<typeof RemittanceReverse>;
 
 export const DisputeOpen = z.strictObject({
@@ -2557,14 +2849,18 @@ export const DisputeOpen = z.strictObject({
   payerReference: text.max(200).optional(),
   requestKey: z.string().min(8).max(100),
 });
+
 export type DisputeOpen = z.infer<typeof DisputeOpen>;
+
 export const DisputeResolve = z.strictObject({
   disputeId: z.string().min(1),
   outcome: z.enum(['payer_agreed', 'payer_upheld', 'withdrawn']),
   note: text.min(3).max(2000),
   requestKey: z.string().min(8).max(100),
 });
+
 export type DisputeResolve = z.infer<typeof DisputeResolve>;
+
 /** Giving up an amount the payer will not pay. It never becomes the patient's debt. */
 export const WriteOffInput = z.strictObject({
   claimId: z.string().min(1),
@@ -2572,6 +2868,7 @@ export const WriteOffInput = z.strictObject({
   reason: text.min(3).max(2000),
   requestKey: z.string().min(8).max(100),
 });
+
 export type WriteOffInput = z.infer<typeof WriteOffInput>;
 
 export type SettlementStatus =
@@ -2608,11 +2905,14 @@ export type ClaimSettlement = {
   payerOwesMinor: number;
   overdue: boolean;
 };
+
 const addDays = (isoDay: string, days: number) => {
   const d = new Date(`${isoDay}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + days);
+
   return d.toISOString().slice(0, 10);
 };
+
 export const claimSettlement = (input: {
   submitted: boolean;
   submittedOn?: string;
@@ -2628,10 +2928,12 @@ export const claimSettlement = (input: {
     input.decision && ['approved', 'partially_approved', 'denied'].includes(input.decision.decision)
       ? input.decision.approvedMinor
       : undefined;
+
   const deducted = decided === undefined ? 0 : Math.max(0, input.expectedMinor - decided);
   const outstanding = Math.max(0, input.expectedMinor - input.paidMinor - input.writtenOffMinor);
   const payerOwes = Math.max(0, (decided ?? input.expectedMinor) - input.paidMinor);
   let status: SettlementStatus;
+
   if (!input.submitted && input.paidMinor === 0) {
     status = 'not_submitted';
   } else if (outstanding === 0) {
@@ -2651,16 +2953,19 @@ export const claimSettlement = (input: {
   } else {
     status = 'awaiting_response';
   }
+
   const due =
     input.submittedOn && input.paymentDueDays
       ? addDays(input.submittedOn, input.paymentDueDays)
       : undefined;
+
   const overdue = Boolean(
     due &&
     due < input.today &&
     payerOwes > 0 &&
     ['awaiting_response', 'approved_unpaid', 'partially_paid'].includes(status),
   );
+
   return {
     status,
     expectedMinor: input.expectedMinor,
@@ -2686,12 +2991,14 @@ export type RemittanceRow = {
   reasonCode?: string;
   reason?: string;
 };
+
 export type RemittanceCandidate = {
   claimId: string;
   claimNumber: string;
   patientName: string;
   outstandingMinor: number;
 };
+
 export type RemittanceMatch = {
   sourceRow: number;
   confidence: 'exact' | 'uncertain' | 'none';
@@ -2701,6 +3008,7 @@ export type RemittanceMatch = {
   approvedMinor?: number;
   problems: string[];
 };
+
 /** Fields a remittance spreadsheet can map. */
 export const REMITTANCE_FIELDS = [
   'claimNumber',
@@ -2722,26 +3030,33 @@ export const matchRemittanceRows = (
   claims: readonly (RemittanceCandidate & { enrolleeNumber: string })[],
 ): RemittanceMatch[] => {
   const byNumber = new Map(claims.map((c) => [c.claimNumber.trim().toUpperCase(), c]));
+
   const amounts = (row: RemittanceRow) => ({
     ...(row.paidMinor !== undefined ? { paidMinor: row.paidMinor } : {}),
     ...(row.approvedMinor !== undefined ? { approvedMinor: row.approvedMinor } : {}),
   });
+
   const candidate = (c: RemittanceCandidate): RemittanceCandidate => ({
     claimId: c.claimId,
     claimNumber: c.claimNumber,
     patientName: c.patientName,
     outstandingMinor: c.outstandingMinor,
   });
+
   return rows.map((row) => {
     const problems: string[] = [];
+
     if (row.paidMinor === undefined) {
       problems.push('No paid amount in this row');
     }
+
     const exact = row.claimNumber ? byNumber.get(row.claimNumber.trim().toUpperCase()) : undefined;
+
     if (exact) {
       if (row.paidMinor !== undefined && row.paidMinor > exact.outstandingMinor) {
         problems.push('Pays more than the claim has outstanding');
       }
+
       return {
         sourceRow: row.sourceRow,
         confidence: problems.length ? 'uncertain' : 'exact',
@@ -2751,10 +3066,13 @@ export const matchRemittanceRows = (
         problems,
       };
     }
+
     if (row.claimNumber) {
       problems.push(`No claim ${row.claimNumber} for this payer`);
     }
+
     const enrollee = row.enrolleeNumber?.trim().toUpperCase();
+
     const candidates = enrollee
       ? claims
           .filter(
@@ -2762,6 +3080,7 @@ export const matchRemittanceRows = (
           )
           .map(candidate)
       : [];
+
     return {
       sourceRow: row.sourceRow,
       confidence: candidates.length ? 'uncertain' : 'none',

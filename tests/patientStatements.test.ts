@@ -12,6 +12,7 @@ import {
   sumStatementLines,
   type CoverageEstimate,
 } from '../src/index.ts';
+
 const base = {
   facilityId: 'TEST-HOSPITAL',
   deviceId: 'device:test',
@@ -19,7 +20,9 @@ const base = {
   createdOn: '2026-11-18T09:00:00.000Z',
   schemaVersion: 7,
 };
+
 const patientId = 'TEST-HOSPITAL-000001-K2';
+
 const charge = Charge.parse({
   ...base,
   id: 'charge:lab',
@@ -32,6 +35,7 @@ const charge = Charge.parse({
   amountMinor: 10000,
   currency: 'NGN',
 });
+
 const allocation = CoverageAllocation.parse({
   ...base,
   id: 'allocation:lab',
@@ -45,6 +49,7 @@ const allocation = CoverageAllocation.parse({
   currency: 'NGN',
   basis: 'visit',
 });
+
 const summary = (adjustment = 1000) =>
   CoverageFinancialSummary.parse({
     ...base,
@@ -60,6 +65,7 @@ const summary = (adjustment = 1000) =>
     contractAdjustmentMinor: adjustment,
     capitationCoveredMinor: 0,
   });
+
 const payment = Payment.parse({
   ...base,
   id: 'payment:one',
@@ -71,6 +77,7 @@ const payment = Payment.parse({
   currency: 'NGN',
   allocations: [{ chargeId: charge.id, amountMinor: 600 }],
 });
+
 const input = {
   patientId,
   patientName: 'Synthetic patient',
@@ -102,6 +109,7 @@ const input = {
     },
   ],
 };
+
 describe('one authoritative patient statement projection', () => {
   it('reconciles original, signed adjustment, patient and insurer responsibilities and actual claim payments', () => {
     const s = patientStatement(input);
@@ -118,12 +126,14 @@ describe('one authoritative patient statement projection', () => {
         s.totals.reductionsMinor,
       s.totals.netMinor,
     );
+
     assert.equal(
       'payerReceivedMinor' in s.lines[0],
       false,
       'claim-level money is never invented on a charge line',
     );
   });
+
   it('subtracts negative signed contractual adjustments so the net charge increases', () => {
     const s = patientStatement({ ...input, summaries: [summary(-1000)], claims: [] });
     assert.equal(s.totals.netMinor, 11000);
@@ -131,6 +141,7 @@ describe('one authoritative patient statement projection', () => {
     assert.equal(s.totals.patientMinor, 1000);
     assert.equal(s.totals.payerUnclaimedMinor, 10000);
   });
+
   it('category summary and itemized lines reconcile to identical totals in the same currency and cutoff', () => {
     const pharmacy = Charge.parse({
       ...charge,
@@ -139,6 +150,7 @@ describe('one authoritative patient statement projection', () => {
       description: 'Medicine',
       createdOn: '2026-11-18T10:00:00.000Z',
     });
+
     const s = patientStatement({
       ...input,
       charges: [charge, pharmacy],
@@ -147,6 +159,7 @@ describe('one authoritative patient statement projection', () => {
         [pharmacy.id, { state: 'self_pay' } as CoverageEstimate],
       ]),
     });
+
     assert.deepEqual(
       sumStatementLines(s.lines),
       Object.fromEntries(
@@ -156,8 +169,10 @@ describe('one authoritative patient statement projection', () => {
         ]),
       ),
     );
+
     assert.equal(s.categories.length, 2);
   });
+
   it('keeps pending insurance separate and never turns a denied claim into patient debt', () => {
     const pending = patientStatement({
       ...input,
@@ -169,8 +184,10 @@ describe('one authoritative patient statement projection', () => {
         [charge.id, { state: 'undetermined', reason: 'check_pending' } as CoverageEstimate],
       ]),
     });
+
     assert.equal(pending.totals.pendingMinor, 10000);
     assert.equal(pending.totals.patientOutstandingMinor, 0);
+
     const denied = patientStatement({
       ...input,
       claims: [
@@ -188,9 +205,11 @@ describe('one authoritative patient statement projection', () => {
         },
       ],
     });
+
     assert.equal(denied.totals.patientOutstandingMinor, 400);
     assert.equal(denied.totals.payerOutstandingMinor, 8000);
   });
+
   it('shows reductions, patient credits, refunds and reversals separately without counting a waiver as money', () => {
     const reduction = BillingAdjustment.parse({
       ...base,
@@ -202,9 +221,11 @@ describe('one authoritative patient statement projection', () => {
       amountMinor: 500,
       reason: 'Documented return',
     });
+
     const credit = patientStatement({ ...input, adjustments: [reduction] });
     assert.equal(credit.totals.patientCreditMinor, 100);
     assert.equal(credit.totals.netMinor, 8500);
+
     const refund = Refund.parse({
       ...base,
       id: 'refund:one',
@@ -217,10 +238,12 @@ describe('one authoritative patient statement projection', () => {
       allocations: [{ chargeId: charge.id, amountMinor: 100 }],
       reason: 'Return actual credit',
     });
+
     const settled = patientStatement({ ...input, adjustments: [reduction], refunds: [refund] });
     assert.equal(settled.totals.patientCreditMinor, 0);
     assert.equal(settled.totals.patientRefundedMinor, 100);
     assert.equal(settled.totals.patientReceivedMinor, 600);
+
     const reverse = Payment.parse({
       ...payment,
       id: 'payment:reverse',
@@ -228,10 +251,12 @@ describe('one authoritative patient statement projection', () => {
       reverses: payment.id,
       reason: 'Reverse a synthetic mistaken payment',
     });
+
     const reversed = patientStatement({ ...input, payments: [payment, reverse] });
     assert.equal(reversed.totals.patientReceivedMinor, 0);
     assert.equal(reversed.totals.patientOutstandingMinor, 1000);
   });
+
   it('excludes other patients, other currencies and activity after the common cutoff', () => {
     const later = Payment.parse({
       ...payment,
@@ -239,6 +264,7 @@ describe('one authoritative patient statement projection', () => {
       receiptNumber: 'TEST-HOSPITAL-R-000003-K2',
       createdOn: '2026-11-18T13:00:00.000Z',
     });
+
     const s = patientStatement({
       ...input,
       charges: [
@@ -248,10 +274,12 @@ describe('one authoritative patient statement projection', () => {
       ],
       payments: [payment, later],
     });
+
     assert.equal(s.lines.length, 1);
     assert.equal(s.transactions.length, 2);
     assert.equal(s.totals.patientReceivedMinor, 600);
   });
+
   it('holds payments against pending insurance without calling them patient debt or a finalized refundable credit', () => {
     const s = patientStatement({
       ...input,
@@ -262,11 +290,13 @@ describe('one authoritative patient statement projection', () => {
         [charge.id, { state: 'undetermined', reason: 'check_pending' } as CoverageEstimate],
       ]),
     });
+
     assert.equal(s.totals.patientOutstandingMinor, 0);
     assert.equal(s.totals.patientCreditMinor, 0);
     assert.equal(s.totals.heldPatientPaymentsMinor, 600);
     assert.equal(s.totals.patientReceivedMinor, 600);
   });
+
   it('uses current confirmed responsibility for the account and flags a stale claim revision without moving it to the patient', () => {
     const s = patientStatement({ ...input, summaries: [summary(4000)] });
     assert.equal(s.totals.payerMinor, 5000);
@@ -275,15 +305,18 @@ describe('one authoritative patient statement projection', () => {
     assert.equal(s.totals.patientOutstandingMinor, 400);
     assert.ok(s.limitations.some((l) => l.includes('claim snapshot differs')));
   });
+
   it('keeps an overpayment on one claim separate from another claim outstanding, without reallocating money', () => {
     const another = { ...charge, id: 'charge:another' };
     const anotherAllocation = { ...allocation, id: 'allocation:another', chargeId: another.id };
+
     const anotherSummary = {
       ...summary(),
       id: 'summary:another',
       allocationId: anotherAllocation.id,
       chargeId: another.id,
     };
+
     const s = patientStatement({
       ...input,
       charges: [charge, another],
@@ -317,6 +350,7 @@ describe('one authoritative patient statement projection', () => {
         },
       ],
     });
+
     assert.equal(s.totals.payerReceivedMinor, 10000);
     assert.equal(s.totals.payerOutstandingMinor, 8000);
     assert.equal(s.totals.payerCreditMinor, 2000);

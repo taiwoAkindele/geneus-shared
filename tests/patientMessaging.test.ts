@@ -34,10 +34,12 @@ describe('patient messaging contract', () => {
       reason: 'The SMS provider refused this number',
       attempts: 3,
     });
+
     assert.equal(SCHEMA_BY_TYPE.patient_message, PatientMessage);
     assert.equal(message.status, 'failed');
     assert.throws(() => PatientMessage.parse({ ...message, channel: 'whatsapp' }));
   });
+
   it('sends a bill or receipt on each chosen channel once', () => {
     assert.deepEqual(
       SendToPatientRequest.parse({
@@ -47,11 +49,13 @@ describe('patient messaging contract', () => {
       }).channels,
       ['sms', 'email'],
     );
+
     assert.equal(
       SendToPatientRequest.parse({ kind: 'receipt', paymentId: 'payment:1', channels: ['email'] })
         .kind,
       'receipt',
     );
+
     assert.throws(() =>
       SendToPatientRequest.parse({
         kind: 'bill',
@@ -59,14 +63,17 @@ describe('patient messaging contract', () => {
         channels: ['sms', 'sms'],
       }),
     );
+
     assert.throws(() =>
       SendToPatientRequest.parse({ kind: 'receipt', paymentId: 'payment:1', channels: [] }),
     );
   });
+
   it("accepts the patient's own choice", () => {
     assert.equal(PublicMessageChoice.parse({ channel: 'email', choice: 'stop' }).choice, 'stop');
     assert.throws(() => PublicMessageChoice.parse({ channel: 'sms', choice: 'pause' }));
   });
+
   it('allows online payments and bill checkouts', () => {
     const payment = Payment.parse({
       ...base,
@@ -80,7 +87,9 @@ describe('patient messaging contract', () => {
       currency: 'NGN',
       allocations: [{ chargeId: 'charge:1', amountMinor: 100 }],
     });
+
     assert.equal(payment.method, 'online');
+
     const transfer = IncomingTransfer.parse({
       ...base,
       id: 'incoming_transfer:1',
@@ -94,6 +103,7 @@ describe('patient messaging contract', () => {
       channel: 'checkout',
       billKey: 'TEST-000001-K2|NGN|visit:x',
     });
+
     assert.equal(transfer.channel, 'checkout');
     assert.throws(() => IncomingTransfer.parse({ ...transfer, channel: 'card' }));
   });

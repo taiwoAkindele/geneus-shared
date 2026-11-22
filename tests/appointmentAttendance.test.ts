@@ -5,6 +5,7 @@ import { ROLE_PERMISSIONS } from '../src/permissions.ts';
 
 const createdOn = '2026-10-26T08:00:00.000Z';
 const recordedOn = '2026-10-26T09:00:00.000Z';
+
 const booking = {
   id: 'booking:one',
   type: 'appointment',
@@ -15,6 +16,7 @@ const booking = {
   patientId: 'TEST-000001-K2',
   reason: 'Consultation',
 };
+
 const arrival = AppointmentActivity.parse({
   id: 'action:one',
   action: 'arrived',
@@ -27,23 +29,29 @@ const arrival = AppointmentActivity.parse({
 describe('attributed appointment attendance', () => {
   it('keeps existing bookings valid and grants updates to front desk and clinical roles', () => {
     assert.equal(Appointment.parse(booking).attendance, undefined);
+
     for (const role of ['records_officer', 'nurse', 'doctor', 'facility_admin'] as const) {
       assert.ok(ROLE_PERMISSIONS[role].includes('appointment:update'));
     }
+
     assert.ok(!ROLE_PERMISSIONS.cashier.includes('appointment:update'));
   });
+
   it('requires matching history, distinct actions and reasons for consequential changes', () => {
     assert.ok(
       Appointment.safeParse({ ...booking, attendance: 'arrived', activity: [arrival] }).success,
     );
+
     assert.ok(!Appointment.safeParse({ ...booking, attendance: 'arrived' }).success);
     assert.ok(
       !Appointment.safeParse({ ...booking, attendance: 'booked', activity: [arrival] }).success,
     );
+
     assert.ok(
       !Appointment.safeParse({ ...booking, attendance: 'arrived', activity: [arrival, arrival] })
         .success,
     );
+
     assert.ok(
       !Appointment.safeParse({
         ...booking,
@@ -52,6 +60,7 @@ describe('attributed appointment attendance', () => {
       }).success,
     );
   });
+
   it('retains old dates, requires future reschedules and prevents no-show after arrival', () => {
     const event = {
       ...arrival,
@@ -60,6 +69,7 @@ describe('attributed appointment attendance', () => {
       toScheduledFor: '2026-10-27T09:00:00.000Z',
       reason: 'Patient request',
     };
+
     assert.ok(
       Appointment.safeParse({
         ...booking,
@@ -69,6 +79,7 @@ describe('attributed appointment attendance', () => {
         activity: [event],
       }).success,
     );
+
     assert.ok(
       !Appointment.safeParse({
         ...booking,
@@ -76,6 +87,7 @@ describe('attributed appointment attendance', () => {
         activity: [{ ...event, toScheduledFor: createdOn }],
       }).success,
     );
+
     const missed = {
       ...arrival,
       id: 'action:two',
@@ -84,6 +96,7 @@ describe('attributed appointment attendance', () => {
       toAttendance: 'no_show',
       reason: 'Incorrect',
     };
+
     assert.ok(
       !Appointment.safeParse({ ...booking, attendance: 'no_show', activity: [arrival, missed] })
         .success,

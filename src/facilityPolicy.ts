@@ -14,6 +14,7 @@ type DocumentPolicy = {
   visibility: 'operational' | 'restricted';
   permission?: Permission;
 };
+
 export const FACILITY_DOCUMENT_POLICY = {
   location: {
     writer: 'device',
@@ -118,13 +119,16 @@ export const FacilityFeatureSupport = z.strictObject({
   minimumSchemaVersion: z.literal(FACILITY_MIN_SCHEMA_VERSION),
   minimumPolicyVersion: z.literal(FACILITY_MIN_POLICY_VERSION),
 });
+
 export type FacilityFeatureSupport = z.infer<typeof FacilityFeatureSupport>;
 
 /** Transport precondition; consumers must compare under the same lock as the write. */
 export const ConfigurationPrecondition = z.strictObject({
   expectedRevision: z.number().int().positive(),
 });
+
 export type ConfigurationPrecondition = z.infer<typeof ConfigurationPrecondition>;
+
 export const configurationRevisionIssues = (
   expected: number | undefined,
   current: number | undefined,
@@ -171,13 +175,16 @@ export const isConfigurationWrite = (
   if (!(CONFIGURATION_TYPES as readonly string[]).includes(table)) {
     return false;
   }
+
   if (table === 'roster_shift' && op === 'patch') {
     const meaningful = changedFields.filter(
       (field) => !['updatedBy', 'updatedOn', 'id'].includes(field),
     );
+
     if (meaningful.length && meaningful.every((field) => field === 'extendedUntil')) {
       return false;
     }
   }
+
   return true;
 };

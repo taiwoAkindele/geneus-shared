@@ -9,6 +9,7 @@ import {
 } from '../src/index.ts';
 
 const id = 'TEST-PHC-000001-K2';
+
 const base = {
   id,
   patientId: id,
@@ -18,6 +19,7 @@ const base = {
   createdOn: '2026-10-31T09:00:00Z',
   deviceId: 'device:one',
 };
+
 const provisional = () =>
   Patient.parse({
     ...base,
@@ -25,6 +27,7 @@ const provisional = () =>
     identityStatus: 'provisional',
     provisionalReason: 'Identity unknown on arrival',
   });
+
 const identified = () =>
   Patient.parse({
     ...provisional(),
@@ -48,6 +51,7 @@ describe('provisional patient contract and identity completion', () => {
     assert.equal(patientSexLabel(patient.sex), 'Sex not recorded');
     assert.notEqual(provisionalPatientName(id), provisionalPatientName('TEST-PHC-000002-K2'));
   });
+
   it('retains ordinary registration requirements and reads legacy identified records', () => {
     assert.equal(Patient.safeParse({ ...base, fullName: 'Known person' }).success, false);
     assert.equal(
@@ -62,8 +66,10 @@ describe('provisional patient contract and identity completion', () => {
       'identified',
     );
   });
+
   it('requires a reason, distinct temporary label and compatible schema for provisional registration', () => {
     const patient = provisional();
+
     for (const change of [
       { provisionalReason: '' },
       { fullName: 'Unknown person' },
@@ -73,8 +79,10 @@ describe('provisional patient contract and identity completion', () => {
       assert.equal(Patient.safeParse({ ...patient, ...change }).success, false);
     }
   });
+
   it('requires known demographics and attribution to complete identification', () => {
     const patient = identified();
+
     for (const change of [
       { sex: null },
       { address: null },
@@ -84,14 +92,17 @@ describe('provisional patient contract and identity completion', () => {
     ]) {
       assert.equal(Patient.safeParse({ ...patient, ...change }).success, false);
     }
+
     assert.deepEqual(
       patientIdentificationIssues(provisional(), patient, 'staff:two', patient.identifiedOn!),
       [],
     );
+
     assert.ok(
       patientIdentificationIssues(provisional(), patient, 'staff:other', patient.identifiedOn!)
         .length,
     );
+
     assert.ok(
       patientIdentificationIssues(
         { ...provisional(), phone: '08000000001' },
@@ -101,8 +112,10 @@ describe('provisional patient contract and identity completion', () => {
       ).length,
     );
   });
+
   it('keeps the original circumstances and completed attribution immutable', () => {
     const patient = identified();
+
     for (const change of [
       { provisionalReason: 'Different original reason' },
       { identifiedBy: 'staff:other' },
@@ -118,6 +131,7 @@ describe('provisional patient contract and identity completion', () => {
         ).length,
       );
     }
+
     assert.deepEqual(
       patientIdentificationIssues(
         patient,
