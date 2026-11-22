@@ -39,10 +39,12 @@ describe('role permissions', () => {
     for (const role of ['chew', 'nurse', 'doctor', 'supervisor'] as const) {
       assert.ok(permissionsFor(role, 'read_write').includes('encounter:record'), role);
     }
+
     assert.equal(
       permissionsFor('records_officer', 'read_write').includes('encounter:record'),
       false,
     );
+
     assert.equal(permissionsFor('cashier', 'read_write').includes('encounter:record'), false);
   });
 
@@ -69,7 +71,9 @@ describe('role permissions', () => {
     const roleGranted = Permission.options.filter(
       (permission) => !PROTECTED_PERMISSIONS.includes(permission),
     );
+
     assert.deepEqual([...ROLE_PERMISSIONS.facility_admin].sort(), [...roleGranted].sort());
+
     for (const permission of [
       'insurance_contract:read',
       'insurance_contract:manage',
@@ -120,6 +124,7 @@ describe('role permissions', () => {
   it('lets everyone who may book an appointment raise its fees', () => {
     for (const role of Role.options) {
       const permissions = ROLE_PERMISSIONS[role];
+
       if (permissions.includes('appointment:create')) {
         assert.ok(permissions.includes('charge:create'), role);
       }
@@ -137,6 +142,7 @@ describe('role permissions', () => {
     const holders = Role.options.filter((role) =>
       ROLE_PERMISSIONS[role].includes('fee_item:manage'),
     );
+
     assert.deepEqual(holders, ['facility_admin']);
   });
 
@@ -162,6 +168,7 @@ describe('role permissions', () => {
         /^(staff|device|practitioner|credential|clinical_capability|staff_assignment):/,
       );
     }
+
     assert.equal(HIGH_RISK_PERMISSIONS.includes('patient:update'), false);
   });
 });
@@ -223,6 +230,7 @@ describe('decide', () => {
       permission: 'staff:manage',
       lastServerContactOn: admin.lastServerContactOn,
     });
+
     assert.equal(decide(admin, 'patient:update', NOW), undefined);
   });
 });

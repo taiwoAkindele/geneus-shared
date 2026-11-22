@@ -16,6 +16,26 @@ import {
   type ClaimSettlement,
 } from './insurance.ts';
 
+const responsibilityText = (
+  hasAllocation: boolean,
+  hasSummary: boolean,
+  isFinal: boolean,
+): string => {
+  if (hasAllocation) {
+    return hasSummary ? 'Confirmed insurance decision' : 'Confirmed snapshot totals awaiting sync';
+  }
+
+  return isFinal ? 'Patient responsibility confirmed' : 'Insurance decision pending';
+};
+
+const paymentKindText = (payment: { reverses?: unknown; method: string }): string => {
+  if (payment.reverses) {
+    return 'Payment reversal';
+  }
+
+  return payment.method === 'waiver' ? 'Waiver' : `Patient ${payment.method} receipt`;
+};
+
 /** Public amounts copied from an existing immutable insurance snapshot; never contract terms. */
 export const CoverageFinancialSummary = baseEnvelope
   .extend({
@@ -41,7 +61,9 @@ export const CoverageFinancialSummary = baseEnvelope
         s.returnAdjustmentMinor,
     'The existing insurance snapshot must reconcile',
   );
+
 export type CoverageFinancialSummary = z.infer<typeof CoverageFinancialSummary>;
+
 export type StatementClaim = {
   id: string;
   claimNumber: string;
@@ -49,6 +71,7 @@ export type StatementClaim = {
   chargeIds: string[];
   settlement: ClaimSettlement;
 };
+
 export type StatementLine = {
   chargeId: string;
   category: z.infer<typeof FeeCategory>;
@@ -74,6 +97,7 @@ export type StatementLine = {
   responsibilityConfirmed: boolean;
   responsibility: string;
 };
+
 export const STATEMENT_TOTAL_KEYS = [
   'originalMinor',
   'exemptMinor',
@@ -90,11 +114,14 @@ export const STATEMENT_TOTAL_KEYS = [
   'patientBalanceMinor',
   'heldPatientPaymentsMinor',
 ] as const;
+
 export type StatementTotals = Record<(typeof STATEMENT_TOTAL_KEYS)[number], number>;
+
 export const sumStatementLines = (lines: readonly StatementLine[]): StatementTotals =>
   Object.fromEntries(
     STATEMENT_TOTAL_KEYS.map((k) => [k, lines.reduce((n, l) => n + l[k], 0)]),
   ) as StatementTotals;
+
 export type PatientStatement = {
   patientId: string;
   patientName: string;
@@ -137,27 +164,34 @@ export const patientStatement = (input: {
   limitations?: string[];
 }): PatientStatement => {
   const before = (on: string) => Date.parse(on) <= Date.parse(input.cutoff);
+
   const charges = input.charges
     .filter(
       (c) =>
         c.patientId === input.patientId && c.currency === input.currency && before(c.createdOn),
     )
     .sort((a, b) => a.createdOn.localeCompare(b.createdOn) || a.id.localeCompare(b.id));
+
   const payments = input.payments.filter(
     (p) => p.patientId === input.patientId && p.currency === input.currency && before(p.createdOn),
   );
+
   const refunds = input.refunds.filter(
     (r) => r.patientId === input.patientId && r.currency === input.currency && before(r.createdOn),
   );
+
   const allocations = input.allocations.filter(
     (a) => a.patientId === input.patientId && before(a.createdOn),
   );
+
   const lines: StatementLine[] = charges.map((c) => {
     const allocation = currentAllocation(c.id, allocations);
     const summary = allocation && input.summaries.find((s) => s.allocationId === allocation.id);
+
     const estimate =
       input.estimates.get(c.id) ??
       ({ state: 'undetermined', reason: 'not_configured' } as CoverageEstimate);
+
     const responsibility = patientResponsibility(c, estimate);
     const exemptMinor = c.listPriceMinor - c.amountMinor;
     let patientMinor = 0;
@@ -166,6 +200,7 @@ export const patientStatement = (input: {
     let contractAdjustmentMinor = 0;
     let returnAdjustmentMinor = 0;
     let pendingMinor = 0;
+
     if (c.amountMinor === 0) {
       patientMinor = 0;
     } else if (allocation && summary) {
@@ -179,8 +214,10 @@ export const patientStatement = (input: {
     } else {
       pendingMinor = c.amountMinor;
     }
+
     // The signed contractual adjustment is subtracted. A negative value increases net charges.
     const signed = (p: Payment) => (p.reverses ? -1 : 1);
+
     const received = payments
       .filter((p) => p.method !== 'waiver')
       .reduce(
@@ -190,6 +227,7 @@ export const patientStatement = (input: {
             p.allocations.filter((a) => a.chargeId === c.id).reduce((s, a) => s + a.amountMinor, 0),
         0,
       );
+
     const waived = payments
       .filter((p) => p.method === 'waiver')
       .reduce(
@@ -199,14 +237,17 @@ export const patientStatement = (input: {
             p.allocations.filter((a) => a.chargeId === c.id).reduce((s, a) => s + a.amountMinor, 0),
         0,
       );
+
     const reductions = input.adjustments
       .filter((a) => a.patientId === input.patientId && a.chargeId === c.id && before(a.createdOn))
       .reduce((n, a) => n + a.amountMinor, waived);
+
     const refunded = refunds.reduce(
       (n, r) =>
         n + r.allocations.filter((a) => a.chargeId === c.id).reduce((s, a) => s + a.amountMinor, 0),
       0,
     );
+
     return {
       chargeId: c.id,
       category: c.category,
@@ -235,29 +276,32 @@ export const patientStatement = (input: {
       responsibilityConfirmed: pendingMinor === 0,
       heldPatientPaymentsMinor: pendingMinor > 0 ? Math.max(0, received - refunded) : 0,
       patientBalanceMinor: pendingMinor > 0 ? 0 : patientMinor - reductions - received + refunded,
-      responsibility: allocation
-        ? summary
-          ? 'Confirmed insurance decision'
-          : 'Confirmed snapshot totals awaiting sync'
-        : responsibility.final
-          ? 'Patient responsibility confirmed'
-          : 'Insurance decision pending',
+      responsibility: responsibilityText(
+        Boolean(allocation),
+        Boolean(summary),
+        responsibility.final,
+      ),
     };
   });
+
   const totals = sumStatementLines(lines);
   const chargeIds = new Set(lines.map((l) => l.chargeId));
   const claims = input.claims.filter((c) => c.chargeIds.every((id) => chargeIds.has(id)));
   const claimed = new Set(claims.flatMap((c) => c.chargeIds));
+
   const unclaimed = lines
     .filter((l) => !claimed.has(l.chargeId))
     .reduce((n, l) => n + l.payerMinor, 0);
+
   const payerPaid = claims.reduce((n, c) => n + c.settlement.paidMinor, 0);
   const payerWriteOff = claims.reduce((n, c) => n + c.settlement.writtenOffMinor, 0);
+
   // Money stays with its recorded claim family; an overpayment cannot settle another claim.
   const payerPositions = claims.map((c) => {
     const expectedMinor = lines
       .filter((l) => c.chargeIds.includes(l.chargeId))
       .reduce((n, l) => n + l.payerMinor, 0);
+
     return {
       position: claimSettlement({
         submitted: true,
@@ -270,8 +314,10 @@ export const patientStatement = (input: {
       creditMinor: Math.max(0, c.settlement.paidMinor - expectedMinor),
     };
   });
+
   const mismatch =
     claims.reduce((n, c) => n + c.settlement.expectedMinor, 0) !== totals.payerMinor - unclaimed;
+
   return {
     patientId: input.patientId,
     patientName: input.patientName,
@@ -282,6 +328,7 @@ export const patientStatement = (input: {
     lines,
     categories: FeeCategory.options.flatMap((category) => {
       const group = lines.filter((l) => l.category === category);
+
       return group.length
         ? [{ category, count: group.length, totals: sumStatementLines(group) }]
         : [];
@@ -321,11 +368,7 @@ export const patientStatement = (input: {
       ...payments.map((p) => ({
         id: p.id,
         on: p.createdOn,
-        kind: p.reverses
-          ? 'Payment reversal'
-          : p.method === 'waiver'
-            ? 'Waiver'
-            : `Patient ${p.method} receipt`,
+        kind: paymentKindText(p),
         reference: p.receiptNumber,
         amountMinor: p.amountMinor * (p.reverses ? -1 : 1),
       })),

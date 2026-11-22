@@ -1,7 +1,9 @@
 import { z } from 'zod';
 import { Sex } from './common.ts';
 import { VisitType } from './facilityTypes.ts';
+
 const text = z.string().trim().min(1);
+
 export const ExemptionRule = z
   .strictObject({
     /** Shown on the bill and in the reports: "Exempt — Under-5 policy". */
@@ -28,4 +30,5 @@ export const ExemptionRule = z
       rule.ageFromYears < rule.ageUnderYears,
     { message: 'No patient can be both that old and that young', path: ['ageFromYears'] },
   );
+
 export type ExemptionRule = z.infer<typeof ExemptionRule>;

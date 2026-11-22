@@ -14,6 +14,7 @@ import { emailAddress } from './api.ts';
 
 /** Who made the change: staff on the patient's behalf (uploaded from a device) or the patient (written by the server). */
 export const ContactChangeSource = z.enum(['staff', 'patient']);
+
 export type ContactChangeSource = z.infer<typeof ContactChangeSource>;
 
 export const PatientContact = baseEnvelope.extend({
@@ -26,6 +27,7 @@ export const PatientContact = baseEnvelope.extend({
   source: ContactChangeSource,
   replaces: z.string().min(1).optional(),
 });
+
 export type PatientContact = z.infer<typeof PatientContact>;
 
 /**
@@ -38,25 +40,31 @@ export const currentPatientContact = (
 ): PatientContact | undefined => {
   const mine = records.filter((r) => r.patientId === patient);
   const replaced = new Set(mine.map((r) => r.replaces).filter(Boolean));
+
   return mine
     .filter((r) => !replaced.has(r.id))
     .sort((a, b) => b.createdOn.localeCompare(a.createdOn) || b.id.localeCompare(a.id))[0];
 };
 
 export const MessageChannel = z.enum(['sms', 'email']);
+
 export type MessageChannel = z.infer<typeof MessageChannel>;
+
 /** The channels bills and receipts can go to: those with contact details that the patient hasn't stopped. */
 export const availableChannels = (
   contact: PatientContact | undefined,
   phone: string | undefined,
 ): MessageChannel[] => {
   const channels: MessageChannel[] = [];
+
   if (phone?.trim() && !contact?.smsStopped) {
     channels.push('sms');
   }
+
   if (contact?.email && !contact.emailStopped) {
     channels.push('email');
   }
+
   return channels;
 };
 
@@ -72,16 +80,20 @@ export const contactChangeProblem = (
   if (previous && previous.patientId !== next.patientId) {
     return 'This change is for a different patient';
   }
+
   if (next.source === 'staff') {
     if (previous?.smsStopped && !next.smsStopped) {
       return 'The patient stopped SMS. Only the patient can start it again';
     }
+
     if (previous?.emailStopped && !next.emailStopped) {
       return 'The patient stopped email. Only the patient can start it again';
     }
   }
+
   if (next.source === 'patient' && previous?.email !== next.email) {
     return "A patient's change can't alter contact details";
   }
+
   return undefined;
 };

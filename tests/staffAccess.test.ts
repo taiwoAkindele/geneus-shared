@@ -22,6 +22,7 @@ describe('combined staff access', () => {
       staffPermissions(member({ role: 'records_officer' })).includes('patient_chart:read'),
       false,
     );
+
     const reader = staffPermissions(
       member({
         role: 'records_officer',
@@ -29,21 +30,26 @@ describe('combined staff access', () => {
         additionalPermissions: ['patient_chart:read', 'encounter:record'],
       }),
     );
+
     assert.deepEqual(reader, ['patient_chart:read']);
     assert.ok(staffPermissions(member({ permission: 'read_only' })).includes('patient_chart:read'));
   });
+
   it('keeps legacy single-role staff valid', () => {
     const staff = member();
     assert.deepEqual(rolesFor(staff), ['nurse']);
     assert.ok(staffPermissions(staff).includes('encounter:record'));
     assert.equal(staff.additionalRoles, undefined);
   });
+
   it('combines selected roles and individual grants without duplicate capabilities', () => {
     const staff = member({
       additionalRoles: ['cashier', 'supervisor'],
       additionalPermissions: ['fee_item:manage'],
     });
+
     const permissions = staffPermissions(staff);
+
     for (const permission of [
       'encounter:record',
       'payment:receive',
@@ -52,9 +58,11 @@ describe('combined staff access', () => {
     ] as const) {
       assert.ok(permissions.includes(permission));
     }
+
     assert.equal(new Set(permissions).size, permissions.length);
     assert.equal(permissions.includes('staff:permission'), false);
   });
+
   it('makes read-only override all roles and grants', () => {
     assert.deepEqual(
       staffPermissions(
@@ -67,6 +75,7 @@ describe('combined staff access', () => {
       ['patient_chart:read'],
     );
   });
+
   it('rejects unknown roles, duplicate grants and the private PIN claim capability', () => {
     for (const extra of [
       { additionalRoles: ['janitor'] },
@@ -77,6 +86,7 @@ describe('combined staff access', () => {
       assert.equal(Staff.safeParse({ ...member(), ...extra }).success, false);
     }
   });
+
   it('allows a secondary admin to approve accounts but refuses lower-access PIN approvers', () => {
     const admin = member({ additionalRoles: ['facility_admin'] });
     const supervisor = member({ role: 'supervisor' });
@@ -88,6 +98,7 @@ describe('combined staff access', () => {
       false,
     );
   });
+
   it('does not turn a delegated staff-management grant into an admin PIN takeover', () => {
     const manager = member({ additionalPermissions: ['staff:manage'] });
     assert.ok(mayApprovePin(manager, member()));

@@ -25,6 +25,7 @@ const base = {
   createdBy: 'staff:doctor',
   createdOn: '2026-11-08T10:00:00.000Z',
 };
+
 const patient = Patient.parse({
   ...base,
   type: 'patient',
@@ -35,6 +36,7 @@ const patient = Patient.parse({
   sex: 'female',
   ageYears: 30,
 });
+
 const source = EncounterEntry.parse({
   ...base,
   id: 'rx:one',
@@ -57,6 +59,7 @@ const source = EncounterEntry.parse({
     ],
   },
 });
+
 const item = StockItem.parse({
   ...base,
   id: 'stock:one',
@@ -66,6 +69,7 @@ const item = StockItem.parse({
   unitOfMeasure: 'tablets',
   quantityOnHand: 100,
 });
+
 const fee = FeeItem.parse({
   ...base,
   id: 'fee:one',
@@ -76,6 +80,7 @@ const fee = FeeItem.parse({
   amountMinor: 100,
   currency: 'NGN',
 });
+
 const data = (): PharmacyRecords => ({
   entries: [source],
   items: [item],
@@ -85,6 +90,7 @@ const data = (): PharmacyRecords => ({
   adjustments: [],
   patient,
 });
+
 const details = (values: Partial<DispensingDetails> = {}): DispensingDetails => ({
   prescriptionEntryId: source.id,
   lineId: 'line:one',
@@ -101,6 +107,7 @@ const details = (values: Partial<DispensingDetails> = {}): DispensingDetails => 
   chargedMinor: 500,
   ...values,
 });
+
 const entry = (id: string, d: DispensingDetails, records = data()) => {
   const e = EncounterEntry.parse({
     ...base,
@@ -117,11 +124,15 @@ const entry = (id: string, d: DispensingDetails, records = data()) => {
       lines: [{ drug: 'Synthetic medicine', dispensed: false, reason: 'Pending' }],
     },
   });
+
   e.values.lines = dispensingSummary(source, records.entries, e);
+
   return e;
 };
+
 const append = (records: PharmacyRecords, e: EncounterEntry): PharmacyRecords => {
   const effects = pharmacyEffects(e, records);
+
   return {
     ...records,
     entries: [...records.entries, e],
@@ -133,6 +144,7 @@ const append = (records: PharmacyRecords, e: EncounterEntry): PharmacyRecords =>
     ],
   };
 };
+
 describe('quantity-based pharmacy contract', () => {
   it('keeps prepaid partial supplies in billing review without guessing coverage or charging again', () => {
     const records = data();
@@ -150,6 +162,7 @@ describe('quantity-based pharmacy contract', () => {
         currency: 'NGN',
       },
     ];
+
     const unpriced = (quantity: number, previousEntryId?: string) =>
       details({
         catalogueVersion: 1,
@@ -162,6 +175,7 @@ describe('quantity-based pharmacy contract', () => {
         chargedMinor: undefined,
         reason: 'Existing manual bill requires quantity review',
       });
+
     const first = entry('prepaid:two', unpriced(2), records);
     assert.deepEqual(pharmacyIssues(first, records), []);
     const saved = append(records, first);
@@ -170,12 +184,15 @@ describe('quantity-based pharmacy contract', () => {
     const final = append(saved, last);
     assert.equal(final.charges.length, 1);
     assert.equal(supplyState(source, 'line:one', final.entries).supplied, 3);
+
     const unsafe = entry(
       'prepaid:duplicate',
       details({ catalogueVersion: 1, quantity: 3, chargedMinor: 300 }),
       records,
     );
+
     assert.match(pharmacyIssues(unsafe, records).join(), /review/i);
+
     const extra = entry(
       'prepaid:additional',
       details({
@@ -186,8 +203,10 @@ describe('quantity-based pharmacy contract', () => {
       }),
       records,
     );
+
     assert.deepEqual(pharmacyIssues(extra, records), []);
   });
+
   it('supplies the exact signed take-home prescription and refuses new supplies against a revised summary', () => {
     const summary = WardCareEvent.parse({
       ...base,
@@ -210,24 +229,30 @@ describe('quantity-based pharmacy contract', () => {
         admittedOn: base.createdOn,
       },
     });
+
     const records = { ...data(), entries: [], wardEvents: [summary] };
+
     const supply = entry(
       'take-home:supply',
       details({ prescriptionEntryId: summary.id, lineId: prescriptionLines(summary)[0].lineId }),
     );
+
     supply.values.lines = dispensingSummary(summary, [], supply);
     assert.deepEqual(pharmacyIssues(supply, records), []);
     assert.equal(pharmacyEffects(supply, records).length, 2);
+
     const revised = WardCareEvent.parse({
       ...summary,
       id: 'summary:revised',
       values: { ...summary.values, previousId: summary.id },
     });
+
     assert.match(
       pharmacyIssues(supply, { ...records, wardEvents: [summary, revised] }).join(),
       /revised/,
     );
   });
+
   it('retains partial supplies and derives a stock movement and bill for only the quantity handed over', () => {
     const first = entry('supply:one', details());
     assert.deepEqual(pharmacyIssues(first, data()), []);
@@ -237,14 +262,17 @@ describe('quantity-based pharmacy contract', () => {
     assert.equal(state.complete, false);
     assert.equal(saved.movements[0].change, -5);
     assert.equal(saved.charges[0].amountMinor, 500);
+
     const last = entry(
       'supply:two',
       details({ quantity: 15, chargedMinor: 1500, complete: true, previousEntryId: first.id }),
       saved,
     );
+
     assert.deepEqual(pharmacyIssues(last, saved), []);
     assert.equal(supplyState(source, 'line:one', append(saved, last).entries).supplied, 20);
   });
+
   it('refuses stale predecessors, over-supply, guessed pack conversions and false completion', () => {
     const first = entry('supply:one', details());
     const saved = append(data(), first);
@@ -255,13 +283,16 @@ describe('quantity-based pharmacy contract', () => {
         data(),
       ).length,
     );
+
     assert.ok(pharmacyIssues(entry('packs', details({ unit: 'packs' })), data()).length);
     assert.ok(pharmacyIssues(entry('early-complete', details({ complete: true })), data()).length);
   });
+
   it('keeps source identity and original clinical instructions immutable', () => {
     assert.ok(
       pharmacyIssues(entry('wrong-line', details({ lineId: 'line:other' })), data()).length,
     );
+
     const correction = EncounterEntry.parse({
       ...base,
       id: 'amend:rx',
@@ -276,16 +307,19 @@ describe('quantity-based pharmacy contract', () => {
         correctedValues: { decision: 'none_required', prescription: [] },
       },
     });
+
     assert.ok(
       pharmacyIssues(entry('corrected-rx', details()), { ...data(), entries: [source, correction] })
         .length,
     );
+
     assert.equal(
       source.values.prescription &&
         (source.values.prescription as { quantity: number }[])[0].quantity,
       20,
     );
   });
+
   it('records outside supplies without a stock movement or hospital medicine bill', () => {
     const outside = entry(
       'outside',
@@ -299,9 +333,11 @@ describe('quantity-based pharmacy contract', () => {
         chargedMinor: undefined,
       }),
     );
+
     assert.deepEqual(pharmacyIssues(outside, data()), []);
     assert.deepEqual(pharmacyEffects(outside, data()), []);
   });
+
   it('bills an unpriced saved supply once without deducting stock again', () => {
     const first = entry(
       'unpriced',
@@ -316,7 +352,9 @@ describe('quantity-based pharmacy contract', () => {
         reason: 'Selling price not set',
       }),
     );
+
     const saved = append(data(), first);
+
     const priced = entry(
       'priced',
       {
@@ -336,6 +374,7 @@ describe('quantity-based pharmacy contract', () => {
       },
       saved,
     );
+
     assert.deepEqual(pharmacyIssues(priced, saved), []);
     const final = append(saved, priced);
     assert.equal(final.movements.length, 0);
@@ -347,9 +386,11 @@ describe('quantity-based pharmacy contract', () => {
       ).length,
     );
   });
+
   it('caps returns to the actual supply and credits the original bill', () => {
     const first = entry('supply', details());
     const saved = append(data(), first);
+
     const returned = entry(
       'return',
       {
@@ -367,6 +408,7 @@ describe('quantity-based pharmacy contract', () => {
       },
       saved,
     );
+
     assert.deepEqual(pharmacyIssues(returned, saved), []);
     const final = append(saved, returned);
     assert.equal(final.movements[1].change, 2);
@@ -387,6 +429,7 @@ describe('quantity-based pharmacy contract', () => {
         final,
       ).length,
     );
+
     assert.equal(
       returnCredit(first, 10, {
         ...saved,

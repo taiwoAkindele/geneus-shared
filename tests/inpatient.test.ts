@@ -15,6 +15,7 @@ import {
 import { Encounter, EncounterEntry, Unit } from '../src/documents.ts';
 import { Location } from '../src/facility.ts';
 import { staffPermissions } from '../src/permissions.ts';
+
 const base = {
   facilityId: 'TEST',
   schemaVersion: 5,
@@ -22,7 +23,9 @@ const base = {
   deviceId: 'device:one',
   createdOn: '2026-10-31T09:00:00Z',
 };
+
 const patientId = 'TEST-000001-K2';
+
 const unit = Unit.parse({
   ...base,
   id: 'unit:ward',
@@ -31,12 +34,15 @@ const unit = Unit.parse({
   name: 'Ward team',
   active: true,
 });
+
 const location = (id: string, kind: 'ward' | 'room' | 'bed', parentId?: string) =>
   Location.parse({ ...base, id, type: 'location', name: id, kind, parentId });
+
 const ward = location('ward:a', 'ward');
 const room = location('room:a', 'room', ward.id);
 const bed = location('bed:1', 'bed', room.id);
 const bed2 = location('bed:2', 'bed', ward.id);
+
 const encounter = Encounter.parse({
   ...base,
   id: 'encounter:one',
@@ -44,6 +50,7 @@ const encounter = Encounter.parse({
   patientId,
   openedOn: base.createdOn,
 });
+
 const request = EncounterEntry.parse({
   ...base,
   id: 'request:one',
@@ -54,6 +61,7 @@ const request = EncounterEntry.parse({
   actorRole: 'doctor',
   values: { ward: 'Ward A' },
 });
+
 const initial = () =>
   InpatientEvent.parse({
     ...base,
@@ -67,6 +75,7 @@ const initial = () =>
     receivingUnitId: unit.id,
     actorRole: 'doctor',
   });
+
 const next = (
   previous: InpatientEvent,
   action: InpatientEvent['action'],
@@ -79,6 +88,7 @@ const next = (
     action,
     ...extra,
   });
+
 const records = (events: InpatientEvent[] = []): InpatientRecords => ({
   events,
   ready: [],
@@ -95,6 +105,7 @@ describe('admission and ward contract', () => {
     assert.equal(activeAdmission(confirm), true);
     assert.equal(inpatientBedState(bed.id, [confirm], []).status, 'Available');
   });
+
   it('separates bed reservation from physical arrival, including rooms within wards', () => {
     const confirm = initial();
     const reserve = next(confirm, 'reserve', { wardId: ward.id, bedId: bed.id });
@@ -105,12 +116,14 @@ describe('admission and ward contract', () => {
     assert.deepEqual(inpatientIssues(arrive, records([confirm, reserve])), []);
     assert.equal(inpatientBedState(bed.id, [confirm, reserve, arrive], []).status, 'Occupied');
   });
+
   it('rejects double admission and stale/competing successors', () => {
     const confirm = initial();
     assert.match(
       inpatientIssues({ ...confirm, id: 'other', admissionId: 'other' }, records([confirm]))[0],
       /handled/,
     );
+
     const reserve = next(confirm, 'reserve', { wardId: ward.id, bedId: bed.id });
     assert.match(
       inpatientIssues(
@@ -120,6 +133,7 @@ describe('admission and ward contract', () => {
       /changed/,
     );
   });
+
   it('refuses arrival without reservation and bed/visit substitution', () => {
     const confirm = initial();
     assert.ok(
@@ -135,11 +149,13 @@ describe('admission and ward contract', () => {
         records([confirm]),
       ).length,
     );
+
     const reserve = next(confirm, 'reserve', { wardId: ward.id, bedId: bed.id });
     assert.ok(
       inpatientIssues(next(reserve, 'arrive', { bedId: bed2.id }), records([confirm, reserve]))
         .length,
     );
+
     assert.ok(
       inpatientIssues(
         next(reserve, 'arrive', { patientId: 'TEST-000002-K2' }),
@@ -147,6 +163,7 @@ describe('admission and ward contract', () => {
       ).length,
     );
   });
+
   it('keeps discharge-ready patients admitted and occupies their bed until departure', () => {
     const confirm = initial();
     const reserve = next(confirm, 'reserve', { wardId: ward.id, bedId: bed.id });
@@ -159,6 +176,7 @@ describe('admission and ward contract', () => {
     assert.deepEqual(inpatientIssues(departure, records(events)), []);
     assert.equal(activeAdmission(departure), false);
     assert.equal(inpatientBedState(bed.id, [...events, departure], []).status, 'Cleaning');
+
     const cleaned = BedReadyEvent.parse({
       ...base,
       id: 'clean:1',
@@ -167,12 +185,14 @@ describe('admission and ward contract', () => {
       releaseEventId: departure.id,
       actorRole: 'nurse',
     });
+
     assert.deepEqual(bedReadyIssues(cleaned, records([...events, departure])), []);
     assert.equal(inpatientBedState(bed.id, [...events, departure], [cleaned]).status, 'Available');
     assert.ok(
       bedReadyIssues(cleaned, { ...records([...events, departure]), ready: [cleaned] }).length,
     );
   });
+
   it('transfers to a different available bed and leaves the old bed awaiting cleaning', () => {
     const confirm = initial();
     const reserve = next(confirm, 'reserve', { wardId: ward.id, bedId: bed.id });
@@ -196,6 +216,7 @@ describe('admission and ward contract', () => {
       ).length,
     );
   });
+
   it('cancels pre-arrival reservations without manufacturing a cleaning task', () => {
     const confirm = initial();
     const reserve = next(confirm, 'reserve', { wardId: ward.id, bedId: bed.id });
@@ -203,6 +224,7 @@ describe('admission and ward contract', () => {
     assert.deepEqual(inpatientIssues(cancel, records([confirm, reserve])), []);
     assert.equal(inpatientBedState(bed.id, [confirm, reserve, cancel], []).status, 'Available');
   });
+
   it('retains competing heads and removes rejected branches and their descendants', () => {
     const confirm = initial();
     const reserve = next(confirm, 'reserve', { wardId: ward.id, bedId: bed.id });
@@ -212,10 +234,12 @@ describe('admission and ward contract', () => {
       confirm,
     ]);
   });
+
   it('grants admission work explicitly to hospital clinical roles, never cashiers or laboratory roles by default', () => {
     for (const role of ['nurse', 'doctor', 'supervisor', 'facility_admin'] as const) {
       assert.ok(staffPermissions({ role, permission: 'read_write' }).includes('admission:manage'));
     }
+
     for (const role of [
       'cashier',
       'laboratory_staff',
@@ -228,6 +252,7 @@ describe('admission and ward contract', () => {
         false,
       );
     }
+
     assert.equal(
       staffPermissions({ role: 'nurse', permission: 'read_only' }).includes('admission:manage'),
       false,

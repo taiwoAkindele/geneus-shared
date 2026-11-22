@@ -36,6 +36,7 @@ export const PatientIdentityPreview = z.object({
   otherIds: z.array(z.string()),
   warning: z.string(),
 });
+
 export type PatientIdentityPreview = z.infer<typeof PatientIdentityPreview>;
 
 /* ------------------------------------------------------------------ */
@@ -48,6 +49,7 @@ export const ApiErrorBody = z.object({
   message: z.string().min(1),
   issues: z.array(z.unknown()).optional(),
 });
+
 export type ApiErrorBody = z.infer<typeof ApiErrorBody>;
 
 /* ------------------------------------------------------------------ */
@@ -58,6 +60,7 @@ export const InviteCheck = z.object({
   label: z.string().min(1),
   expiresOn: isoDateTime,
 });
+
 export type InviteCheck = z.infer<typeof InviteCheck>;
 
 /** Facility codes build every Patient ID, so the format is fixed here. */
@@ -96,6 +99,7 @@ export const FacilityRegistration = z.object({
   deviceLabel: z.string().optional(),
   inviteToken: z.string().min(1),
 });
+
 export type FacilityRegistration = z.infer<typeof FacilityRegistration>;
 
 /**
@@ -111,6 +115,7 @@ export const DeviceCredential = z.object({
   /** Where the device connects PowerSync to; server configuration, not a client constant. */
   syncEndpoint: z.url(),
 });
+
 export type DeviceCredential = z.infer<typeof DeviceCredential>;
 
 export const FacilityRegistrationResult = z.object({
@@ -118,6 +123,7 @@ export const FacilityRegistrationResult = z.object({
   admin: Staff,
   device: DeviceCredential,
 });
+
 export type FacilityRegistrationResult = z.infer<typeof FacilityRegistrationResult>;
 
 /** The same facility details are collected for primary and additional facilities. */
@@ -128,6 +134,7 @@ export const FacilityDetails = FacilityRegistration.pick({
   lga: true,
   level: true,
 });
+
 export type FacilityDetails = z.infer<typeof FacilityDetails>;
 
 /** Reuses the authenticated administrator's verified contact, never a client-supplied email. */
@@ -144,6 +151,7 @@ export const OrganizationFacilityRegistration = FacilityDetails.extend({
   path: ['organizationName'],
   message: 'Enter the organization name',
 });
+
 export type OrganizationFacilityRegistration = z.infer<typeof OrganizationFacilityRegistration>;
 
 export const OrganizationFacilityDefaults = z.object({
@@ -154,11 +162,13 @@ export const OrganizationFacilityDefaults = z.object({
     verifiedEmail: z.string().nullable(),
   }),
 });
+
 export type OrganizationFacilityDefaults = z.infer<typeof OrganizationFacilityDefaults>;
 
 export const OrganizationFacilityResult = FacilityRegistrationResult.extend({
   organization: z.object({ id: z.string(), name: z.string() }),
 });
+
 export type OrganizationFacilityResult = z.infer<typeof OrganizationFacilityResult>;
 
 export const OrganizationFacilityDirectory = z.object({
@@ -173,6 +183,7 @@ export const OrganizationFacilityDirectory = z.object({
     }),
   ),
 });
+
 export type OrganizationFacilityDirectory = z.infer<typeof OrganizationFacilityDirectory>;
 
 export const OrganizationFacilityOpen = z.object({
@@ -181,13 +192,16 @@ export const OrganizationFacilityOpen = z.object({
   deviceId: z.string().min(1).max(200),
   deviceSecret: OrganizationFacilityRegistration.shape.deviceSecret.optional(),
 });
+
 export type OrganizationFacilityOpen = z.infer<typeof OrganizationFacilityOpen>;
+
 export const OrganizationFacilityAccess = z.object({
   facilityId: z.string(),
   staffId: z.string(),
   personId: z.string(),
   device: DeviceCredential.optional(),
 });
+
 export type OrganizationFacilityAccess = z.infer<typeof OrganizationFacilityAccess>;
 
 /* ------------------------------------------------------------------ */
@@ -203,12 +217,14 @@ export const EnrollmentCodeRequest = z.object({
   /** Staff issuing the code — verified server-side against the device's facility. */
   issuedBy: z.string().min(1),
 });
+
 export type EnrollmentCodeRequest = z.infer<typeof EnrollmentCodeRequest>;
 
 export const EnrollmentCode = z.object({
   code: z.string().min(1),
   expiresOn: isoDateTime,
 });
+
 export type EnrollmentCode = z.infer<typeof EnrollmentCode>;
 
 export const DeviceEnrollmentRequest = z.object({
@@ -216,6 +232,7 @@ export const DeviceEnrollmentRequest = z.object({
   deviceId: z.string().min(1),
   deviceLabel: z.string().optional(),
 });
+
 export type DeviceEnrollmentRequest = z.infer<typeof DeviceEnrollmentRequest>;
 
 export const DeviceRevocationRequest = z.object({
@@ -229,6 +246,7 @@ export const DeviceRevocationRequest = z.object({
    */
   acceptUnsentWork: z.boolean().optional(),
 });
+
 export type DeviceRevocationRequest = z.infer<typeof DeviceRevocationRequest>;
 
 /* ------------------------------------------------------------------ */
@@ -245,6 +263,7 @@ export const RegistrationEmailRequest = z.object({
   email: emailAddress,
   inviteToken: z.string().min(1),
 });
+
 export type RegistrationEmailRequest = z.infer<typeof RegistrationEmailRequest>;
 
 /**
@@ -259,6 +278,7 @@ export const StaffEmailRequest = z.object({
   /** Must be the admin named in the path — an admin sets only their own email. */
   requestedBy: z.string().min(1),
 });
+
 export type StaffEmailRequest = z.infer<typeof StaffEmailRequest>;
 
 export const StaffEmailConfirmation = StaffEmailRequest.extend({
@@ -267,6 +287,7 @@ export const StaffEmailConfirmation = StaffEmailRequest.extend({
   /** From the email sent to the address already on file; required when there is one. */
   currentCode: emailCode.optional(),
 });
+
 export type StaffEmailConfirmation = z.infer<typeof StaffEmailConfirmation>;
 
 /** Where a code was emailed, masked (`a•••@gmail.com`) — the address itself is never sent back. */
@@ -276,6 +297,7 @@ export const EmailSent = z.object({
   currentSentTo: z.string().min(1).optional(),
   expiresOn: isoDateTime,
 });
+
 export type EmailSent = z.infer<typeof EmailSent>;
 
 /* ------------------------------------------------------------------ */
@@ -293,12 +315,14 @@ export const PinSetupCodeRequest = z.object({
   /** Staff issuing the code — verified server-side to hold `staff:manage`. */
   issuedBy: z.string().min(1),
 });
+
 export type PinSetupCodeRequest = z.infer<typeof PinSetupCodeRequest>;
 
 export const PinSetupCodeIssued = z.object({
   code: z.string().min(1),
   expiresOn: isoDateTime,
 });
+
 export type PinSetupCodeIssued = z.infer<typeof PinSetupCodeIssued>;
 
 /* ------------------------------------------------------------------ */
@@ -339,6 +363,7 @@ export const SyncTokenResponse = z.object({
     .max(200)
     .optional(),
 });
+
 export type SyncTokenResponse = z.infer<typeof SyncTokenResponse>;
 
 /** The claims geneus-server puts in the token; PowerSync reads `facility_id`. */
@@ -359,7 +384,9 @@ export const SyncTokenClaims = z.object({
   insurance_workflow: z.literal(1).optional(),
   care_service: z.literal(1).optional(),
 });
+
 export type SyncTokenClaims = z.infer<typeof SyncTokenClaims>;
+
 /** Fields only a client that negotiated care services receives and may write; strict older parsers would refuse them. */
 export const CARE_SERVICE_FIELDS = {
   service_offering: ['visitTypes'],
@@ -367,6 +394,7 @@ export const CARE_SERVICE_FIELDS = {
   encounter: ['offeringId'],
   facility: ['country', 'address', 'phone', 'currency'],
 } as const;
+
 const usesCareServiceFields = (m: { table: string; data: Record<string, unknown> }) =>
   ((CARE_SERVICE_FIELDS as Record<string, readonly string[]>)[m.table] ?? []).some(
     (field) => m.data[field] !== undefined,
@@ -399,6 +427,7 @@ export const UploadMutation = z.object({
   /** Null means create a new stream; a string must still be the current accepted head. */
   expectedPreviousId: z.string().min(1).nullable().optional(),
 });
+
 export type UploadMutation = z.infer<typeof UploadMutation>;
 
 export const UploadRequest = z
@@ -440,6 +469,7 @@ export const UploadRequest = z
           'Quantity-based dispensing requires pharmacy workflow 1 and the current clinical contract',
       });
     }
+
     if (
       request.mutations.some(
         (m) =>
@@ -460,6 +490,7 @@ export const UploadRequest = z
           'Ward care requires ward care workflow 1 and the current inpatient and clinical contracts',
       });
     }
+
     if (
       request.mutations.some((mutation) =>
         ['library_document', 'visit_document'].includes(mutation.table),
@@ -475,6 +506,7 @@ export const UploadRequest = z
           'Document writes require document workflow 1, facility contract 1, schema 5 and policy 11',
       });
     }
+
     if (
       request.mutations.some(
         (mutation) =>
@@ -494,6 +526,7 @@ export const UploadRequest = z
           'Inpatient writes require inpatient workflow 1, facility contract 1, schema 5 and policy 11',
       });
     }
+
     if (
       request.mutations.some(
         (m) =>
@@ -513,6 +546,7 @@ export const UploadRequest = z
           'Structured lab results and template access require result template workflow 1, clinical workflow 1 and policy 13',
       });
     }
+
     if (
       request.mutations.some((m) =>
         (INSURANCE_UPLOAD_TYPES as readonly string[]).includes(m.table),
@@ -528,6 +562,7 @@ export const UploadRequest = z
           'Insurance records require insurance workflow 1, facility contract 1, schema 5 and policy 14',
       });
     }
+
     if (
       request.mutations.some(usesCareServiceFields) &&
       (request.careServiceVersion !== 1 ||
@@ -540,6 +575,7 @@ export const UploadRequest = z
           'Care services on bookings and visits require care service version 1 and facility contract 1',
       });
     }
+
     if (
       request.clinicalWorkflowVersion === 1 &&
       (request.facilityContractVersion !== 1 ||
@@ -551,6 +587,7 @@ export const UploadRequest = z
         message: 'Clinical workflow v1 requires facility contract 1, schema 4 and policy 10',
       });
     }
+
     if (
       request.mutations.some(
         (m) =>
@@ -571,6 +608,7 @@ export const UploadRequest = z
         message: 'New care entries require clinical workflow version one',
       });
     }
+
     if (
       request.mutations.some(requiresFacilityContract) &&
       (request.facilityContractVersion !== 1 ||
@@ -583,6 +621,7 @@ export const UploadRequest = z
       });
     }
   });
+
 export type UploadRequest = z.infer<typeof UploadRequest>;
 
 /**
@@ -609,6 +648,7 @@ export const UploadRejection = z
       });
     }
   });
+
 export type UploadRejection = z.infer<typeof UploadRejection>;
 
 export const UploadResponse = z
@@ -630,7 +670,9 @@ export const UploadResponse = z
         message: 'Dependency reconciliation requires the negotiated v1 connector',
       });
     }
+
     const ids = response.rejected.map((item) => item.clientId);
+
     if (new Set(ids).size !== ids.length) {
       context.addIssue({
         code: 'custom',
@@ -638,6 +680,7 @@ export const UploadResponse = z
       });
     }
   });
+
 export type UploadResponse = z.infer<typeof UploadResponse>;
 
 /* ------------------------------------------------------------------ */
@@ -649,6 +692,7 @@ export const SignedTime = z.object({
   signature: z.string().min(1),
   publicKey: z.string().min(1),
 });
+
 export type SignedTime = z.infer<typeof SignedTime>;
 
 /* ------------------------------------------------------------------ */
@@ -660,16 +704,19 @@ export const OwnEmailCodeRequest = z.strictObject({
   staffId: z.string().min(1),
   email: z.email().max(254),
 });
+
 export const OwnEmailConfirm = z.strictObject({
   staffId: z.string().min(1),
   email: z.email().max(254),
   code: z.string().regex(/^\d{6}$/),
 });
+
 export type OwnEmailStatus = {
   email?: string;
   verified: boolean;
   pending?: { id: string; email: string; requestedOn: string };
 };
+
 export type StaffEmailRequestView = {
   id: string;
   staffId: string;
@@ -684,15 +731,18 @@ export type StaffEmailRequestView = {
 /* ------------------------------------------------------------------ */
 
 export const OperatorCodeRequest = z.strictObject({ email: z.email().max(254) });
+
 export const OperatorLogin = z.strictObject({
   email: z.email().max(254),
   code: z.string().regex(/^\d{6}$/),
 });
+
 export type OperatorSession = {
   token: string;
   expiresOn: string;
   operator: { id: string; email: string; name: string };
 };
+
 export type OperatorFacility = {
   id: string;
   name: string;
@@ -707,8 +757,10 @@ export type OperatorFacility = {
 /* ------------------------------------------------------------------ */
 
 const staffPin = z.string().regex(/^\d{6}$/, 'A PIN is 6 digits');
+
 /** Opens a server session for the person signing in on this device, proven by their PIN. */
 export const StaffSessionOpen = z.strictObject({ staffId: z.string().min(1), pin: staffPin });
+
 /**
  * Registers a person's PIN with the server for this device. Proven by a PIN
  * setup code an administrator issued to that person, or by a code sent to the
@@ -728,12 +780,14 @@ export const StaffPinEnrol = z
     (v) => Boolean(v.setupCode) !== Boolean(v.emailCode),
     'Prove it with a PIN setup code or an email code',
   );
+
 export type StaffSession = {
   token: string;
   staffId: string;
   expiresOn: string;
   idleMinutes: number;
 };
+
 /** Configuration saved online: the same mutations as sync, confirmed by the server before they count. */
 export type ConfigurationSaveResponse = {
   applied: number;

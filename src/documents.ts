@@ -1,5 +1,7 @@
 import { ExemptionRule } from './billingRules.ts';
+
 export { ExemptionRule } from './billingRules.ts';
+
 import { Disposition, InvestigationItem, InvestigationReview } from './careWorkflow.ts';
 /**
  * Geneus Health — shared contract: the document schemas.
@@ -176,6 +178,7 @@ export const Patient = baseEnvelope
           message: 'Record sex for an identified patient',
         });
       }
+
       if (!d.address) {
         ctx.addIssue({
           code: 'custom',
@@ -183,6 +186,7 @@ export const Patient = baseEnvelope
           message: 'Record an address for an identified patient',
         });
       }
+
       if (
         d.provisionalReason &&
         (!d.identifiedBy || !d.identifiedOn || !d.identificationNote || !d.identificationBase)
@@ -194,6 +198,7 @@ export const Patient = baseEnvelope
             'Later identification requires an attributed explanation and the reviewed provisional details',
         });
       }
+
       if (
         !d.provisionalReason &&
         (d.identifiedBy || d.identifiedOn || d.identificationNote || d.identificationBase)
@@ -212,6 +217,7 @@ export const Patient = baseEnvelope
           message: 'Provisional registration requires schema 5',
         });
       }
+
       if (!d.provisionalReason) {
         ctx.addIssue({
           code: 'custom',
@@ -219,6 +225,7 @@ export const Patient = baseEnvelope
           message: 'Explain why identity is not yet known',
         });
       }
+
       if (d.fullName !== provisionalPatientName(d.patientId)) {
         ctx.addIssue({
           code: 'custom',
@@ -226,6 +233,7 @@ export const Patient = baseEnvelope
           message: 'Use the distinct provisional patient label',
         });
       }
+
       if (d.identifiedBy || d.identifiedOn || d.identificationNote || d.identificationBase) {
         ctx.addIssue({
           code: 'custom',
@@ -234,7 +242,9 @@ export const Patient = baseEnvelope
         });
       }
     }
+
     const observed = d.ageObservedOn ?? d.createdOn.slice(0, 10);
+
     if (d.dateOfBirth && d.dateOfBirth > observed) {
       ctx.addIssue({
         code: 'custom',
@@ -242,6 +252,7 @@ export const Patient = baseEnvelope
         message: 'Date of birth cannot be after the age observation date',
       });
     }
+
     if (d.dateOfBirth && yearsBetween(d.dateOfBirth, observed) > 130) {
       ctx.addIssue({
         code: 'custom',
@@ -249,6 +260,7 @@ export const Patient = baseEnvelope
         message: 'Check the birth date; age exceeds 130 years',
       });
     }
+
     if (
       d.dateOfBirth &&
       d.ageYears !== undefined &&
@@ -261,6 +273,7 @@ export const Patient = baseEnvelope
         message: 'Age and date of birth do not agree',
       });
     }
+
     if (d.identityEvidence === 'document_seen' && !d.identityEvidenceNote?.trim()) {
       ctx.addIssue({
         code: 'custom',
@@ -269,6 +282,7 @@ export const Patient = baseEnvelope
       });
     }
   });
+
 export type Patient = z.infer<typeof Patient>;
 
 /** Append-only review history; only the server may confirm a link or its removal. */
@@ -294,6 +308,7 @@ export const PatientIdentityEvent = baseEnvelope
       Boolean(d.otherPatientId && d.otherPatientId !== d.patientId),
     { message: 'Choose two different patient records', path: ['otherPatientId'] },
   );
+
 export type PatientIdentityEvent = z.infer<typeof PatientIdentityEvent>;
 
 /* ================================================================== */
@@ -317,6 +332,7 @@ export const Visit = baseEnvelope.extend({
   referralId: z.string().optional(),
   notes: z.string().optional(),
 });
+
 export type Visit = z.infer<typeof Visit>;
 
 /** Instruction that travels with a patient between units (PRD §9.7). */
@@ -330,6 +346,7 @@ export const Handoff = baseEnvelope.extend({
   instruction: z.string().min(1), // e.g. "Give tetanus toxoid injection"
   status: z.enum(['pending', 'received', 'done']).default('pending'),
 });
+
 export type Handoff = z.infer<typeof Handoff>;
 
 /* ================================================================== */
@@ -337,11 +354,14 @@ export type Handoff = z.infer<typeof Handoff>;
 /* ================================================================== */
 
 export const AppointmentStatus = z.enum(['pending', 'scheduled']);
+
 export type AppointmentStatus = z.infer<typeof AppointmentStatus>;
 
 /** Booking mode above is retained for older records; attendance is recorded separately. */
 export const AppointmentAttendance = z.enum(['booked', 'arrived', 'cancelled', 'no_show']);
+
 export type AppointmentAttendance = z.infer<typeof AppointmentAttendance>;
+
 export const AppointmentAction = z.enum([
   'arrived',
   'cancelled',
@@ -349,7 +369,9 @@ export const AppointmentAction = z.enum([
   'rescheduled',
   'reopened',
 ]);
+
 export type AppointmentAction = z.infer<typeof AppointmentAction>;
+
 export const AppointmentActivity = z
   .object({
     id: z.string().min(1),
@@ -363,11 +385,14 @@ export const AppointmentActivity = z
     reason: z.string().trim().min(1).optional(),
   })
   .strict();
+
 export type AppointmentActivity = z.infer<typeof AppointmentActivity>;
+
 export const sameAppointmentTime = (left?: string, right?: string): boolean => {
   if (!left || !right) {
     return left === right;
   }
+
   return Date.parse(left) === Date.parse(right);
 };
 
@@ -412,6 +437,7 @@ export const Appointment = baseEnvelope
         message: 'A resource allocation needs a start and a later end',
       });
     }
+
     if (
       appointment.allocation &&
       appointment.offeringId &&
@@ -423,17 +449,23 @@ export const Appointment = baseEnvelope
         message: 'Reserve resources for the care service that was booked',
       });
     }
+
     const activity = appointment.activity ?? [];
     const ids = new Set<string>();
+
     for (let i = 0; i < activity.length; i++) {
       const event = activity[i];
       const previous = activity[i - 1];
+
       const fail = (message: string) =>
         context.addIssue({ code: z.ZodIssueCode.custom, path: ['activity', i], message });
+
       if (ids.has(event.id)) {
         fail('Each booking action needs a distinct identity');
       }
+
       ids.add(event.id);
+
       if (
         previous &&
         (event.fromAttendance !== previous.toAttendance ||
@@ -441,29 +473,37 @@ export const Appointment = baseEnvelope
       ) {
         fail('Booking history must continue from the preceding action');
       }
+
       if (!previous && event.fromAttendance !== 'booked') {
         fail('Booking history must begin with a booked appointment');
       }
+
       if (previous && Date.parse(event.recordedOn) < Date.parse(previous.recordedOn)) {
         fail('Booking action dates cannot go backwards');
       }
+
       if (Date.parse(event.recordedOn) < Date.parse(appointment.createdOn)) {
         fail('Booking actions cannot predate the booking');
       }
+
       if (event.action !== 'arrived' && !event.reason) {
         fail('Explain this booking change');
       }
+
       const expected =
         event.action === 'rescheduled' || event.action === 'reopened' ? 'booked' : event.action;
+
       if (event.toAttendance !== expected) {
         fail('The action and attendance state disagree');
       }
+
       if (
         event.action !== 'rescheduled' &&
         !sameAppointmentTime(event.fromScheduledFor, event.toScheduledFor)
       ) {
         fail('Only rescheduling can change the booking time');
       }
+
       if (
         event.action === 'rescheduled' &&
         (!event.toScheduledFor ||
@@ -472,6 +512,7 @@ export const Appointment = baseEnvelope
       ) {
         fail('Choose a different future date and time');
       }
+
       if (
         event.action === 'reopened'
           ? !['cancelled', 'no_show'].includes(event.fromAttendance)
@@ -480,9 +521,11 @@ export const Appointment = baseEnvelope
       ) {
         fail('Reopen or reschedule this inactive booking first');
       }
+
       if (event.action === event.fromAttendance) {
         fail('This attendance state is already recorded');
       }
+
       if (
         event.action === 'no_show' &&
         (event.fromAttendance !== 'booked' ||
@@ -492,7 +535,9 @@ export const Appointment = baseEnvelope
         fail('Only a due booking without a recorded arrival can be marked no-show');
       }
     }
+
     const last = activity[activity.length - 1];
+
     if (
       last &&
       (last.toAttendance !== (appointment.attendance ?? 'booked') ||
@@ -504,6 +549,7 @@ export const Appointment = baseEnvelope
         message: 'The booking must match its latest action',
       });
     }
+
     if (!last && appointment.attendance && appointment.attendance !== 'booked') {
       context.addIssue({
         code: z.ZodIssueCode.custom,
@@ -512,6 +558,7 @@ export const Appointment = baseEnvelope
       });
     }
   });
+
 export type Appointment = z.infer<typeof Appointment>;
 
 /* ================================================================== */
@@ -536,6 +583,7 @@ export const RegisterFieldType = z.enum([
   'checkbox',
   'section',
 ]);
+
 export type RegisterFieldType = z.infer<typeof RegisterFieldType>;
 
 /** A fact a visit-linked register reads from the visit instead of asking staff for it. */
@@ -563,6 +611,7 @@ export const VisitFact = z.enum([
   'visit_type',
   'injections',
 ]);
+
 export type VisitFact = z.infer<typeof VisitFact>;
 
 const registerWords = z.array(z.string().trim().min(1).max(60)).max(40);
@@ -583,6 +632,7 @@ export const RegisterFieldDef = z.object({
    */
   fromVisit: z.strictObject({ fact: VisitFact, words: registerWords.optional() }).optional(),
 });
+
 export type RegisterFieldDef = z.infer<typeof RegisterFieldDef>;
 
 /**
@@ -597,9 +647,11 @@ export const RegisterVisitLink = z.strictObject({
   codes: z.array(z.string().trim().min(1).max(12)).max(40).default([]),
   visitTypes: z.array(VisitType).max(VisitType.options.length).default([]),
 });
+
 export type RegisterVisitLink = z.infer<typeof RegisterVisitLink>;
 
 export const RegisterStatus = z.enum(['draft', 'published']);
+
 export type RegisterStatus = z.infer<typeof RegisterStatus>;
 
 /**
@@ -623,6 +675,7 @@ export const RegisterDefinition = baseEnvelope.extend({
   /** Absent for a register staff fill entry by entry. */
   visitLink: RegisterVisitLink.optional(),
 });
+
 export type RegisterDefinition = z.infer<typeof RegisterDefinition>;
 
 /** One field's recorded value — shape depends on the field's type. */
@@ -632,6 +685,7 @@ export const RegisterEntryValue = z.union([
   z.boolean(),
   z.array(z.string()),
 ]);
+
 export type RegisterEntryValue = z.infer<typeof RegisterEntryValue>;
 
 /**
@@ -657,6 +711,7 @@ export const RegisterEntry = baseEnvelope.extend({
   encounterId: z.string().min(1).optional(),
   values: z.record(z.string(), RegisterEntryValue),
 });
+
 export type RegisterEntry = z.infer<typeof RegisterEntry>;
 
 const matchesFieldType = (
@@ -698,23 +753,30 @@ export const validateRegisterEntry = (
   values: Record<string, RegisterEntryValue | undefined>,
 ): string[] => {
   const issues: string[] = [];
+
   for (const field of fields) {
     if (field.type === 'section') {
       continue;
     }
+
     const value = values[field.id];
+
     const empty =
       value === undefined || value === '' || (Array.isArray(value) && value.length === 0);
+
     if (empty) {
       if (field.required) {
         issues.push(`"${field.label}" is required`);
       }
+
       continue;
     }
+
     if (!matchesFieldType(field, value)) {
       issues.push(`"${field.label}" has an invalid value for a ${field.type} field`);
     }
   }
+
   return issues;
 };
 
@@ -723,10 +785,12 @@ export const validateRegisterEntry = (
 /* ================================================================== */
 
 export const ReferralStatus = z.enum(['sent', 'seen', 'arrived', 'closed']);
+
 export type ReferralStatus = z.infer<typeof ReferralStatus>;
 
 /** Honest delivery state (PRD §11.1). */
 export const DeliveryStatus = z.enum(['alert_sent', 'alert_pending']);
+
 export type DeliveryStatus = z.infer<typeof DeliveryStatus>;
 
 /** Tier-1: the only info that travels automatically with a referral (PRD §11.2). */
@@ -739,6 +803,7 @@ export const Tier1Payload = z.object({
   currentMedications: z.array(z.string()).default([]),
   reason: z.string().min(1),
 });
+
 export type Tier1Payload = z.infer<typeof Tier1Payload>;
 
 export const Referral = baseEnvelope.extend({
@@ -758,7 +823,9 @@ export const Referral = baseEnvelope.extend({
   /** Set by the server watchdog when not Arrived within the window (PRD §11.3). */
   notYetArrivedFlagged: z.boolean().default(false),
 });
+
 export type Referral = z.infer<typeof Referral>;
+
 export const InboundReferral = baseEnvelope
   .extend({
     type: z.literal('inbound_referral'),
@@ -778,6 +845,7 @@ export const InboundReferral = baseEnvelope
     'Arrival requires a local patient and time',
   )
   .refine((v) => v.status !== 'closed' || Boolean(v.closedOn), 'Closing requires a time');
+
 export type InboundReferral = z.infer<typeof InboundReferral>;
 
 /* ================================================================== */
@@ -800,6 +868,7 @@ export const StockItem = baseEnvelope.extend({
   quantityOnHand: z.number().nonnegative().default(0),
   reorderLevel: z.number().nonnegative().optional(),
 });
+
 export type StockItem = z.infer<typeof StockItem>;
 
 export const StockMovement = baseEnvelope.extend({
@@ -812,6 +881,7 @@ export const StockMovement = baseEnvelope.extend({
   movedOn: isoDateTime,
   note: z.string().optional(),
 });
+
 export type StockMovement = z.infer<typeof StockMovement>;
 
 /* ================================================================== */
@@ -855,7 +925,9 @@ export const Facility = baseEnvelope.extend({
     .regex(/^[A-Z]{3}$/, 'Use a three-letter currency code')
     .optional(),
 });
+
 export type Facility = z.infer<typeof Facility>;
+
 /** What a hospital may change about itself. The code is its permanent identity and is not editable. */
 export const FacilityDetailsUpdate = z.strictObject({
   name: z.string().trim().min(1).max(200),
@@ -874,6 +946,7 @@ export const FacilityDetailsUpdate = z.strictObject({
     .optional(),
   currency: z.string().regex(/^[A-Z]{3}$/),
 });
+
 export type FacilityDetailsUpdate = z.infer<typeof FacilityDetailsUpdate>;
 
 /** Configurable per facility — no fixed list (PRD §9.7). */
@@ -897,6 +970,7 @@ export const Unit = baseEnvelope
         message: 'A unit cannot contain itself',
       });
     }
+
     if (unit.kind === 'department' && unit.routingEnabled === true) {
       context.addIssue({
         code: 'custom',
@@ -905,6 +979,7 @@ export const Unit = baseEnvelope
       });
     }
   });
+
 export type Unit = z.infer<typeof Unit>;
 
 export const Role = z.enum([
@@ -922,6 +997,7 @@ export const Role = z.enum([
   'laboratory_staff',
   'pharmacy_staff',
 ]);
+
 export type Role = z.infer<typeof Role>;
 
 /**
@@ -935,10 +1011,12 @@ export type Role = z.infer<typeof Role>;
  * everywhere is worse than none.
  */
 export const StaffPermission = z.enum(['read_only', 'read_write']);
+
 export type StaffPermission = z.infer<typeof StaffPermission>;
 
 /** Whether fresh PIN sign-in needs an active roster window. */
 export const LoginAccess = z.enum(['shift', 'always']);
+
 export type LoginAccess = z.infer<typeof LoginAccess>;
 
 export const Staff = baseEnvelope.extend({
@@ -966,6 +1044,7 @@ export const Staff = baseEnvelope.extend({
   loginAccess: LoginAccess.optional(),
   active: z.boolean().default(true),
 });
+
 export type Staff = z.infer<typeof Staff>;
 
 /**
@@ -989,6 +1068,7 @@ export const RosterShift = baseEnvelope.extend({
   /** Supervisor "extend for the day" override (PRD §14.1). */
   extendedUntil: isoDateTime.optional(),
 });
+
 export type RosterShift = z.infer<typeof RosterShift>;
 
 /** The fields a roster signature covers; changing any of them invalidates it. */
@@ -1043,6 +1123,7 @@ export const PinSetupCode = baseEnvelope.extend({
   /** The device the PIN was set on. */
   usedOnDevice: z.string().optional(),
 });
+
 export type PinSetupCode = z.infer<typeof PinSetupCode>;
 
 /** The columns a device may set on a {@link PinSetupCode}: marking it used. */
@@ -1058,6 +1139,7 @@ export const normalizePinSetupCode = (code: string): string =>
   code.replace(/\s+/g, '').toUpperCase();
 
 export const DeviceStatus = z.enum(['active', 'revoked']);
+
 export type DeviceStatus = z.infer<typeof DeviceStatus>;
 
 /**
@@ -1082,6 +1164,7 @@ export const Device = baseEnvelope.extend({
   /** Last time the server heard from it — what "recent server contact" means. */
   lastSeenOn: isoDateTime.optional(),
 });
+
 export type Device = z.infer<typeof Device>;
 
 /** Append-only "who did what, when" trail (PRD §14). */
@@ -1098,9 +1181,11 @@ export const AuditAction = z.enum([
   /** The server refused an uploaded mutation — see `sync_rejection`. */
   'reject',
 ]);
+
 export type AuditAction = z.infer<typeof AuditAction>;
 
 export const AuditResult = z.enum(['ok', 'rejected']);
+
 export type AuditResult = z.infer<typeof AuditResult>;
 
 /**
@@ -1124,6 +1209,7 @@ export const AuditEvent = baseEnvelope.extend({
   receivedOn: isoDateTime.optional(),
   metadata: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional(),
 });
+
 export type AuditEvent = z.infer<typeof AuditEvent>;
 
 /* ================================================================== */
@@ -1167,6 +1253,7 @@ export const Encounter = baseEnvelope.extend({
     })
     .optional(),
 });
+
 export type Encounter = z.infer<typeof Encounter>;
 
 export const EncounterStep = z.enum([
@@ -1187,6 +1274,7 @@ export const EncounterStep = z.enum([
   /** A correction to an earlier entry, linked through `amends` (PRD §9.8.3). */
   'amendment',
 ]);
+
 export type EncounterStep = z.infer<typeof EncounterStep>;
 
 /** Saving one of these steps closes the encounter: as an inpatient, or sent home. */
@@ -1195,6 +1283,7 @@ export const CLOSING_STEPS = [
   'follow_up',
   'disposition',
 ] as const satisfies readonly EncounterStep[];
+
 /** Reassessment is a new observation/note; other saved sections are corrected by amendment. */
 export const REPEATABLE_STEPS = [
   'vitals',
@@ -1217,9 +1306,11 @@ export const PrescriptionLine = z.object({
   route: text.optional(),
   quantity: z.number().positive().optional(),
 });
+
 export type PrescriptionLine = z.infer<typeof PrescriptionLine>;
 
 export const InjectionRoute = z.enum(['IM', 'IV', 'SC', 'ID']);
+
 export type InjectionRoute = z.infer<typeof InjectionRoute>;
 
 /** What each step records. Strict, so a field meant for another step is refused. */
@@ -1367,6 +1458,7 @@ export const ENCOUNTER_STEP_VALUES = {
     previousAmendmentId: text.optional(),
   }),
 } as const satisfies Record<EncounterStep, z.ZodType>;
+
 export type EncounterStepValues = {
   [Step in EncounterStep]: z.infer<(typeof ENCOUNTER_STEP_VALUES)[Step]>;
 };
@@ -1414,6 +1506,7 @@ export const EncounterEntry = baseEnvelope
         message: 'Quantity-based dispensing requires its pharmacy workflow version',
       });
     }
+
     if ((entry.step === 'amendment') !== Boolean(entry.amends)) {
       context.addIssue({
         code: 'custom',
@@ -1421,6 +1514,7 @@ export const EncounterEntry = baseEnvelope
         message: 'An amendment must name the entry it amends, and only an amendment may',
       });
     }
+
     if (
       entry.labReport &&
       entry.step !== 'lab_results' &&
@@ -1432,11 +1526,14 @@ export const EncounterEntry = baseEnvelope
         message: 'A structured result belongs to a lab result or its correction',
       });
     }
+
     const values = ENCOUNTER_STEP_VALUES[entry.step].safeParse(entry.values);
+
     for (const issue of values.success ? [] : values.error.issues) {
       context.addIssue({ code: 'custom', path: ['values', ...issue.path], message: issue.message });
     }
   });
+
 export type EncounterEntry = z.infer<typeof EncounterEntry>;
 
 /* ================================================================== */
@@ -1471,6 +1568,7 @@ export const LEGACY_FEE_CATEGORIES = [
   'procedure',
   'other',
 ] as const;
+
 export const FeeCategory = z.enum([
   ...LEGACY_FEE_CATEGORIES,
   'pharmacy',
@@ -1478,6 +1576,7 @@ export const FeeCategory = z.enum([
   'admission',
   'imaging',
 ]);
+
 export type FeeCategory = z.infer<typeof FeeCategory>;
 
 /**
@@ -1486,6 +1585,7 @@ export type FeeCategory = z.infer<typeof FeeCategory>;
  * clinician orders the service it pays for.
  */
 export const ChargeWhen = z.enum(['first_visit', 'every_visit', 'when_ordered']);
+
 export type ChargeWhen = z.infer<typeof ChargeWhen>;
 
 /**
@@ -1509,21 +1609,25 @@ const matchesExemption = (rule: ExemptionRule, facts: ExemptionFacts): boolean =
   ) {
     return false;
   }
+
   if (
     rule.ageFromYears !== undefined &&
     (facts.ageYears === undefined || facts.ageYears < rule.ageFromYears)
   ) {
     return false;
   }
+
   if (rule.sex !== undefined && facts.sex !== rule.sex) {
     return false;
   }
+
   if (
     rule.visitTypes !== undefined &&
     (facts.visitType === undefined || !rule.visitTypes.includes(facts.visitType))
   ) {
     return false;
   }
+
   return true;
 };
 
@@ -1554,6 +1658,7 @@ export const FeeItem = baseEnvelope.extend({
   /** Retired fees are kept so old charges still name them; they are never raised again. */
   active: z.boolean().default(true),
 });
+
 export type FeeItem = z.infer<typeof FeeItem>;
 
 /**
@@ -1601,6 +1706,7 @@ export const Charge = baseEnvelope
       charge.feePriceVersion !== undefined ||
       charge.quantity !== undefined ||
       charge.unitPriceMinor !== undefined;
+
     return (
       !snapshot ||
       Boolean(
@@ -1612,6 +1718,7 @@ export const Charge = baseEnvelope
       )
     );
   }, 'Keep the selected fee version, quantity and unit price together');
+
 export type Charge = z.infer<typeof Charge>;
 
 /**
@@ -1622,6 +1729,7 @@ export type Charge = z.infer<typeof Charge>;
  */
 /** `online`: paid by the patient through the hospital's payment provider checkout, from their bill link (always with `incomingTransferId`). */
 export const PaymentMethod = z.enum(['cash', 'transfer', 'pos', 'waiver', 'online']);
+
 export type PaymentMethod = z.infer<typeof PaymentMethod>;
 
 /** How much of a payment went to one charge. */
@@ -1629,6 +1737,7 @@ export const PaymentAllocation = z.strictObject({
   chargeId: z.string().min(1),
   amountMinor: minorUnits.positive(),
 });
+
 export type PaymentAllocation = z.infer<typeof PaymentAllocation>;
 
 /**
@@ -1664,6 +1773,7 @@ export const Payment = baseEnvelope
       (sum, allocation) => sum + allocation.amountMinor,
       0,
     );
+
     if (allocated !== payment.amountMinor) {
       context.addIssue({
         code: 'custom',
@@ -1671,7 +1781,9 @@ export const Payment = baseEnvelope
         message: 'A payment must be allocated to charges in full, no more and no less',
       });
     }
+
     const chargeIds = payment.allocations.map((allocation) => allocation.chargeId);
+
     if (new Set(chargeIds).size !== chargeIds.length) {
       context.addIssue({
         code: 'custom',
@@ -1679,6 +1791,7 @@ export const Payment = baseEnvelope
         message: 'Allocate to each charge once',
       });
     }
+
     if ((payment.method === 'waiver' || payment.reverses) && !payment.reason) {
       context.addIssue({
         code: 'custom',
@@ -1687,6 +1800,7 @@ export const Payment = baseEnvelope
       });
     }
   });
+
 export type Payment = z.infer<typeof Payment>;
 
 /**
@@ -1697,6 +1811,7 @@ export type Payment = z.infer<typeof Payment>;
  * reversal remains the record of a payment taken in error.
  */
 export const RefundMethod = z.enum(['cash', 'transfer', 'pos']);
+
 export const Refund = baseEnvelope
   .extend({
     type: z.literal('refund'),
@@ -1717,7 +1832,9 @@ export const Refund = baseEnvelope
         message: 'A refund must be allocated to charges in full',
       });
     }
+
     const ids = refund.allocations.map((a) => a.chargeId);
+
     if (new Set(ids).size !== ids.length) {
       context.addIssue({
         code: 'custom',
@@ -1726,6 +1843,7 @@ export const Refund = baseEnvelope
       });
     }
   });
+
 export type Refund = z.infer<typeof Refund>;
 
 /** Append-only reduction: original price and approval remain visible. */
@@ -1738,6 +1856,7 @@ export const BillingAdjustment = baseEnvelope.extend({
   amountMinor: minorUnits.positive(),
   reason: text,
 });
+
 export type BillingAdjustment = z.infer<typeof BillingAdjustment>;
 
 /** Verified provider receipt. Allocations live in payments. */
@@ -1757,6 +1876,7 @@ export const IncomingTransfer = baseEnvelope.extend({
   /** For a checkout: the bill the patient paid. Its money is applied to that bill; anything above what was due waits for staff. */
   billKey: z.string().min(5).max(300).optional(),
 });
+
 export type IncomingTransfer = z.infer<typeof IncomingTransfer>;
 
 /** Receiving-account ownership and reporting group; independent of fee category. */
@@ -1768,6 +1888,7 @@ export const BillingDepartment = baseEnvelope.extend({
   organizationUnitId: facilityIdRef.optional(),
   revision: z.number().int().positive().optional(),
 });
+
 export type BillingDepartment = z.infer<typeof BillingDepartment>;
 
 /* ================================================================== */
@@ -1775,6 +1896,7 @@ export type BillingDepartment = z.infer<typeof BillingDepartment>;
 /* ================================================================== */
 
 export const SyncOperation = z.enum(['put', 'patch', 'delete']);
+
 export type SyncOperation = z.infer<typeof SyncOperation>;
 
 /** Why the server would not apply a mutation. Drives the queue's grouping. */
@@ -1790,6 +1912,7 @@ export const RejectionCategory = z.enum([
   /** Another device changed the same thing first — a human must choose. */
   'conflict',
 ]);
+
 export type RejectionCategory = z.infer<typeof RejectionCategory>;
 
 /** One column two devices disagree on, with both values for a human to compare. */
@@ -1798,6 +1921,7 @@ export const ConflictingColumn = z.object({
   deviceValue: z.unknown(),
   serverValue: z.unknown(),
 });
+
 export type ConflictingColumn = z.infer<typeof ConflictingColumn>;
 
 /**
@@ -1855,6 +1979,7 @@ export const SyncRejection = baseEnvelope
         message: 'Restricted refusals require an explicit restricted delivery audience',
       });
     }
+
     if (
       record.category === 'dependency' &&
       (!record.dependencies?.length || !(record.refusedRecord || record.refusedChanges))
@@ -1865,4 +1990,5 @@ export const SyncRejection = baseEnvelope
       });
     }
   });
+
 export type SyncRejection = z.infer<typeof SyncRejection>;

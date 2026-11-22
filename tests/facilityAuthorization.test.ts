@@ -52,7 +52,9 @@ const reviewProof = () => {
       endsAt: '2026-11-30T23:00:00Z',
     },
   ];
+
   proof.snapshot.sourceDecisionIds.push('bootstrap:one:v1');
+
   return proof;
 };
 
@@ -69,6 +71,7 @@ describe('protected clinical authority', () => {
         NOW,
       ).length,
     );
+
     assert.ok(
       reviewerDecisionIssues(
         reviewer,
@@ -78,14 +81,17 @@ describe('protected clinical authority', () => {
         NOW,
       ).length,
     );
+
     assert.equal(
       withReviewerAuthority(context, reviewer, proofFor(reviewer), NOW).permissions.includes(
         'clinical_capability:review',
       ),
       false,
     );
+
     assert.deepEqual(reviewerDecisionIssues(reviewer, context, reviewProof(), decision, NOW), []);
   });
+
   it('requires exact subject/facility, a supported policy, trusted proof and a bounded trusted clock', () => {
     const context = contextFor(worker);
     const proof = proofFor();
@@ -99,6 +105,7 @@ describe('protected clinical authority', () => {
       ),
       [],
     );
+
     for (const modified of [
       { ...proof, signatureVerified: false },
       { ...proof, currentRevision: 2 },
@@ -108,6 +115,7 @@ describe('protected clinical authority', () => {
     ]) {
       assert.ok(authorityProofIssues(context, modified, NOW).length);
     }
+
     assert.deepEqual(authorityProofIssues({ ...context, policyVersion: 11 }, proof, NOW), []);
     assert.ok(authorityProofIssues(context, proof, Date.parse(proof.snapshot.expiresOn)).length);
     assert.ok(authorityProofIssues(context, proof, Date.parse(proof.snapshot.issuedOn) - 1).length);
@@ -121,6 +129,7 @@ describe('protected clinical authority', () => {
         NOW,
       ).length,
     );
+
     assert.ok(
       clinicalActivityIssues(
         worker,
@@ -130,6 +139,7 @@ describe('protected clinical authority', () => {
         NOW,
       ).length,
     );
+
     assert.ok(
       clinicalActivityIssues(
         worker,
@@ -139,11 +149,13 @@ describe('protected clinical authority', () => {
         NOW,
       ).length,
     );
+
     assert.equal(
       AuthoritySnapshot.safeParse({ ...proof.snapshot, expiresOn: '2026-11-30T00:00:00Z' }).success,
       false,
     );
   });
+
   it('requires independent qualified supervision/checking and rejects self-supervision', () => {
     const context = contextFor(worker);
     const proof = proofFor();
@@ -160,6 +172,7 @@ describe('protected clinical authority', () => {
         NOW,
       ).length,
     );
+
     assert.deepEqual(
       clinicalActivityIssues(
         worker,
@@ -170,6 +183,7 @@ describe('protected clinical authority', () => {
       ),
       [],
     );
+
     assert.equal(
       AuthoritySnapshot.safeParse({
         ...proof.snapshot,
@@ -177,6 +191,7 @@ describe('protected clinical authority', () => {
       }).success,
       false,
     );
+
     assert.ok(
       assignmentEligibilityIssues(
         assignment,
@@ -188,6 +203,7 @@ describe('protected clinical authority', () => {
         NOW,
       ).length,
     );
+
     assert.deepEqual(
       assignmentEligibilityIssues(
         { ...assignment, supervisorId: 'staff:supervisor' },
@@ -201,6 +217,7 @@ describe('protected clinical authority', () => {
       [],
     );
   });
+
   it('does not approve oneself or widen a downstream reviewer scope or term', () => {
     const proof = reviewProof();
     const context = contextFor(reviewer);
@@ -208,6 +225,7 @@ describe('protected clinical authority', () => {
       CapabilityDecision.safeParse({ ...decision, createdBy: worker.staffId }).success,
       false,
     );
+
     assert.ok(
       reviewerDecisionIssues(
         reviewer,
@@ -217,6 +235,7 @@ describe('protected clinical authority', () => {
         NOW,
       ).length,
     );
+
     assert.ok(
       reviewerDecisionIssues(
         reviewer,
@@ -226,6 +245,7 @@ describe('protected clinical authority', () => {
         NOW,
       ).length,
     );
+
     const delegation = ReviewerDelegation.parse({
       ...envelope,
       type: 'reviewer_delegation',
@@ -239,11 +259,13 @@ describe('protected clinical authority', () => {
       decision: 'approve',
       reason: 'Approved independent reviewer duties',
     });
+
     assert.deepEqual(reviewerDecisionIssues(reviewer, context, proof, delegation, NOW), []);
     assert.ok(
       reviewerDecisionIssues(reviewer, context, proof, { ...delegation, endsAt: undefined }, NOW)
         .length,
     );
+
     assert.ok(
       reviewerDecisionIssues(
         reviewer,
@@ -253,6 +275,7 @@ describe('protected clinical authority', () => {
         NOW,
       ).length,
     );
+
     assert.ok(
       reviewerDecisionIssues(
         { ...reviewer, permission: 'read_only' },
@@ -263,6 +286,7 @@ describe('protected clinical authority', () => {
       ).length,
     );
   });
+
   it('records a legitimate external review without a fictitious local practitioner account', () => {
     const external = ExternalClinicalReviewer.parse({
       ...envelope,
@@ -279,11 +303,13 @@ describe('protected clinical authority', () => {
       active: true,
       revision: 1,
     });
+
     const externalDecision = CapabilityDecision.parse({
       ...decision,
       createdBy: 'system',
       externalReviewerId: external.id,
     });
+
     assert.deepEqual(externalReviewerIssues(external, externalDecision, true, NOW), []);
     assert.ok(externalReviewerIssues(external, externalDecision, false, NOW).length);
     assert.ok(
@@ -294,19 +320,23 @@ describe('protected clinical authority', () => {
         NOW,
       ).length,
     );
+
     assert.ok(
       externalReviewerIssues({ ...external, active: false }, externalDecision, true, NOW).length,
     );
+
     assert.equal(
       CapabilityDecision.safeParse({ ...externalDecision, createdBy: reviewer.staffId }).success,
       false,
     );
+
     assert.equal(
       Credential.safeParse({ ...credential, checkedBy: worker.staffId, createdBy: worker.staffId })
         .success,
       false,
     );
   });
+
   it('protects prescribing, administration, results and amendments through source content', () => {
     const original = EncounterEntry.parse({
       ...envelope,
@@ -318,7 +348,9 @@ describe('protected clinical authority', () => {
       actorRole: 'doctor',
       values: { diagnosis: 'Synthetic diagnosis', prescription: [] },
     });
+
     assert.deepEqual(encounterClinicalActions(original), ['diagnose']);
+
     const amendment = EncounterEntry.parse({
       ...original,
       id: 'entry:amendment',
@@ -332,15 +364,18 @@ describe('protected clinical authority', () => {
         },
       },
     });
+
     assert.deepEqual(encounterClinicalActions(amendment, original), ['diagnose', 'prescribe']);
     assert.throws(() => encounterClinicalActions(amendment), /original entry/);
     assert.throws(() =>
       encounterClinicalActions(amendment, { ...original, patientId: 'TEST-PHC-000048-K3' }),
     );
+
     const prescribed = {
       ...original,
       values: amendment.values.correctedValues as Record<string, unknown>,
     };
+
     assert.deepEqual(
       encounterClinicalActions(
         { ...amendment, values: { note: 'Remove medicine', correctedValues: original.values } },
@@ -348,13 +383,16 @@ describe('protected clinical authority', () => {
       ),
       ['diagnose', 'prescribe'],
     );
+
     assert.deepEqual(encounterClinicalActions({ ...original, step: 'lab_results' }), [
       'record_result',
     ]);
+
     assert.deepEqual(encounterClinicalActions({ ...original, step: 'injection' }), ['administer']);
     assert.deepEqual(encounterClinicalActions({ ...original, step: 'dispense' }), ['dispense']);
     assert.deepEqual(clinicalEventActions({ kind: 'medication' }), ['prescribe']);
   });
+
   it('uses inclusive credential dates in the credential zone, including DST days', () => {
     const lagos = { ...credential, validThrough: '2026-10-29' };
     assert.equal(
@@ -364,6 +402,7 @@ describe('protected clinical authority', () => {
       }),
       true,
     );
+
     assert.equal(
       credentialSupportsInterval(lagos, {
         startsAt: '2026-10-29T10:00:00Z',
@@ -371,6 +410,7 @@ describe('protected clinical authority', () => {
       }),
       false,
     );
+
     assert.equal(credentialSupportsInterval(lagos, { startsAt: '2026-10-29T10:00:00Z' }), false);
     const dst = { ...credential, timeZone: 'America/New_York', validThrough: '2026-11-01' };
     assert.equal(
@@ -380,6 +420,7 @@ describe('protected clinical authority', () => {
       }),
       true,
     );
+
     assert.equal(
       credentialSupportsInterval(dst, {
         startsAt: '2026-11-01T04:00:00Z',
@@ -388,11 +429,13 @@ describe('protected clinical authority', () => {
       false,
     );
   });
+
   it('signs normalized scope and exact authority without depending on row bookkeeping or object order', () => {
     const proof = proofFor();
     const snapshot = proof.snapshot;
     const { publicKey, privateKey } = generateKeyPairSync('ed25519');
     const signature = sign(null, Buffer.from(authoritySignaturePayload(snapshot)), privateKey);
+
     const reserialized = {
       ...snapshot,
       updatedOn: '2026-10-30T00:00:00Z',
@@ -406,10 +449,12 @@ describe('protected clinical authority', () => {
         },
       })),
     };
+
     assert.equal(
       verify(null, Buffer.from(authoritySignaturePayload(reserialized)), publicKey, signature),
       true,
     );
+
     for (const tamper of [
       { ...snapshot, facilityId: 'OTHER' },
       { ...snapshot, revision: 2 },
@@ -422,6 +467,7 @@ describe('protected clinical authority', () => {
       );
     }
   });
+
   it('prevents an unapproved administrator using a PIN reset to take over an approved clinical identity', () => {
     const context = contextFor(reviewer);
     const target = proofFor().snapshot;
@@ -429,10 +475,12 @@ describe('protected clinical authority', () => {
       mayApproveWorkforcePin(reviewer, context, proofFor(reviewer), worker, target, NOW),
       false,
     );
+
     assert.equal(
       mayApproveWorkforcePin(reviewer, context, reviewProof(), worker, target, NOW),
       true,
     );
+
     assert.equal(
       mayApproveWorkforcePin(
         reviewer,
@@ -444,6 +492,7 @@ describe('protected clinical authority', () => {
       ),
       false,
     );
+
     assert.equal(
       mayApproveWorkforcePin(
         reviewer,
@@ -455,6 +504,7 @@ describe('protected clinical authority', () => {
       ),
       false,
     );
+
     assert.equal(
       mayApproveWorkforcePin(
         { ...reviewer, permission: 'read_only' },
@@ -466,14 +516,17 @@ describe('protected clinical authority', () => {
       ),
       false,
     );
+
     assert.ok(
       staffGovernanceIssues({ ...reviewer, active: false }, reviewer, [reviewer, worker]).length,
     );
+
     const secondAdmin = { ...reviewer, id: 'staff:admin-two', staffId: 'staff:admin-two' };
     assert.deepEqual(
       staffGovernanceIssues({ ...reviewer, active: false }, reviewer, [reviewer, secondAdmin]),
       [],
     );
+
     assert.ok(
       staffGovernanceIssues({ ...reviewer, active: false }, reviewer, [
         reviewer,
@@ -481,8 +534,10 @@ describe('protected clinical authority', () => {
       ]).length,
     );
   });
+
   it('allows a mixed hospital team to cover complementary duties and retains nonclinical support roles', () => {
     const clinical = { staff: worker, assignment, context: contextFor(worker), proof: proofFor() };
+
     const support = {
       staff: reviewer,
       assignment: {
@@ -495,6 +550,7 @@ describe('protected clinical authority', () => {
       },
       context: contextFor(reviewer),
     };
+
     const coverage = {
       ...session,
       participants: [
@@ -506,10 +562,12 @@ describe('protected clinical authority', () => {
         },
       ],
     };
+
     assert.deepEqual(
       sessionClinicalCoverageIssues(offering, coverage, [clinical, support], NOW),
       [],
     );
+
     assert.ok(
       sessionClinicalCoverageIssues(
         { ...offering, requiredActions: ['assess', 'prescribe'] },
@@ -518,6 +576,7 @@ describe('protected clinical authority', () => {
         NOW,
       ).some((s) => s.includes('prescribe')),
     );
+
     const prescribing = {
       ...support,
       assignment: {
@@ -527,6 +586,7 @@ describe('protected clinical authority', () => {
       },
       proof: proofFor(reviewer),
     };
+
     assert.deepEqual(
       sessionClinicalCoverageIssues(
         { ...offering, requiredActions: ['assess', 'prescribe'] },
@@ -546,16 +606,19 @@ describe('accepted minimal authority projection', () => {
     delegations: [],
     bootstraps: [],
   };
+
   it('projects accepted evidence, preserves history and removes withdrawn/forked/disabled authority', () => {
     assert.equal(projectClinicalAuthority(worker, sources, NOW).grants.length, 1);
     assert.equal(
       projectClinicalAuthority({ ...worker, active: false }, sources, NOW).grants.length,
       0,
     );
+
     assert.equal(
       projectClinicalAuthority({ ...worker, permission: 'read_only' }, sources, NOW).grants.length,
       0,
     );
+
     const revoked = CapabilityDecision.parse({
       ...decision,
       id: 'capability:one:v2',
@@ -565,11 +628,13 @@ describe('accepted minimal authority projection', () => {
       decision: 'revoke',
       credentialRevisionIds: [],
     });
+
     assert.equal(
       projectClinicalAuthority(worker, { ...sources, decisions: [decision, revoked] }, NOW).grants
         .length,
       0,
     );
+
     assert.equal(
       projectClinicalAuthority(
         worker,
@@ -585,6 +650,7 @@ describe('accepted minimal authority projection', () => {
       ).grants.length,
       0,
     );
+
     assert.equal(
       projectClinicalAuthority(
         worker,
@@ -593,8 +659,10 @@ describe('accepted minimal authority projection', () => {
       ).grants.length,
       0,
     );
+
     assert.equal(decision.decision, 'approve');
   });
+
   it('expires offline proof at a known future restriction instead of prematurely revoking current work', () => {
     const future = CapabilityDecision.parse({
       ...decision,
@@ -605,21 +673,25 @@ describe('accepted minimal authority projection', () => {
       startsAt: '2026-10-30T10:00:00Z',
       credentialRevisionIds: [],
     });
+
     const input = { ...sources, decisions: [decision, future] };
     assert.equal(projectClinicalAuthority(worker, input, NOW).grants.length, 1);
     assert.equal(
       projectClinicalAuthority(worker, input, NOW).expiresOn,
       future.startsAt.replace('Z', '.000Z'),
     );
+
     assert.equal(
       projectClinicalAuthority(worker, input, NOW).grants[0].endsAt,
       future.startsAt.replace('Z', '.000Z'),
     );
+
     assert.equal(
       projectClinicalAuthority(worker, input, Date.parse(future.startsAt)).grants.length,
       0,
     );
   });
+
   it('supports audited first-reviewer bootstrap and its explicit revocation', () => {
     const bootstrap = ClinicalAuthorityBootstrap.parse({
       ...envelope,
@@ -637,8 +709,10 @@ describe('accepted minimal authority projection', () => {
       authorizedBy: 'operator:approved',
       reason: 'Audited initial verifier',
     });
+
     const input = { ...sources, decisions: [], bootstraps: [bootstrap] };
     assert.equal(projectClinicalAuthority(reviewer, input, NOW).reviewScopes.length, 1);
+
     const revoke = ClinicalAuthorityBootstrap.parse({
       ...bootstrap,
       id: 'bootstrap:one:v2',
@@ -648,6 +722,7 @@ describe('accepted minimal authority projection', () => {
       startsAt: '2026-10-29T09:00:00Z',
       reason: 'End delegation',
     });
+
     assert.equal(
       projectClinicalAuthority(reviewer, { ...input, bootstraps: [bootstrap, revoke] }, NOW)
         .reviewScopes.length,
@@ -665,20 +740,24 @@ describe('delayed care and time evidence', () => {
     maximumOfflineMs: 7 * 86_400_000,
     authorityExpiresOn: '2026-10-30T10:00:00Z',
   };
+
   it('distinguishes current authority, expired/revoked delayed evidence and impossible time claims', () => {
     assert.equal(assessDelayedClinicalTime(input), 'current');
     assert.equal(
       assessDelayedClinicalTime({ ...input, receivedOn: '2026-10-31T10:00:00Z' }),
       'historical_review',
     );
+
     assert.equal(
       assessDelayedClinicalTime({ ...input, revokedOn: '2026-10-29T09:30:00Z' }),
       'historical_review',
     );
+
     assert.equal(
       assessDelayedClinicalTime({ ...input, performedOn: '2026-11-02T10:00:00Z' }),
       'invalid_time',
     );
+
     assert.equal(assessDelayedClinicalTime({ ...input, maximumClockSkewMs: NaN }), 'invalid_time');
   });
 });

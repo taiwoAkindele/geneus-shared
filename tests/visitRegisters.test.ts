@@ -18,6 +18,7 @@ const envelope = {
   createdBy: 'staff:doctor',
   createdOn: '2026-11-03T09:00:00Z',
 };
+
 const patient = Patient.parse({
   ...envelope,
   id: 'A-000001-K2',
@@ -29,8 +30,10 @@ const patient = Patient.parse({
   address: 'Odo-Ona',
   phone: '0801',
 });
+
 const visit = (id: string, openedOn: string) =>
   Encounter.parse({ ...envelope, id, type: 'encounter', patientId: patient.patientId, openedOn });
+
 const entry = (
   id: string,
   encounterId: string,
@@ -51,6 +54,7 @@ const entry = (
     values,
     ...(amends ? { amends } : {}),
   });
+
 const malaria = RegisterDefinition.parse({
   ...envelope,
   id: 'register:malaria:v1',
@@ -80,6 +84,7 @@ const malaria = RegisterDefinition.parse({
     { id: 'onset', type: 'date', label: 'Date fever started' },
   ],
 });
+
 const input = (entries: EncounterEntry[], completions: RegisterEntry[] = []) => ({
   encounters: [visit('visit:1', '2026-11-03T08:30:00Z')],
   entries,
@@ -90,14 +95,17 @@ const input = (entries: EncounterEntry[], completions: RegisterEntry[] = []) => 
 describe('visit-linked registers', () => {
   it('fills the malaria register as a general consultation goes on', () => {
     const order = entry('order', 'visit:1', 'lab_order', { tests: ['Malaria RDT'] });
+
     let [row] = visitRegisterRows(
       malaria,
       input([entry('complaint', 'visit:1', 'complaint', { complaints: ['Fever'] }), order]),
     );
+
     assert.equal(row.values.date, '03 Nov 2026');
     assert.equal(row.values.name, 'Amaka Okoro');
     assert.equal(row.values.rdt, '', 'the test is pending');
     assert.equal(row.complete, false, 'the fever onset is still to be recorded');
+
     const later = [
       order,
       entry(
@@ -152,6 +160,7 @@ describe('visit-linked registers', () => {
         '2026-11-03T10:31:00Z',
       ),
     ];
+
     const completion = RegisterEntry.parse({
       ...envelope,
       id: 'complete:1',
@@ -163,13 +172,16 @@ describe('visit-linked registers', () => {
       encounterId: 'visit:1',
       values: { onset: '2026-11-01' },
     });
+
     [row] = visitRegisterRows(malaria, input(later, [completion]));
     assert.deepEqual(
       [row.values.rdt, row.values.diagnosis, row.values.act, row.values.outcome, row.values.onset],
       ['Malaria RDT: Positive', 'Malaria', 'Artemether-lumefantrine', 'Sent home', '2026-11-01'],
     );
+
     assert.equal(row.complete, true);
   });
+
   it('takes only matching visits, by word or diagnosis code, without matching inside words', () => {
     assert.deepEqual(
       visitRegisterRows(
@@ -180,6 +192,7 @@ describe('visit-linked registers', () => {
       ),
       [],
     );
+
     assert.equal(
       visitRegisterRows(
         malaria,
@@ -193,10 +206,12 @@ describe('visit-linked registers', () => {
       ).length,
       1,
     );
+
     assert.equal(mentionsAny('Malarial fever', ['malaria']), true);
     assert.equal(mentionsAny('MP test', ['MP']), true);
     assert.equal(mentionsAny('lump', ['MP']), false);
   });
+
   it('reads a corrected diagnosis, tells new visits from revisits and keeps the latest completion', () => {
     const opd = RegisterDefinition.parse({
       ...malaria,
@@ -214,7 +229,9 @@ describe('visit-linked registers', () => {
         { id: 'note', type: 'text', label: 'Note' },
       ],
     });
+
     const dx = entry('dx', 'visit:2', 'diagnosis', { diagnosis: 'Malaria', prescription: [] });
+
     const fix = entry(
       'fix',
       'visit:2',
@@ -223,6 +240,7 @@ describe('visit-linked registers', () => {
       '2026-11-03T11:00:00Z',
       'dx',
     );
+
     const note = (id: string, text: string, at: string) =>
       RegisterEntry.parse({
         ...envelope,
@@ -236,6 +254,7 @@ describe('visit-linked registers', () => {
         encounterId: 'visit:2',
         values: { note: text },
       });
+
     const rows = visitRegisterRows(opd, {
       encounters: [
         visit('visit:1', '2026-10-01T08:00:00Z'),
@@ -248,6 +267,7 @@ describe('visit-linked registers', () => {
         note('n1', 'first', '2026-11-03T11:30:00Z'),
       ],
     });
+
     assert.deepEqual(
       rows.map((row) => [row.encounterId, row.values.kind, row.values.dx, row.values.note ?? '']),
       [
@@ -256,18 +276,21 @@ describe('visit-linked registers', () => {
       ],
     );
   });
+
   it('keeps visit-filled fields out of staff entries and authoring', () => {
     assert.ok(
       registerDefinitionIssues({ ...malaria, visitLink: undefined }).some((issue) =>
         issue.includes('Choose which visits'),
       ),
     );
+
     assert.ok(
       registerDefinitionIssues({
         ...malaria,
         visitLink: { visits: 'matching', words: [], codes: [] },
       }).some((issue) => issue.includes('words or diagnosis codes')),
     );
+
     assert.ok(
       registerDefinitionIssues({
         ...malaria,
@@ -276,6 +299,7 @@ describe('visit-linked registers', () => {
         ],
       }).some((issue) => issue.includes('short text')),
     );
+
     assert.deepEqual(registerDefinitionIssues(malaria), []);
     assert.ok(registerEntryLinkIssues(malaria, { values: { onset: '2026-11-01' } }).length);
     assert.ok(
@@ -285,6 +309,7 @@ describe('visit-linked registers', () => {
         values: { rdt: 'Positive' },
       }).some((issue) => issue.includes('not recorded by staff')),
     );
+
     assert.deepEqual(
       registerEntryLinkIssues(malaria, {
         encounterId: 'visit:1',
@@ -293,6 +318,7 @@ describe('visit-linked registers', () => {
       }),
       [],
     );
+
     assert.ok(
       registerEntryLinkIssues(
         { fields: [], visitLink: undefined },
@@ -300,6 +326,7 @@ describe('visit-linked registers', () => {
       ).length,
     );
   });
+
   it("takes visits of chosen types, reading an older visit's type from its appointment", () => {
     const anc = RegisterDefinition.parse({
       ...malaria,
@@ -318,22 +345,27 @@ describe('visit-linked registers', () => {
         { id: 'ga', type: 'number', label: 'Gestational age (weeks)' },
       ],
     });
+
     const typed = Encounter.parse({
       ...visit('visit:anc', '2026-11-03T08:00:00Z'),
       visitType: 'antenatal',
     });
+
     const booked = Encounter.parse({
       ...visit('visit:booked', '2026-11-02T08:00:00Z'),
       appointmentId: 'appointment:1',
     });
+
     const general = visit('visit:general', '2026-11-01T08:00:00Z');
     const td = entry('td', 'visit:anc', 'injection', { drug: 'Td', dose: '0.5 mL', route: 'IM' });
+
     const rows = visitRegisterRows(anc, {
       encounters: [typed, booked, general],
       entries: [td],
       patients: [patient],
       appointments: [{ id: 'appointment:1', visitType: 'antenatal' }],
     });
+
     assert.deepEqual(
       rows.map((row) => [row.encounterId, row.values.type, row.values.td]),
       [
@@ -341,12 +373,14 @@ describe('visit-linked registers', () => {
         ['visit:booked', 'Antenatal', ''],
       ],
     );
+
     assert.ok(
       registerDefinitionIssues({
         ...anc,
         visitLink: { visits: 'visit_types', words: [], codes: [], visitTypes: [] },
       }).some((issue) => issue.includes('visit types')),
     );
+
     assert.deepEqual(registerDefinitionIssues(anc), []);
   });
 });

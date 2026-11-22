@@ -8,10 +8,26 @@ import { z } from 'zod';
 import type { Charge } from './documents.ts';
 
 /** Groups charges by explicit source identity, never by coincident dates or amounts. */
+/** Charges group into one bill by explicit bill, else visit, else appointment, else alone. */
+const billGroup = (c: Pick<Charge, 'id' | 'billId' | 'encounterId' | 'appointmentId'>): string => {
+  if (c.billId) {
+    return `bill:${c.billId}`;
+  }
+
+  if (c.encounterId) {
+    return `visit:${c.encounterId}`;
+  }
+
+  if (c.appointmentId) {
+    return `appointment:${c.appointmentId}`;
+  }
+
+  return `charge:${c.id}`;
+};
+
 export const billKey = (
   c: Pick<Charge, 'id' | 'patientId' | 'currency' | 'billId' | 'encounterId' | 'appointmentId'>,
-): string =>
-  `${c.patientId}|${c.currency}|${c.billId ? `bill:${c.billId}` : c.encounterId ? `visit:${c.encounterId}` : c.appointmentId ? `appointment:${c.appointmentId}` : `charge:${c.id}`}`;
+): string => `${c.patientId}|${c.currency}|${billGroup(c)}`;
 
 /** The bill's short reference, e.g. B-63AF2E1C9D04, as printed on the invoice and in messages. */
 export const billReference = (key: string): string =>
@@ -27,12 +43,14 @@ export const billKeyParts = (
   key: string,
 ): { patientId: string; currency: string; source: string } | undefined => {
   const [patientId, currency, ...rest] = key.split('|');
+
   return patientId && /^[A-Z]{3}$/.test(currency ?? '') && rest.length
     ? { patientId, currency, source: rest.join('|') }
     : undefined;
 };
 
 export const DocumentKind = z.enum(['bill', 'receipt']);
+
 export type DocumentKind = z.infer<typeof DocumentKind>;
 
 /** Bill links last 30 days; receipt links a year. */
@@ -49,11 +67,14 @@ export const DocumentLinkRequest = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('bill'), billKey: billKeyText }),
   z.strictObject({ kind: z.literal('receipt'), paymentId: z.string().min(1).max(200) }),
 ]);
+
 export type DocumentLinkRequest = z.infer<typeof DocumentLinkRequest>;
+
 export type DocumentLinkResponse = { url: string; expiresOn: string };
 
 /** Staff stop every open link to a bill or a receipt (e.g. one was forwarded to the wrong person). */
 export const DocumentLinkStop = DocumentLinkRequest;
+
 export type DocumentLinkStopResponse = { stopped: number };
 
 /* ------------------------------------------------------------------ */
@@ -68,7 +89,9 @@ export type DocumentHospital = {
   email?: string;
   timeZone: string;
 };
+
 export type DocumentPatient = { name: string; patientId: string; phone?: string };
+
 export type BillLine = {
   description: string;
   category: string;
@@ -77,7 +100,9 @@ export type BillLine = {
   amountMinor: number;
   exempt: boolean;
 };
+
 export type BillStatus = 'Unpaid' | 'Part paid' | 'Paid' | 'Awaiting insurance';
+
 /** A bill as the patient sees it, built by the server from accepted records with the app's balance rules. */
 export type BillView = {
   key: string;
@@ -104,6 +129,7 @@ export type BillView = {
   /** Whether the patient can pay this bill online now (a live checkout provider is connected and something is due). */
   payable: boolean;
 };
+
 export type ReceiptView = {
   paymentId: string;
   number: string;
@@ -119,6 +145,7 @@ export type ReceiptView = {
   amountMinor: number;
   stillDue: { bill: string; dueMinor: number }[];
 };
+
 /** GET /public/documents/:kind/:token */
 export type PublicDocument =
   { kind: 'bill'; bill: BillView } | { kind: 'receipt'; receipt: ReceiptView };
@@ -130,10 +157,12 @@ export type PublicMessageChoices = {
   email?: { to: string; stopped: boolean };
   changed?: boolean;
 };
+
 export const PublicMessageChoice = z.strictObject({
   channel: z.enum(['sms', 'email']),
   choice: z.enum(['stop', 'start']),
 });
+
 export type PublicMessageChoice = z.infer<typeof PublicMessageChoice>;
 
 /* ------------------------------------------------------------------ */
@@ -147,6 +176,7 @@ export type CheckoutStart = {
   amountMinor: number;
   currency: string;
 };
+
 /**
  * GET /public/checkout/:reference: the outcome, confirmed with the provider by the server (never trusted from
  * the redirect alone). `paid` means the money was received and applied; any amount above what was due waits

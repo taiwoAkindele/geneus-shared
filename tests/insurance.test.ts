@@ -37,6 +37,7 @@ const base = {
   schemaVersion: 5,
   createdBy: 'staff:one',
 };
+
 const at = (day: string) => `${day}T10:00:00.000Z`;
 const PATIENT = 'TEST-000001-K2';
 
@@ -125,6 +126,7 @@ const schedule = (
     calculationVersion: 1,
     ...buildScheduleLines(t, t.plans[0], (id) => CATEGORY[id]),
   });
+
 const charge = (feeItemId: string, listPriceMinor: number, extra: Partial<Charge> = {}): Charge =>
   Charge.parse({
     ...base,
@@ -140,6 +142,7 @@ const charge = (feeItemId: string, listPriceMinor: number, extra: Partial<Charge
     currency: 'NGN',
     ...extra,
   });
+
 const cover = (extra: Partial<PatientCover> = {}) =>
   PatientCover.parse({
     ...base,
@@ -154,6 +157,7 @@ const cover = (extra: Partial<PatientCover> = {}) =>
     active: true,
     ...extra,
   });
+
 const check = (result: CoverCheck['result'], extra: Partial<CoverCheck> = {}) =>
   CoverCheck.parse({
     ...base,
@@ -168,6 +172,7 @@ const check = (result: CoverCheck['result'], extra: Partial<CoverCheck> = {}) =>
     coversTo: '2026-03-10',
     ...extra,
   });
+
 const records = (extra: Partial<CoverageRecords> = {}): CoverageRecords => ({
   covers: [cover()],
   checks: [check('verified')],
@@ -176,6 +181,7 @@ const records = (extra: Partial<CoverageRecords> = {}): CoverageRecords => ({
   schedules: [schedule(terms())],
   ...extra,
 });
+
 const estimate = (c: Charge, r: CoverageRecords = records(), units: number | undefined = 1) =>
   estimateCoverage({
     billingActive: true,
@@ -197,13 +203,16 @@ describe('estimating one charge resolves every state explicitly', () => {
       final: true,
     });
   });
+
   it('an exempt charge stays exempt', () =>
     assert.equal(
       estimate(charge('fee:consult', 5_000, { exemptionReason: 'Synthetic exemption' })).state,
       'exempt',
     ));
+
   it('unchecked, pending and not-eligible cover leave responsibility undetermined, never zero or full', () => {
     const c = charge('fee:consult', 5_000);
+
     for (const [checks, reason] of [
       [[], 'cover_not_checked'],
       [[check('pending')], 'check_pending'],
@@ -220,6 +229,7 @@ describe('estimating one charge resolves every state explicitly', () => {
       });
     }
   });
+
   it('a check for another day does not count', () =>
     assert.equal(
       estimate(
@@ -230,11 +240,13 @@ describe('estimating one charge resolves every state explicitly', () => {
       ).state,
       'undetermined',
     ));
+
   it('two valid covers need a recorded choice', () => {
     const second = cover({ id: 'cover:two', enrolleeNumber: 'SYN-002' });
     const c = charge('fee:consult', 5_000);
     const e = estimate(c, records({ covers: [cover(), second] }));
     assert.equal(e.state === 'undetermined' && e.reason, 'choose_cover');
+
     const choice = CoverageElection.parse({
       ...base,
       type: 'coverage_election',
@@ -245,11 +257,13 @@ describe('estimating one charge resolves every state explicitly', () => {
       coverId: 'cover:one',
       chargeIds: [c.id],
     });
+
     assert.equal(
       estimate(c, records({ covers: [cover(), second], elections: [choice] })).state,
       'estimated',
     );
   });
+
   it('per-service cover with a 10% co-pay: the patient owes the co-pay of the tariff', () => {
     const c = charge('fee:consult', 5_000);
     const e = estimate(c);
@@ -262,6 +276,7 @@ describe('estimating one charge resolves every state explicitly', () => {
       final: false,
     });
   });
+
   it('an excluded service bills the patient only when the contract says so', () => {
     assert.equal(estimate(charge('fee:cosmetic', 9_000)).state, 'not_covered');
     const nobill = estimate(charge('fee:nobill', 9_000));
@@ -272,6 +287,7 @@ describe('estimating one charge resolves every state explicitly', () => {
       'exclusion_liability_not_configured',
     );
   });
+
   it('a missing tariff, rule or contract is named, never defaulted', () => {
     const noTariff = estimate(charge('fee:mri-unpriced', 7_000, { category: 'laboratory' }));
     assert.equal(noTariff.state === 'undetermined' && noTariff.detail, 'tariff');
@@ -282,19 +298,23 @@ describe('estimating one charge resolves every state explicitly', () => {
     const otherCurrency = estimate(charge('fee:consult', 5_000, { currency: 'USD' }));
     assert.equal(otherCurrency.state === 'undetermined' && otherCurrency.detail, 'currency');
   });
+
   it('per diem and package arrangements never produce money', () => {
     for (const fee of ['fee:pkg', 'fee:cosmetic-proc']) {
       const e = estimate(charge(fee, 20_000, { category: 'procedure' }));
+
       if (fee === 'fee:pkg') {
         assert.equal(e.state === 'undetermined' && e.reason, 'unsupported_arrangement');
       }
     }
+
     const r = computeAllocation({
       terms: terms(),
       planCode: 'GOLD',
       charge: charge('fee:pkg', 20_000, { category: 'procedure' }),
       units: 1,
     });
+
     assert.equal(r.ok, false);
     assert.deepEqual(
       unsupportedArrangements(terms())
@@ -303,8 +323,10 @@ describe('estimating one charge resolves every state explicitly', () => {
       ['fee:pkg', 'procedure'],
     );
   });
+
   it('an unknown quantity is undetermined, not one unit', () => {
     const c = charge('fee:drug', 1_000, { dispenseEntryId: 'rx:missing' });
+
     const e = estimateCoverage({
       billingActive: true,
       charge: c,
@@ -312,10 +334,13 @@ describe('estimating one charge resolves every state explicitly', () => {
       serviceDate: '2026-03-10',
       units: chargeUnits(c),
     });
+
     assert.equal(e.state === 'undetermined' && e.reason, 'quantity_unavailable');
   });
+
   it('a confirmed snapshot wins over a later estimate, and a recorded self-pay over cover', () => {
     const c = charge('fee:consult', 5_000);
+
     const snapshot = CoverageAllocation.parse({
       ...base,
       type: 'coverage_allocation',
@@ -330,10 +355,12 @@ describe('estimating one charge resolves every state explicitly', () => {
       currency: 'NGN',
       basis: 'visit',
     });
+
     assert.equal(
       estimate(c, records({ allocations: [snapshot], schedules: [] })).state,
       'finalised',
     );
+
     const selfPay = CoverageElection.parse({
       ...base,
       type: 'coverage_election',
@@ -346,6 +373,7 @@ describe('estimating one charge resolves every state explicitly', () => {
       reason: 'patient_choice',
       patientAgreed: true,
     });
+
     const e = estimate(
       c,
       records({
@@ -353,9 +381,11 @@ describe('estimating one charge resolves every state explicitly', () => {
         schedules: [schedule(terms({ selfPayElection: 'allowed' }))],
       }),
     );
+
     assert.equal(e.state, 'self_pay_elected', 'counts where the contract allows it');
     assert.equal(patientResponsibility(c, e).baseMinor, 5_000);
   });
+
   it('approvals and elections are never routine', () => {
     const mri = estimate(
       charge('fee:mri', 7_000, { category: 'laboratory' }),
@@ -365,6 +395,7 @@ describe('estimating one charge resolves every state explicitly', () => {
         ],
       }),
     );
+
     assert.equal(mri.state, 'estimated');
     assert.equal(isRoutine(mri, 0), false);
     const plain = estimate(charge('fee:consult', 5_000));
@@ -379,6 +410,7 @@ describe('calculation version 1 arithmetic', () => {
     assert.equal(percentOf(2_504, 1_000), 250);
     assert.equal(percentOf(5, 1_000), 1);
   });
+
   it('splits a per-service charge into parts that sum to the list price, with a negative adjustment when the tariff is higher', () => {
     const r = computeAllocation({
       terms: terms(),
@@ -386,10 +418,13 @@ describe('calculation version 1 arithmetic', () => {
       charge: charge('fee:consult', 3_000),
       units: 1,
     });
+
     assert.ok(r.ok);
+
     if (!r.ok) {
       return;
     }
+
     assert.deepEqual(r.split, {
       arrangement: 'per_service',
       patientShareMinor: 400,
@@ -398,8 +433,10 @@ describe('calculation version 1 arithmetic', () => {
       capitationCoveredMinor: 0,
       tariffTotalMinor: 4_000,
     });
+
     assert.ok(splitBalances(r.split, 3_000));
   });
+
   it('capitation is never a receivable', () => {
     const r = computeAllocation({
       terms: terms(),
@@ -407,18 +444,21 @@ describe('calculation version 1 arithmetic', () => {
       charge: charge('fee:capt', 1_500, { category: 'registration' }),
       units: 1,
     });
+
     assert.ok(
       r.ok &&
         r.split.payerShareMinor === 0 &&
         r.split.capitationCoveredMinor === 1_000 &&
         r.split.contractAdjustmentMinor === 500,
     );
+
     const untariffed = computeAllocation({
       terms: terms(),
       planCode: 'GOLD',
       charge: charge('fee:reg-other', 800, { category: 'registration' }),
       units: 1,
     });
+
     assert.ok(
       untariffed.ok &&
         untariffed.split.payerShareMinor === 0 &&
@@ -426,6 +466,7 @@ describe('calculation version 1 arithmetic', () => {
         untariffed.split.contractAdjustmentMinor === 0,
     );
   });
+
   it('quantities use the per-unit co-pay times the units, rounded half up, the same as the medicine price', () => {
     const r = computeAllocation({
       terms: terms(),
@@ -433,45 +474,57 @@ describe('calculation version 1 arithmetic', () => {
       charge: charge('fee:drug', 1_000),
       units: 2.5,
     });
+
     assert.ok(r.ok);
+
     if (!r.ok) {
       return;
     }
+
     assert.equal(r.split.tariffTotalMinor, 833); // round(333 × 2.5)
     assert.equal(r.split.patientShareMinor, 125); // round(50 × 2.5)
     assert.ok(splitBalances(r.split, 1_000));
   });
+
   it('uses explicit manual quantity with the existing tariff and copay rules', () => {
     const c = charge('fee:drug', 1_350, {
       feePriceVersion: 'price:selected',
       quantity: 3,
       unitPriceMinor: 450,
     });
+
     assert.equal(chargeUnits(c), 3);
+
     const r = computeAllocation({
       terms: terms(),
       planCode: 'GOLD',
       charge: c,
       units: chargeUnits(c)!,
     });
+
     assert.ok(r.ok);
+
     if (r.ok) {
       assert.equal(r.split.tariffTotalMinor, 999);
       assert.equal(r.split.patientShareMinor, 150);
       assert.ok(splitBalances(r.split, 1350));
     }
+
     const lines = buildScheduleLines(terms(), terms().plans[0], (id) => CATEGORY[id]);
     assert.ok(
       !JSON.stringify(lines).includes('pharmacy'),
       'old contracts retain their original category vocabulary',
     );
   });
+
   it('chooses the contract version in force on the date of service', () => {
     const v2 = terms({
       effectiveFrom: '2026-03-15',
       tariff: { ...terms().tariff, 'fee:consult': { unitMinor: 5_000 } },
     });
+
     const r = records({ schedules: [schedule(terms(), 1), schedule(v2, 2)] });
+
     const before = estimateCoverage({
       billingActive: true,
       charge: charge('fee:consult', 5_000),
@@ -479,6 +532,7 @@ describe('calculation version 1 arithmetic', () => {
       serviceDate: '2026-03-10',
       units: 1,
     });
+
     const after = estimateCoverage({
       billingActive: true,
       charge: charge('fee:consult', 5_000),
@@ -489,13 +543,16 @@ describe('calculation version 1 arithmetic', () => {
       serviceDate: '2026-03-20',
       units: 1,
     });
+
     assert.equal(before.state === 'estimated' && before.patientShareMinor, 400);
     assert.equal(after.state === 'estimated' && after.patientShareMinor, 500);
   });
+
   it('an item rule wins over its category rule', () => {
     const line = scheduleLineFor(terms(), terms().plans[0], 'fee:cosmetic', 'procedure');
     assert.equal(line.status, 'excluded');
   });
+
   it('dates services in the facility time zone', () => {
     assert.equal(serviceDateOf('2026-03-09T23:30:00.000Z', 'Africa/Lagos'), '2026-03-10');
     assert.equal(
@@ -504,6 +561,7 @@ describe('calculation version 1 arithmetic', () => {
       'no time zone, no insurance date — never a UTC guess',
     );
   });
+
   it('reads a medicine supply quantity from its dispense entry', () => {
     const entry = { id: 'rx:one', values: {} } as unknown as EncounterEntry;
     assert.equal(chargeUnits({ dispenseEntryId: undefined }), 1);
@@ -518,15 +576,19 @@ describe('calculation version 1 arithmetic', () => {
 describe('the offline schedule reproduces the full calculation exactly', () => {
   // Deterministic generator: the same contracts every run.
   let seed = 20_261_112;
+
   const next = (n: number) => {
     seed = (seed * 1_103_515_245 + 12_345) % 2_147_483_648;
+
     return seed % n;
   };
+
   const pick = <T>(xs: readonly T[]) => xs[next(xs.length)];
   const arrangements: Arrangement[] = ['per_service', 'capitation', 'per_diem', 'package'];
 
   it('agrees on the patient share for 2,000 generated contracts and charges', () => {
     let compared = 0;
+
     for (let i = 0; i < 2_000; i += 1) {
       const copay = pick([
         { kind: 'none' },
@@ -538,6 +600,7 @@ describe('the offline schedule reproduces the full calculation exactly', () => {
           basis: pick(['per_charge', 'per_dispense', 'per_visit', 'per_claim'] as const),
         },
       ] as const);
+
       const rule: PlanRule =
         next(5) === 0
           ? ({
@@ -545,7 +608,9 @@ describe('the offline schedule reproduces the full calculation exactly', () => {
               patientLiability: pick(['patient_pays', 'not_billable', undefined] as const),
             } as PlanRule)
           : { coverage: 'covered', copay, approvalRequired: false };
+
       const withTariff = next(3) !== 0;
+
       const t = PayerContractTerms.parse({
         payerId: 'payer:synthetic-a',
         effectiveFrom: '2026-01-01',
@@ -560,9 +625,11 @@ describe('the offline schedule reproduces the full calculation exactly', () => {
           },
         ],
       });
+
       const list = 1 + next(60_000);
       const units = pick([1, 1, 2, 3, 0.5, 2.5, 7.25]);
       const c = charge('fee:x', list, { category: 'consultation', id: `charge:gen:${i}` });
+
       const e = estimateCoverage({
         billingActive: true,
         charge: c,
@@ -570,12 +637,16 @@ describe('the offline schedule reproduces the full calculation exactly', () => {
         serviceDate: '2026-03-10',
         units,
       });
+
       const full = computeAllocation({ terms: t, planCode: 'GOLD', charge: c, units });
+
       if (e.state === 'estimated') {
         assert.ok(full.ok, `full calculation must succeed when the schedule estimates (case ${i})`);
+
         if (!full.ok) {
           continue;
         }
+
         assert.equal(e.patientShareMinor, full.split.patientShareMinor, `case ${i}`);
         assert.ok(splitBalances(full.split, list), `case ${i} balances`);
         compared += 1;
@@ -587,6 +658,7 @@ describe('the offline schedule reproduces the full calculation exactly', () => {
         );
       }
     }
+
     assert.ok(compared > 500, `compared ${compared} estimated charges`);
   });
 
@@ -598,6 +670,7 @@ describe('the offline schedule reproduces the full calculation exactly', () => {
         !json.includes('payer_share') &&
         !json.includes('basisPoints":1000'),
     );
+
     assert.equal(patientShareFor({ kind: 'per_unit', amountMinor: 400 }, 1, 5_000), 400);
   });
 });
@@ -613,25 +686,30 @@ describe('terms version 1 cannot calculate stay explicit', () => {
         },
       ],
     });
+
   it('calculates a fixed co-pay only when the contract says it is per unit', () => {
     const perUnit = withCopay({
       coverage: 'covered',
       copay: { kind: 'fixed', amountMinor: 300, basis: 'per_unit' },
       approvalRequired: false,
     });
+
     const r = computeAllocation({
       terms: perUnit,
       planCode: 'GOLD',
       charge: charge('fee:consult', 5_000),
       units: 2,
     });
+
     assert.ok(r.ok && r.split.patientShareMinor === 600);
+
     for (const basis of ['per_charge', 'per_dispense', 'per_visit', 'per_claim'] as const) {
       const t = withCopay({
         coverage: 'covered',
         copay: { kind: 'fixed', amountMinor: 300, basis },
         approvalRequired: false,
       });
+
       const e = estimate(charge('fee:consult', 5_000), records({ schedules: [schedule(t)] }));
       assert.equal(e.state === 'undetermined' && e.reason, 'unsupported_arrangement', basis);
       assert.equal(e.state === 'undetermined' && e.detail, `copay_${basis}`);
@@ -645,6 +723,7 @@ describe('terms version 1 cannot calculate stay explicit', () => {
         false,
         basis,
       );
+
       assert.ok(
         unsupportedArrangements(t).some(
           (u) => u.feature === `copay_${basis}` && u.planCode === 'GOLD',
@@ -653,6 +732,7 @@ describe('terms version 1 cannot calculate stay explicit', () => {
       );
     }
   });
+
   it('leaves insured charges undetermined when the hospital has no time zone', () => {
     const e = estimateCoverage({
       billingActive: true,
@@ -661,6 +741,7 @@ describe('terms version 1 cannot calculate stay explicit', () => {
       serviceDate: undefined,
       units: 1,
     });
+
     assert.equal(e.state === 'undetermined' && e.reason, 'facility_timezone_missing');
     assert.equal(
       estimateCoverage({
@@ -673,6 +754,7 @@ describe('terms version 1 cannot calculate stay explicit', () => {
       'self_pay',
       'a cash patient is unaffected',
     );
+
     // Setup mode: verified cover is recorded, but no bill changes until insurance billing is active.
     assert.equal(
       estimateCoverage({
@@ -686,6 +768,7 @@ describe('terms version 1 cannot calculate stay explicit', () => {
       'setup never changes a bill',
     );
   });
+
   it('stops a schedule from its end date, without touching earlier services', () => {
     const ended = { ...schedule(terms()), endedOn: '2026-03-10' };
     assert.equal(
@@ -693,6 +776,7 @@ describe('terms version 1 cannot calculate stay explicit', () => {
       'undetermined',
       'the end date itself is no longer covered',
     );
+
     const before = estimateCoverage({
       billingActive: true,
       charge: charge('fee:consult', 5_000),
@@ -703,10 +787,13 @@ describe('terms version 1 cannot calculate stay explicit', () => {
       serviceDate: '2026-03-09',
       units: 1,
     });
+
     assert.equal(before.state, 'estimated');
   });
+
   it('judges a recorded self-pay choice by the contract version in force on the date of service', () => {
     const c = charge('fee:consult', 5_000);
+
     const choice = CoverageElection.parse({
       ...base,
       type: 'coverage_election',
@@ -719,14 +806,18 @@ describe('terms version 1 cannot calculate stay explicit', () => {
       reason: 'patient_choice',
       patientAgreed: true,
     });
+
     const allowedV1 = schedule(terms({ selfPayElection: 'allowed' }), 1);
+
     const prohibitedV2 = schedule(
       terms({ selfPayElection: 'not_allowed', effectiveFrom: '2026-03-15' }),
       2,
       '2026-03-15',
     );
+
     const r = records({ elections: [choice], schedules: [allowedV1, prohibitedV2] });
     assert.equal(estimate(c, r).state, 'self_pay_elected', 'allowed on the 10th under version 1');
+
     const later = estimateCoverage({
       billingActive: true,
       charge: c,
@@ -734,11 +825,13 @@ describe('terms version 1 cannot calculate stay explicit', () => {
       serviceDate: '2026-03-20',
       units: 1,
     });
+
     assert.equal(
       later.state === 'undetermined' && later.reason,
       'self_pay_not_permitted',
       'the same choice is not honoured where version 2 prohibits it',
     );
+
     assert.equal(r.elections.length, 1, 'the choice itself stays on record');
     const unset = estimate(c, records({ elections: [choice] }));
     assert.equal(
@@ -758,6 +851,7 @@ describe('insurance records, permissions and rollout', () => {
       id: 'check:x',
       data: {},
     } as const;
+
     assert.equal(
       UploadRequest.safeParse({
         transactionId: null,
@@ -768,6 +862,7 @@ describe('insurance records, permissions and rollout', () => {
       }).success,
       false,
     );
+
     assert.equal(
       UploadRequest.safeParse({
         transactionId: null,
@@ -780,23 +875,27 @@ describe('insurance records, permissions and rollout', () => {
       true,
     );
   });
+
   it('grants contract access by duty; a facility administrator holds every insurance duty', () => {
     assert.ok(
       !ROLE_PERMISSIONS.supervisor.some(
         (p) => p.startsWith('insurance_contract') || p === 'coverage:confirm',
       ),
     );
+
     assert.ok(ROLE_PERMISSIONS.supervisor.includes('payment:refund'));
     assert.deepEqual([...ROLE_PERMISSIONS.cashier].sort(), [
       'charge:associate',
       'coverage:elect_self_pay',
       'payment:receive',
     ]);
+
     assert.ok(
       ROLE_PERMISSIONS.insurance_officer.includes('coverage:confirm') &&
         !ROLE_PERMISSIONS.insurance_officer.includes('insurance_contract:activate') &&
         !ROLE_PERMISSIONS.insurance_officer.includes('payment:refund'),
     );
+
     const admin = ROLE_PERMISSIONS.facility_admin;
     assert.ok(
       [
@@ -809,6 +908,7 @@ describe('insurance records, permissions and rollout', () => {
       'an administrator performs every insurance function',
     );
   });
+
   it('a self-pay election records the patient agreement and, when not eligible, the check', () => {
     const election = {
       ...base,
@@ -820,21 +920,25 @@ describe('insurance records, permissions and rollout', () => {
       coverId: 'cover:one',
       chargeIds: ['c:1'],
     };
+
     assert.equal(
       CoverageElection.safeParse({ ...election, reason: 'patient_choice' }).success,
       false,
     );
+
     assert.equal(
       CoverageElection.safeParse({ ...election, reason: 'not_eligible', patientAgreed: true })
         .success,
       false,
     );
+
     assert.equal(
       CoverageElection.safeParse({ ...election, reason: 'patient_choice', patientAgreed: true })
         .success,
       true,
     );
   });
+
   it('a refund is allocated in full and numbered by the server', () => {
     const refund = {
       ...base,
@@ -849,6 +953,7 @@ describe('insurance records, permissions and rollout', () => {
       reason: 'Synthetic',
       allocations: [{ chargeId: 'c:1', amountMinor: 100 }],
     };
+
     assert.equal(Refund.safeParse(refund).success, true);
     assert.equal(Refund.safeParse({ ...refund, amountMinor: 90 }).success, false);
     assert.equal(Refund.safeParse({ ...refund, refundNumber: 'TEST-R-000001-K2' }).success, false);

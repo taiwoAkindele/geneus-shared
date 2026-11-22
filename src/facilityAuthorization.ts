@@ -33,9 +33,11 @@ export type AuthorityProof = {
   /** Highest accepted revision known locally; server always re-derives current authority. */
   currentRevision: number;
 };
+
 // Policy 11 adds admission operations; it does not change signed clinical scope.
 const supportedClinicalPolicy = (version: number) =>
   version >= FACILITY_MIN_POLICY_VERSION && version <= POLICY_VERSION;
+
 export const authorityProofIssues = (
   context: AuthorizationContext,
   proof: AuthorityProof | undefined,
@@ -44,13 +46,16 @@ export const authorityProofIssues = (
   if (!proof || !proof.signatureVerified) {
     return ['Trusted server-signed clinical authority is required'];
   }
+
   const snapshot = proof.snapshot;
+
   if (
     !supportedClinicalPolicy(context.policyVersion) ||
     !supportedClinicalPolicy(snapshot.policyVersion)
   ) {
     return ['Clinical authority policy is incompatible'];
   }
+
   if (
     snapshot.staffId !== context.userId ||
     snapshot.facilityId !== context.facilityId ||
@@ -58,6 +63,7 @@ export const authorityProofIssues = (
   ) {
     return ['Clinical authority does not match the current worker, facility or revision'];
   }
+
   if (
     !Number.isFinite(now) ||
     now < Date.parse(snapshot.issuedOn) ||
@@ -65,6 +71,7 @@ export const authorityProofIssues = (
   ) {
     return ['Clinical authority is expired or the trusted time is invalid'];
   }
+
   return [];
 };
 
@@ -78,6 +85,7 @@ export const withReviewerAuthority = (
   const permissions: Permission[] = context.permissions.filter(
     (p) => p !== 'clinical_capability:review',
   );
+
   if (
     staff.active &&
     staff.permission === 'read_write' &&
@@ -88,14 +96,17 @@ export const withReviewerAuthority = (
   ) {
     permissions.push('clinical_capability:review');
   }
+
   return { ...context, permissions };
 };
+
 export type ClinicalActivityRequest = {
   action: ClinicalAction;
   offeringId: string;
   /** Trusted caller establishes presence, identity AND qualification for this action. */
   availableQualifiedActorIds?: readonly string[];
 };
+
 /** Software access AND accepted clinical authority; assignment/ownership conflicts are separate. */
 export const clinicalActivityIssues = (
   staff: Staff,
@@ -112,20 +123,27 @@ export const clinicalActivityIssues = (
   ) {
     return ['An active writable facility member must perform the activity'];
   }
+
   if (decide(context, CLINICAL_ACTION_PERMISSIONS[request.action], now)) {
     return ['Software access is absent or stale for this clinical activity'];
   }
+
   const issues = authorityProofIssues(context, proof, now);
+
   if (issues.length) {
     return issues;
   }
+
   const actors = (request.availableQualifiedActorIds ?? []).filter((id) => id !== staff.staffId);
+
   const grants = proof!.snapshot.grants.filter(
     (g) => scopeAllows(g.scope, request.action, request.offeringId) && intervalContains(g, now),
   );
+
   if (!grants.length) {
     return ['No effective clinical grant covers this action and service'];
   }
+
   if (
     !grants.some(
       (g) =>
@@ -135,6 +153,7 @@ export const clinicalActivityIssues = (
   ) {
     return ['Required independent supervisor/checker is unavailable'];
   }
+
   return [];
 };
 
@@ -153,16 +172,21 @@ export const reviewerDecisionIssues = (
   ) {
     return ['Review must be independently authored in the same facility'];
   }
+
   if (
     decide(withReviewerAuthority(context, staff, proof, now), 'clinical_capability:review', now)
   ) {
     return ['Accepted, fresh clinical reviewer authority is required'];
   }
+
   const issues = authorityProofIssues(context, proof, now);
+
   if (issues.length) {
     return issues;
   }
+
   const scopes = decision.type === 'capability_decision' ? [decision.scope] : decision.scopes;
+
   return scopes.every((scope) =>
     proof!.snapshot.reviewScopes.some(
       (authority) =>
@@ -178,6 +202,7 @@ export const reviewerDecisionIssues = (
     ? []
     : ['Reviewer cannot approve/delegate outside their accepted scope or term'];
 };
+
 export const externalReviewerIssues = (
   reviewer: ExternalClinicalReviewer,
   decision: CapabilityDecision | Credential,
@@ -191,6 +216,7 @@ export const externalReviewerIssues = (
   ) {
     return ['External review requires the authorized audited server operation'];
   }
+
   if (
     !reviewer.active ||
     reviewer.facilityId !== decision.facilityId ||
@@ -199,12 +225,14 @@ export const externalReviewerIssues = (
   ) {
     return ['External reviewer must be independent, active and authorized in this facility'];
   }
+
   if (
     decision.type === 'capability_decision' &&
     !reviewer.scopes.some((s) => scopeContains(s, decision.scope))
   ) {
     return ['External reviewer scope does not cover this decision'];
   }
+
   return [];
 };
 
@@ -233,24 +261,29 @@ export const mayApproveWorkforcePin = (
   ) {
     return false;
   }
+
   const protectedScopes = [...targetAuthority.reviewScopes, ...targetAuthority.grants].filter((g) =>
     intervalContains(g, now),
   );
+
   if (!protectedScopes.length) {
     return true;
   }
+
   if (
     authorityProofIssues(context, proof, now).length ||
     decide(withReviewerAuthority(context, approver, proof, now), 'clinical_capability:review', now)
   ) {
     return false;
   }
+
   return protectedScopes.every((targetGrant) =>
     proof!.snapshot.reviewScopes.some(
       (g) => intervalContains(g, now) && scopeContains(g.scope, targetGrant.scope),
     ),
   );
 };
+
 /** Configuration cannot strand a facility without a writable administrator. Unsafe clinical grants may still be revoked. */
 export const staffGovernanceIssues = (
   next: Staff,
@@ -264,8 +297,10 @@ export const staffGovernanceIssues = (
   ) {
     return ['Staff access changes must preserve facility identity'];
   }
+
   const manager = (s: Staff) =>
     s.active && s.permission === 'read_write' && rolesFor(s).includes('facility_admin');
+
   return manager(current) &&
     !manager(next) &&
     !facilityStaff.some(
@@ -274,6 +309,7 @@ export const staffGovernanceIssues = (
     ? ['Add another writable facility administrator before removing the last one']
     : [];
 };
+
 const localDate = (instant: number, timeZone: string): string => {
   const parts = new Intl.DateTimeFormat('en', {
     timeZone,
@@ -281,9 +317,12 @@ const localDate = (instant: number, timeZone: string): string => {
     month: '2-digit',
     day: '2-digit',
   }).formatToParts(new Date(instant));
+
   const part = (key: string) => parts.find((p) => p.type === key)!.value;
+
   return `${part('year')}-${part('month')}-${part('day')}`;
 };
+
 /** Inclusive local expiry date; expiring evidence cannot support an unbounded grant. */
 export const credentialSupportsInterval = (
   credential: Credential,
@@ -292,13 +331,17 @@ export const credentialSupportsInterval = (
   if (credential.verification !== 'verified') {
     return false;
   }
+
   const first = localDate(Date.parse(interval.startsAt), credential.timeZone);
+
   if (credential.issuedOn && first < credential.issuedOn) {
     return false;
   }
+
   if (!credential.validThrough) {
     return true;
   }
+
   return (
     Boolean(interval.endsAt) &&
     first <= credential.validThrough &&
@@ -329,18 +372,24 @@ export const assignmentEligibilityIssues = (
   ) {
     return ['Worker needs an active assignment covering the complete occurrence'];
   }
+
   const actions = [...new Set([...assignment.requiredActions, ...requiredActions])];
+
   if (!actions.length) {
     return [];
   } // Administrative/support assignments need no fabricated clinical credential.
+
   const issues = authorityProofIssues(context, proof, now);
+
   if (issues.length) {
     return issues;
   }
+
   return actions.flatMap((action) => {
     if (decide(context, CLINICAL_ACTION_PERMISSIONS[action], now)) {
       return [`Software access is missing/stale for ${action}`];
     }
+
     return proof!.snapshot.grants.some(
       (g) =>
         scopeAllows(g.scope, action, assignment.offeringId) &&
@@ -368,7 +417,9 @@ export const sessionClinicalCoverageIssues = (
   if (offering.facilityId !== session.facilityId || offering.id !== session.offeringId) {
     return ['Coverage must belong to this service and facility'];
   }
+
   const issues: string[] = [];
+
   const members = session.participants.flatMap((p) => {
     const matches = people.filter(
       (v) =>
@@ -377,10 +428,13 @@ export const sessionClinicalCoverageIssues = (
         v.assignment.offeringId === offering.id &&
         v.assignment.facilityId === offering.facilityId,
     );
+
     if (matches.length !== 1) {
       issues.push('Each participant needs one unambiguous effective assignment context');
+
       return [];
     }
+
     const member = matches[0];
     issues.push(
       ...assignmentEligibilityIssues(
@@ -393,8 +447,10 @@ export const sessionClinicalCoverageIssues = (
         now,
       ),
     );
+
     return [member];
   });
+
   for (const action of offering.requiredActions) {
     if (
       !members.some(
@@ -415,6 +471,7 @@ export const sessionClinicalCoverageIssues = (
       issues.push(`Service has no qualified assigned coverage for ${action}`);
     }
   }
+
   return issues;
 };
 
@@ -434,14 +491,19 @@ export const encounterClinicalActions = (
     ) {
       throw new Error('Amendment needs its original entry in the same encounter');
     }
+
     const corrected = entry.values.correctedValues;
     const before = encounterClinicalActions(original);
+
     if (!corrected) {
       return before;
     }
+
     const values = ENCOUNTER_STEP_VALUES[original.step].parse(corrected) as Record<string, unknown>;
+
     return [...new Set([...before, ...encounterClinicalActions({ ...original, values })])];
   }
+
   switch (entry.step) {
     case 'diagnosis':
       return (Array.isArray(entry.values.prescription) && entry.values.prescription.length > 0) ||
@@ -462,14 +524,21 @@ export const encounterClinicalActions = (
       return ['assess'];
   }
 };
-export const clinicalEventActions = (event: Pick<ClinicalEvent, 'kind'>): ClinicalAction[] =>
-  event.kind === 'problem'
-    ? ['diagnose']
-    : event.kind === 'medication'
-      ? ['prescribe']
-      : ['assess'];
+
+export const clinicalEventActions = (event: Pick<ClinicalEvent, 'kind'>): ClinicalAction[] => {
+  if (event.kind === 'problem') {
+    return ['diagnose'];
+  }
+
+  if (event.kind === 'medication') {
+    return ['prescribe'];
+  }
+
+  return ['assess'];
+};
 
 export type DelayedClinicalAssessment = 'current' | 'historical_review' | 'invalid_time';
+
 /** Retain evidence for review instead of trusting backdating or discarding performed care. */
 export const assessDelayedClinicalTime = (input: {
   performedOn: string;
@@ -486,7 +555,9 @@ export const assessDelayedClinicalTime = (input: {
     input.lastTrustedServerOn,
     input.authorityExpiresOn,
   ].map(Date.parse);
+
   const revoked = input.revokedOn ? Date.parse(input.revokedOn) : Infinity;
+
   if (
     ![
       performed,
@@ -505,6 +576,7 @@ export const assessDelayedClinicalTime = (input: {
   ) {
     return 'invalid_time';
   }
+
   return received - trusted > input.maximumOfflineMs ||
     performed >= expires ||
     received >= expires ||

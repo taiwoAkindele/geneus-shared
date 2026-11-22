@@ -22,10 +22,12 @@ describe('patient age and identity', () => {
       ),
       41,
     );
+
     assert.equal(patientAge({ ageYears: 40, createdOn: '2024-10-25' }, '2026-10-25'), 42);
     assert.equal(validCalendarDate('2025-02-29'), false);
     assert.equal(validCalendarDate('2024-02-29'), true);
   });
+
   it('normalises explicitly cleared patient values without removing age evidence', () => {
     const p = Patient.parse({
       id: 'OOE-000001-K2',
@@ -44,18 +46,21 @@ describe('patient age and identity', () => {
       nin: null,
       dateOfBirth: null,
     });
+
     assert.equal(p.phone, undefined);
     assert.equal(p.dateOfBirth, undefined);
     assert.equal(p.ageYears, 20);
     assert(!Patient.safeParse({ ...p, dateOfBirth: '2000-02-30' }).success);
     assert(!Patient.safeParse({ ...p, dateOfBirth: '2000-01-01' }).success);
   });
+
   const event = (
     revision: number,
     patientId: string,
     otherPatientId: string,
     outcome: IdentityEvent['outcome'] = 'linked',
   ): IdentityEvent => ({ id: `e${revision}`, revision, patientId, otherPatientId, outcome });
+
   it('recognises transitive aliases and corrects a link without rewriting records', () => {
     const events = [event(1, 'a', 'b'), event(2, 'c', 'a')];
     assert.equal(canonicalPatientId('b', events), 'c');
@@ -64,6 +69,7 @@ describe('patient age and identity', () => {
     assert.equal(canonicalPatientId('b', events), 'a');
     assert.deepEqual(linkedPatientIds('c', events), ['c']);
   });
+
   it('ignores an unconfirmed local link and detects corrupt cycles', () => {
     assert.equal(activeIdentityLinks([{ ...event(1, 'a', 'b'), revision: undefined }]).size, 0);
     assert.throws(() => canonicalPatientId('a', [event(1, 'a', 'b'), event(2, 'b', 'a')]), /cycle/);

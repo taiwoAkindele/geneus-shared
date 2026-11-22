@@ -22,9 +22,11 @@ const text = z.string().trim().min(1);
 const name = text.max(160);
 const ref = text.max(200);
 const revision = z.number().int().positive();
+
 /** Settings records carry the current envelope. */
 const record = <T extends z.ZodRawShape>(shape: T) =>
   z.strictObject({ ...baseEnvelope.shape, schemaVersion: z.literal(5).default(5), ...shape });
+
 const distinct = (max: number, what: string) =>
   z
     .array(text.max(120))
@@ -36,12 +38,16 @@ const distinct = (max: number, what: string) =>
 /* ------------------------------------------------------------------ */
 
 export const AgeUnit = z.enum(['days', 'months', 'years']);
+
 export type AgeUnit = z.infer<typeof AgeUnit>;
+
 export const AgeBound = z.strictObject({
   value: z.number().int().nonnegative().max(50_000),
   unit: AgeUnit,
 });
+
 export type AgeBound = z.infer<typeof AgeBound>;
+
 const DAYS_PER: Record<AgeUnit, number> = { days: 1, months: 30.4375, years: 365.25 };
 const approxDays = (bound?: AgeBound) => (bound ? bound.value * DAYS_PER[bound.unit] : undefined);
 
@@ -65,6 +71,7 @@ export const ReferenceRange = z
         message: 'Give a low or a high value for this range',
       });
     }
+
     if (range.low !== undefined && range.high !== undefined && range.low >= range.high) {
       ctx.addIssue({
         code: 'custom',
@@ -72,6 +79,7 @@ export const ReferenceRange = z
         message: 'The high value must be above the low value',
       });
     }
+
     if (range.ageFrom && range.ageTo && approxDays(range.ageFrom)! >= approxDays(range.ageTo)!) {
       ctx.addIssue({
         code: 'custom',
@@ -80,6 +88,7 @@ export const ReferenceRange = z
       });
     }
   });
+
 export type ReferenceRange = z.infer<typeof ReferenceRange>;
 
 /** Two rows that could both describe one patient. Mixed age units compare by average length. */
@@ -87,8 +96,10 @@ export const rangesOverlap = (a: ReferenceRange, b: ReferenceRange): boolean => 
   if (a.sex && b.sex && a.sex !== b.sex) {
     return false;
   }
+
   const start = (r: ReferenceRange) => approxDays(r.ageFrom) ?? 0;
   const end = (r: ReferenceRange) => approxDays(r.ageTo) ?? Infinity;
+
   return start(a) < end(b) && start(b) < end(a);
 };
 
@@ -99,12 +110,14 @@ export const rangesOverlap = (a: ReferenceRange, b: ReferenceRange): boolean => 
 export const PartKey = z
   .string()
   .regex(/^[a-z][a-z0-9_]{0,59}$/, 'Use lower-case letters, digits and underscores for a part key');
+
 const partBase = {
   key: PartKey,
   label: name,
   required: z.boolean().default(false),
   libraryPartId: ref.optional(),
 };
+
 export const NumberPart = z
   .strictObject({
     ...partBase,
@@ -127,25 +140,31 @@ export const NumberPart = z
       }),
     ),
   );
+
 export const ChoicePart = z.strictObject({
   ...partBase,
   kind: z.literal('choice'),
   answers: distinct(50, 'answer').refine((v) => v.length >= 2, 'Give at least two answers'),
   answerListId: ref.optional(),
 });
+
 export const TextPart = z.strictObject({ ...partBase, kind: z.literal('text') });
+
 /** A titled block of report prose, such as Findings or Impression. */
 export const SectionPart = z.strictObject({ ...partBase, kind: z.literal('section') });
+
 export const CulturePart = z.strictObject({
   ...partBase,
   kind: z.literal('culture'),
   antibiotics: distinct(80, 'antibiotic'),
 });
+
 export const ImagesPart = z.strictObject({
   ...partBase,
   kind: z.literal('images'),
   maxFiles: z.number().int().min(1).max(12).default(6),
 });
+
 export const ResultPart = z.discriminatedUnion('kind', [
   NumberPart,
   ChoicePart,
@@ -154,8 +173,11 @@ export const ResultPart = z.discriminatedUnion('kind', [
   CulturePart,
   ImagesPart,
 ]);
+
 export type ResultPart = z.infer<typeof ResultPart>;
+
 export type NumberPart = z.infer<typeof NumberPart>;
+
 export const RESULT_PART_KIND_LABELS = {
   number: 'Number',
   choice: 'Choice',
@@ -178,7 +200,9 @@ export const TEXT_RESULT_PART = {
 /* ------------------------------------------------------------------ */
 
 export const ResultTemplateStatus = z.enum(['draft', 'active', 'archived']);
+
 export type ResultTemplateStatus = z.infer<typeof ResultTemplateStatus>;
+
 const templateFields = {
   name,
   status: ResultTemplateStatus,
@@ -189,6 +213,7 @@ const templateFields = {
     .max(500)
     .refine((v) => new Set(v).size === v.length, 'Choose each test only once'),
 };
+
 const checkTemplate = (
   template: { status: ResultTemplateStatus; parts: ResultPart[]; serviceDefinitionIds: string[] },
   ctx: z.RefinementCtx,
@@ -203,6 +228,7 @@ const checkTemplate = (
       });
     }
   });
+
   if (template.status !== 'active' && template.serviceDefinitionIds.length) {
     ctx.addIssue({
       code: 'custom',
@@ -211,9 +237,12 @@ const checkTemplate = (
     });
   }
 };
+
 /** What a settings screen sends; the server adds identity, source and revision. */
 export const ResultTemplateDraft = z.strictObject(templateFields).superRefine(checkTemplate);
+
 export type ResultTemplateDraft = z.infer<typeof ResultTemplateDraft>;
+
 export const ResultTemplate = record({
   type: z.literal('result_template'),
   ...templateFields,
@@ -221,6 +250,7 @@ export const ResultTemplate = record({
   standardKey: text.max(80).optional(),
   revision: revision.default(1),
 }).superRefine(checkTemplate);
+
 export type ResultTemplate = z.infer<typeof ResultTemplate>;
 
 /** A shared part: changing it updates every template that uses it, as a new template revision. */
@@ -228,12 +258,15 @@ export const ResultPartDraft = z.strictObject({
   part: ResultPart,
   active: z.boolean().default(true),
 });
+
 export type ResultPartDraft = z.infer<typeof ResultPartDraft>;
+
 export const ResultPartDefinition = record({
   type: z.literal('result_part'),
   ...ResultPartDraft.shape,
   revision: revision.default(1),
 });
+
 export type ResultPartDefinition = z.infer<typeof ResultPartDefinition>;
 
 export const AnswerListDraft = z.strictObject({
@@ -241,12 +274,15 @@ export const AnswerListDraft = z.strictObject({
   answers: distinct(50, 'answer').refine((v) => v.length >= 2, 'Give at least two answers'),
   active: z.boolean().default(true),
 });
+
 export type AnswerListDraft = z.infer<typeof AnswerListDraft>;
+
 export const AnswerList = record({
   type: z.literal('answer_list'),
   ...AnswerListDraft.shape,
   revision: revision.default(1),
 });
+
 export type AnswerList = z.infer<typeof AnswerList>;
 
 /** The kind of result a template records, as the settings list shows it. */
@@ -254,15 +290,23 @@ export const templateResultType = (
   parts: readonly ResultPart[],
 ): 'Numbers' | 'Choice' | 'Text' | 'Culture' | 'Report' | 'Mixed' => {
   const kinds = new Set(parts.map((part) => part.kind));
+
   if (kinds.has('culture')) {
     return 'Culture';
   }
+
   if (kinds.has('section') || kinds.has('images')) {
     return 'Report';
   }
+
   if (kinds.size === 1) {
-    return kinds.has('number') ? 'Numbers' : kinds.has('choice') ? 'Choice' : 'Text';
+    if (kinds.has('number')) {
+      return 'Numbers';
+    }
+
+    return kinds.has('choice') ? 'Choice' : 'Text';
   }
+
   return 'Mixed';
 };
 
@@ -297,7 +341,9 @@ export const StandardTest = record({
   aliases: z.array(text.max(200)).max(50),
   concept: CodedConcept,
 });
+
 export type StandardTest = z.infer<typeof StandardTest>;
+
 export const StandardTemplate = record({
   type: z.literal('standard_template'),
   key: text.max(80),
@@ -306,16 +352,20 @@ export const StandardTemplate = record({
   tests: z.array(text.max(80)).max(50),
   parts: z.array(ResultPart).min(1).max(80),
 });
+
 export type StandardTemplate = z.infer<typeof StandardTemplate>;
 
 /** Names compare without case or repeated spaces, so "FBC" and "fbc " are the same test. */
 export const labTestKey = (name: string) => name.trim().replace(/\s+/g, ' ').toLowerCase();
+
 type LabDefinition = Pick<
   ServiceDefinition,
   'id' | 'name' | 'active' | 'investigation' | 'concept'
 >;
+
 const sameConcept = (a: { system: string; code: string }, b: { system: string; code: string }) =>
   a.system === b.system && a.code === b.code;
+
 const sameList = (a: readonly string[], b: readonly string[]) =>
   a.length === b.length && a.every((value, i) => value === b[i]);
 
@@ -333,7 +383,9 @@ export const labTestIssues = (
   if (!test.investigation) {
     return [];
   }
+
   const issues: string[] = [];
+
   if (!standards) {
     /* An edit keeps its original code; the caller refuses a recode. */
   } else if (test.concept.system === 'local') {
@@ -342,6 +394,7 @@ export const labTestIssues = (
     }
   } else {
     const standard = standards.find((s) => sameConcept(s.concept, test.concept));
+
     if (!standard) {
       issues.push('This standard test is not on the standard list');
     } else if (
@@ -354,24 +407,30 @@ export const labTestIssues = (
       issues.push(`${standard.name} must be added exactly as the standard list describes it`);
     }
   }
+
   if (test.active) {
     const taken = new Set(
       existing
         .filter((d) => d.id !== test.id && d.active && d.investigation)
         .flatMap((d) => [d.name, ...(d.investigation?.aliases ?? [])].map(labTestKey)),
     );
+
     const clash = [test.name, ...test.investigation.aliases].find((n) => taken.has(labTestKey(n)));
+
     if (clash) {
       issues.push(`Another test is already called “${clash.trim()}”`);
     }
   }
+
   return issues;
 };
 
 /** Parts as one comparable string, keys in schema order whichever way they were built. */
 export const canonicalParts = (parts: readonly ResultPart[]) =>
   JSON.stringify(parts.map((part) => ResultPart.parse(part)));
+
 type Library = { parts: readonly ResultPartDefinition[]; lists: readonly AnswerList[] };
+
 /**
  * Parts linked to the shared library carry the library's current content; the
  * template keeps only its own key and whether the part is required. Answers linked
@@ -382,28 +441,39 @@ export const resolveLibraryParts = (
   library: Library,
 ): { parts: ResultPart[]; issues: string[] } => {
   const issues: string[] = [];
+
   const resolved = parts.map((part) => {
     let next = part;
+
     if (part.libraryPartId) {
       const shared = library.parts.find((p) => p.id === part.libraryPartId);
+
       if (!shared?.active) {
         issues.push(`${part.label}: this shared part is no longer available`);
+
         return part;
       }
+
       next = { ...shared.part, key: part.key, required: part.required, libraryPartId: shared.id };
     }
+
     if (next.kind === 'choice' && next.answerListId) {
       const list = library.lists.find(
         (l) => l.id === (next as { answerListId?: string }).answerListId,
       );
+
       if (!list?.active) {
         issues.push(`${next.label}: this answer list is no longer available`);
+
         return next;
       }
+
       next = { ...next, answers: list.answers };
     }
+
     return next;
   });
+
   return { parts: resolved, issues };
 };
 
@@ -422,20 +492,25 @@ export const resultTemplateIssues = (
   },
 ): string[] => {
   const issues: string[] = [];
+
   const tests = new Map(
     context.tests.filter((t) => t.active && t.investigation).map((t) => [t.id, t]),
   );
+
   if (template.serviceDefinitionIds.some((id) => !tests.has(id))) {
     issues.push('One or more linked tests are not active tests in this catalogue');
   }
+
   if (template.status === 'active') {
     for (const other of context.templates) {
       if (other.id === template.id || other.status !== 'active') {
         continue;
       }
+
       const taken = template.serviceDefinitionIds.filter((id) =>
         other.serviceDefinitionIds.includes(id),
       );
+
       if (taken.length) {
         issues.push(
           `${taken.map((id) => tests.get(id)?.name ?? id).join(', ')} already ${taken.length === 1 ? 'uses' : 'use'} the template “${other.name}”`,
@@ -443,8 +518,10 @@ export const resultTemplateIssues = (
       }
     }
   }
+
   const resolved = resolveLibraryParts(template.parts, context.library);
   issues.push(...resolved.issues);
+
   if (
     !resolved.issues.length &&
     canonicalParts(resolved.parts) !== canonicalParts(template.parts)
@@ -453,8 +530,10 @@ export const resultTemplateIssues = (
       'A shared part or answer list changed. Reopen the template to use its current version',
     );
   }
+
   if (template.source === 'standard') {
     const standard = context.standards.find((s) => s.key === template.standardKey);
+
     if (!standard) {
       issues.push('This standard template is not on the standard list');
     } else if (
@@ -464,6 +543,7 @@ export const resultTemplateIssues = (
     ) {
       issues.push(`${standard.name} must be added exactly as the standard list describes it`);
     }
+
     if (
       context.templates.some((t) => t.id !== template.id && t.standardKey === template.standardKey)
     ) {
@@ -472,6 +552,7 @@ export const resultTemplateIssues = (
   } else if (template.standardKey) {
     issues.push('Only an adopted standard template names a standard key');
   }
+
   return issues;
 };
 
@@ -490,7 +571,9 @@ export const ResultFlag = z.enum([
   'borderline',
   'inconclusive_repeat',
 ]);
+
 export type ResultFlag = z.infer<typeof ResultFlag>;
+
 export const RESULT_FLAG_LABELS = {
   normal: 'Normal',
   abnormal: 'Abnormal',
@@ -501,6 +584,7 @@ export const RESULT_FLAG_LABELS = {
   borderline: 'Borderline',
   inconclusive_repeat: 'Inconclusive, repeat test',
 } as const satisfies Record<ResultFlag, string>;
+
 const flag = ResultFlag.optional();
 
 /**
@@ -508,6 +592,7 @@ const flag = ResultFlag.optional();
  * result reads the same on every device whatever later revisions change.
  */
 const valueBase = { key: PartKey, label: name };
+
 export const ReportValue = z.discriminatedUnion('kind', [
   /** `range` is the row shown for this patient, kept with the value; absent when no range fits. */
   z.strictObject({
@@ -551,6 +636,7 @@ export const ReportValue = z.discriminatedUnion('kind', [
     files: z.array(DocumentFile).min(1).max(12),
   }),
 ]);
+
 export type ReportValue = z.infer<typeof ReportValue>;
 
 /** Whole years always; months and days only when a date of birth is known. */
@@ -559,7 +645,9 @@ export const LabAge = z.strictObject({
   months: z.number().int().nonnegative().optional(),
   days: z.number().int().nonnegative().optional(),
 });
+
 export const LabPatientFacts = z.strictObject({ sex: Sex.optional(), age: LabAge.optional() });
+
 export type LabPatientFacts = z.infer<typeof LabPatientFacts>;
 
 export const LabReportItem = z.strictObject({
@@ -570,6 +658,7 @@ export const LabReportItem = z.strictObject({
   values: z.array(ReportValue).min(1).max(80),
   comment: text.max(4000).optional(),
 });
+
 export type LabReportItem = z.infer<typeof LabReportItem>;
 
 /**
@@ -581,13 +670,16 @@ export const LabReport = z.strictObject({
   patient: LabPatientFacts,
   items: z.array(LabReportItem).min(1).max(50),
 });
+
 export type LabReport = z.infer<typeof LabReport>;
 
 const wholeMonths = (birth: string, on: string) => {
   const [year, month, day] = birth.slice(0, 10).split('-').map(Number);
   const [endYear, endMonth, endDay] = on.slice(0, 10).split('-').map(Number);
+
   return (endYear - year) * 12 + endMonth - month - Number(endDay < day);
 };
+
 const wholeDays = (birth: string, on: string) =>
   Math.floor(
     (Date.parse(`${on.slice(0, 10)}T00:00:00Z`) - Date.parse(`${birth.slice(0, 10)}T00:00:00Z`)) /
@@ -606,49 +698,68 @@ export const labPatientFacts = (
   on: string,
 ): LabPatientFacts => {
   const years = patientAge(patient, on.slice(0, 10));
-  const age =
-    years === undefined
-      ? undefined
-      : patient.dateOfBirth
-        ? {
-            years,
-            months: Math.max(0, wholeMonths(patient.dateOfBirth, on)),
-            days: Math.max(0, wholeDays(patient.dateOfBirth, on)),
-          }
-        : { years };
+
+  // Months and days are known only from a date of birth, not from a typed age.
+  const ageFor = () => {
+    if (years === undefined) {
+      return undefined;
+    }
+
+    if (!patient.dateOfBirth) {
+      return { years };
+    }
+
+    return {
+      years,
+      months: Math.max(0, wholeMonths(patient.dateOfBirth, on)),
+      days: Math.max(0, wholeDays(patient.dateOfBirth, on)),
+    };
+  };
+
+  const age = ageFor();
+
   return { ...(patient.sex ? { sex: patient.sex } : {}), ...(age ? { age } : {}) };
 };
 
 const ageIn = (facts: LabPatientFacts, unit: AgeUnit) => facts.age?.[unit];
+
 // A row never matches on a fact nobody recorded: an unknown age is not "an adult".
 const fits = (range: ReferenceRange, facts: LabPatientFacts) => {
   if (range.sex && range.sex !== facts.sex) {
     return false;
   }
+
   if (range.ageFrom) {
     const age = ageIn(facts, range.ageFrom.unit);
+
     if (age === undefined || age < range.ageFrom.value) {
       return false;
     }
   }
+
   if (range.ageTo) {
     const age = ageIn(facts, range.ageTo.unit);
+
     if (age === undefined || age >= range.ageTo.value) {
       return false;
     }
   }
+
   return true;
 };
+
 /** The one range for this patient; none when a fact is missing, nothing fits, or more than one would. */
 export const rangeFor = (
   part: Pick<NumberPart, 'ranges'>,
   facts: LabPatientFacts,
 ): ReferenceRange | undefined => {
   const matching = part.ranges.filter((range) => fits(range, facts));
+
   return matching.length === 1 ? matching[0] : undefined;
 };
 
 const sameBound = (a?: AgeBound, b?: AgeBound) => a?.value === b?.value && a?.unit === b?.unit;
+
 const sameRange = (a?: ReferenceRange, b?: ReferenceRange) =>
   !a || !b
     ? a === b
@@ -657,21 +768,28 @@ const sameRange = (a?: ReferenceRange, b?: ReferenceRange) =>
       a.high === b.high &&
       sameBound(a.ageFrom, b.ageFrom) &&
       sameBound(a.ageTo, b.ageTo);
+
 const sameFacts = (a: LabPatientFacts, b: LabPatientFacts) =>
   a.sex === b.sex &&
   a.age?.years === b.age?.years &&
   a.age?.months === b.age?.months &&
   a.age?.days === b.age?.days;
 
-export const formatRange = (range: Pick<ReferenceRange, 'low' | 'high'>): string =>
-  range.low !== undefined && range.high !== undefined
-    ? `${range.low}–${range.high}`
-    : range.high !== undefined
-      ? `Up to ${range.high}`
-      : `${range.low} and above`;
+export const formatRange = (range: Pick<ReferenceRange, 'low' | 'high'>): string => {
+  if (range.low !== undefined && range.high !== undefined) {
+    return `${range.low}–${range.high}`;
+  }
+
+  if (range.high !== undefined) {
+    return `Up to ${range.high}`;
+  }
+
+  return `${range.low} and above`;
+};
 
 const flagged = (summary: string, value: ReportValue) =>
   'flag' in value && value.flag ? `${summary} (${RESULT_FLAG_LABELS[value.flag]})` : summary;
+
 const valueSummary = (part: ResultPart, value: ReportValue): string => {
   if (part.kind === 'number' && value.kind === 'number') {
     return flagged(
@@ -679,26 +797,33 @@ const valueSummary = (part: ResultPart, value: ReportValue): string => {
       value,
     );
   }
+
   if (value.kind === 'choice') {
     return flagged(`${part.label}: ${value.answer}`, value);
   }
+
   if (value.kind === 'text') {
     return flagged(part === TEXT_RESULT_PART ? value.text : `${part.label}: ${value.text}`, value);
   }
+
   if (value.kind === 'section') {
     return `${part.label}: ${value.text}`;
   }
+
   if (value.kind === 'culture') {
     return flagged(
       `${part.label}: ${value.growth === 'no_growth' ? 'No growth' : value.organisms.map((o) => (o.count ? `${o.name} (${o.count})` : o.name)).join(', ')}`,
       value,
     );
   }
+
   if (value.kind === 'images') {
     return `${part.label}: ${value.files.length} ${value.files.length === 1 ? 'file' : 'files'}`;
   }
+
   return part.label;
 };
+
 /** The plain line kept in the entry's values, in template order. Device and server build it the same way. */
 export const labItemSummary = (
   item: Pick<LabReportItem, 'values' | 'comment'>,
@@ -719,31 +844,40 @@ const valueIssue = (
   facts: LabPatientFacts,
 ): string | undefined => {
   const keys = values.map((value) => value.key);
+
   if (new Set(keys).size !== keys.length) {
     return 'Each part can be recorded once';
   }
+
   for (const value of values) {
     const part = parts.find((p) => p.key === value.key);
+
     if (!part || part.kind !== value.kind) {
       return 'A recorded value is not part of this template';
     }
+
     if (value.label !== part.label) {
       return `${part.label}: the recorded name does not match the template`;
     }
+
     if (part.kind === 'number' && value.kind === 'number') {
       if (value.unit !== part.unit) {
         return `${part.label}: the recorded unit does not match the template`;
       }
+
       if (Number(value.value.toFixed(part.decimals)) !== value.value) {
         return `${part.label}: use ${part.decimals} decimal places at most`;
       }
+
       if (!sameRange(value.range, rangeFor(part, facts))) {
         return `${part.label}: the normal range shown does not match this patient`;
       }
     }
+
     if (part.kind === 'choice' && value.kind === 'choice' && !part.answers.includes(value.answer)) {
       return `${part.label}: choose one of the template's answers`;
     }
+
     if (
       part.kind === 'culture' &&
       value.kind === 'culture' &&
@@ -755,11 +889,14 @@ const valueIssue = (
     ) {
       return `${part.label}: record each listed antibiotic once per organism`;
     }
+
     if (part.kind === 'images' && value.kind === 'images' && value.files.length > part.maxFiles) {
       return `${part.label}: attach up to ${part.maxFiles} files`;
     }
   }
+
   const missing = parts.find((part) => part.required && !keys.includes(part.key));
+
   return missing ? `${missing.label} is required` : undefined;
 };
 
@@ -786,6 +923,7 @@ export const labReportIssues = (
   if (!sameFacts(report.patient, context.facts)) {
     return ['The patient’s recorded sex or age has changed. Reopen the result before publishing'];
   }
+
   if (
     report.items.length !== results.length ||
     report.items.some(
@@ -794,13 +932,16 @@ export const labReportIssues = (
   ) {
     return ['Each structured result must match a recorded test'];
   }
+
   for (const [i, item] of report.items.entries()) {
     const template = item.template
       ? context.template(item.template.id, item.template.revision)
       : undefined;
+
     if (item.template && !template) {
       return [`${item.test}: this result template version is not available`];
     }
+
     if (
       template &&
       (template.status !== 'active' ||
@@ -810,15 +951,19 @@ export const labReportIssues = (
     ) {
       return [`${item.test}: this result template is not in use for this test`];
     }
+
     const parts = template?.parts ?? [TEXT_RESULT_PART];
     const issue = valueIssue(item.values, parts, context.facts);
+
     if (issue) {
       return [`${item.test}: ${issue}`];
     }
+
     if (results[i].result !== labItemSummary(item, parts)) {
       return [`${item.test}: the result summary does not match the structured result`];
     }
   }
+
   return [];
 };
 

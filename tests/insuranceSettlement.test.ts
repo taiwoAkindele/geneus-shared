@@ -25,6 +25,7 @@ const PATIENT = 'TEST-000001-K2';
 
 describe('diagnosis requirements (audit H1)', () => {
   const recorded = [{ label: 'Malaria', code: 'b54', codingSystem: 'ICD-10' }];
+
   const assess = (
     requirement: 'codes_verified' | 'codes_as_entered' | 'free_text' | 'not_required',
     codes: Record<string, string> = {},
@@ -37,6 +38,7 @@ describe('diagnosis requirements (audit H1)', () => {
       catalogueSize: Object.keys(codes).length,
       lookup: (c) => codes[c],
     });
+
   it('reads the earlier strict setting as verified codes, never weaker', () => {
     assert.equal(
       SubmissionProfile.parse({
@@ -46,20 +48,24 @@ describe('diagnosis requirements (audit H1)', () => {
       }).diagnosisRequirement,
       'codes_verified',
     );
+
     assert.equal(
       SubmissionProfile.parse({ method: 'manual', channel: 'physical' }).diagnosisRequirement,
       'codes_verified',
     );
   });
+
   it("verified codes need the hospital's catalogue and a code in it", () => {
     assert.deepEqual(
       assess('codes_verified').issues.map((i) => i.code),
       ['diagnosis_catalogue_missing'],
     );
+
     assert.deepEqual(
       assess('codes_verified', { A00: 'Cholera' }).issues.map((i) => i.code),
       ['diagnosis_code_not_in_catalogue'],
     );
+
     const ok = assess('codes_verified', { B54: 'Unspecified malaria' });
     assert.deepEqual(ok.issues, []);
     assert.deepEqual(
@@ -67,6 +73,7 @@ describe('diagnosis requirements (audit H1)', () => {
       ['B54', 'catalogue_verified'],
     );
   });
+
   it('codes as entered pass on format alone, and say so', () => {
     const r = assess('codes_as_entered');
     assert.deepEqual([r.issues, r.diagnoses[0].verification], [[], 'format_checked']);
@@ -76,23 +83,28 @@ describe('diagnosis requirements (audit H1)', () => {
       ]).issues.map((i) => i.code),
       ['diagnosis_code_format'],
     );
+
     assert.deepEqual(
       assess('codes_as_entered', {}, [{ label: 'Malaria' }]).issues.map((i) => i.code),
       ['diagnosis_code_missing'],
     );
   });
+
   it('written diagnoses only where the payer accepts them; none at all only where none is required', () => {
     assert.deepEqual(assess('free_text', {}, [{ label: 'Malaria' }]).issues, []);
     assert.deepEqual(
       assess('free_text', {}, []).issues.map((i) => i.code),
       ['diagnosis_missing'],
     );
+
     assert.deepEqual(assess('not_required', {}, []).issues, []);
   });
+
   it('knows the shape of an ICD-10 code and refuses spreadsheet formulas', () => {
     for (const code of ['B54', 'K35.8', 'J45.909', 'U07.1'.replace('U', 'A')]) {
       assert.ok(diagnosisCodeWellFormed('ICD-10', code), code);
     }
+
     for (const code of ['MAL', '54B', '=1+1', 'B5', '']) {
       assert.ok(!diagnosisCodeWellFormed('ICD-10', code), code);
     }
@@ -107,6 +119,7 @@ describe('consultation evidence', () => {
     feeItemId: 'fee:consult',
     encounterId: 'enc:1',
   } as unknown as Charge;
+
   const entry = (actorRole: string, step: string) =>
     ({
       id: `e:${actorRole}:${step}`,
@@ -117,6 +130,7 @@ describe('consultation evidence', () => {
       createdBy: 'staff',
       values: {},
     }) as unknown as EncounterEntry;
+
   it("a nurse's vitals or triage do not show a consultation; a doctor's or CHEW's clinical entry does", () => {
     assert.equal(
       serviceFulfillment(charge, {
@@ -125,21 +139,25 @@ describe('consultation evidence', () => {
       }).kind,
       'missing',
     );
+
     assert.equal(
       serviceFulfillment(charge, { results: [], visitEntries: [entry('doctor', 'vitals')] }).kind,
       'missing',
       'vitals are not a consultation, whoever took them',
     );
+
     assert.equal(
       serviceFulfillment(charge, { results: [], visitEntries: [entry('chew', 'complaint')] }).kind,
       'visit',
     );
+
     assert.equal(
       serviceFulfillment(charge, { results: [], visitEntries: [entry('doctor', 'diagnosis')] })
         .kind,
       'visit',
     );
   });
+
   it("a consultation's completion record counts only from someone who consults", () => {
     const completion = (actorRole: string) =>
       ({
@@ -150,11 +168,13 @@ describe('consultation evidence', () => {
         completedOn: '2026-11-01T10:00:00Z',
         createdBy: 's',
       }) as unknown as ServiceCompletion;
+
     assert.equal(
       serviceFulfillment(charge, { results: [], visitEntries: [], completion: completion('nurse') })
         .kind,
       'missing',
     );
+
     assert.equal(
       serviceFulfillment(charge, {
         results: [],
@@ -174,6 +194,7 @@ describe('authorization at the point of care (audit H2)', () => {
     planCode: 'GOLD',
     active: true,
   } as unknown as PatientCover;
+
   const schedule = {
     id: 'sch:1',
     payerId: 'payer:s',
@@ -198,6 +219,7 @@ describe('authorization at the point of care (audit H2)', () => {
       },
     },
   } as unknown as CoverSchedule;
+
   const records = { covers: [cover], schedules: [schedule] };
   it('warns from the synced schedule, before any check, for services the payer must approve', () => {
     assert.equal(
@@ -210,6 +232,7 @@ describe('authorization at the point of care (audit H2)', () => {
       })?.payerId,
       'payer:s',
     );
+
     assert.equal(
       approvalNeeded({
         patientId: PATIENT,
@@ -220,6 +243,7 @@ describe('authorization at the point of care (audit H2)', () => {
       }),
       undefined,
     );
+
     assert.equal(
       approvalNeeded({
         patientId: 'OTHER',
@@ -231,6 +255,7 @@ describe('authorization at the point of care (audit H2)', () => {
       undefined,
     );
   });
+
   it('an emergency exception says why care could not wait; quantities name authorized services', () => {
     const base = {
       patientId: PATIENT,
@@ -241,10 +266,12 @@ describe('authorization at the point of care (audit H2)', () => {
       feeItemIds: ['fee:mri'],
       obtainedVia: 'phone',
     };
+
     assert.equal(
       AuthorizationInput.safeParse({ ...base, status: 'emergency_exception' }).success,
       false,
     );
+
     assert.equal(
       AuthorizationInput.safeParse({
         ...base,
@@ -253,6 +280,7 @@ describe('authorization at the point of care (audit H2)', () => {
       }).success,
       true,
     );
+
     assert.equal(
       AuthorizationInput.safeParse({
         ...base,
@@ -274,10 +302,12 @@ describe('patient liability (audit H3)', () => {
       true,
     );
   });
+
   it("an insurance officer cannot approve moving a payer's share or write anything off; an administrator can", () => {
     assert.ok(!ROLE_PERMISSIONS.insurance_officer.includes('coverage:approve_liability_change'));
     assert.ok(!ROLE_PERMISSIONS.insurance_officer.includes('billing:write_off'));
     assert.ok(ROLE_PERMISSIONS.insurance_officer.includes('insurance_remittance:record'));
+
     for (const p of [
       'coverage:approve_liability_change',
       'billing:write_off',
@@ -285,6 +315,7 @@ describe('patient liability (audit H3)', () => {
     ] as const) {
       assert.ok(ROLE_PERMISSIONS.facility_admin.includes(p), p);
     }
+
     for (const role of ['cashier', 'records_officer', 'supervisor', 'nurse', 'doctor'] as const) {
       assert.ok(!ROLE_PERMISSIONS[role].includes('insurance_remittance:record'), role);
     }
@@ -293,6 +324,7 @@ describe('patient liability (audit H3)', () => {
 
 describe('settlement (Slice 4)', () => {
   const today = '2026-11-14';
+
   const s = (input: Partial<Parameters<typeof claimSettlement>[0]>) =>
     claimSettlement({
       submitted: true,
@@ -304,6 +336,7 @@ describe('settlement (Slice 4)', () => {
       today,
       ...input,
     });
+
   it('keeps expected, approved, deducted, paid, written-off and outstanding apart', () => {
     assert.deepEqual(s({}), {
       status: 'awaiting_response',
@@ -316,10 +349,12 @@ describe('settlement (Slice 4)', () => {
       payerOwesMinor: 10_000,
       overdue: false,
     });
+
     const partial = s({
       decision: { decision: 'partially_approved', approvedMinor: 8_000 },
       paidMinor: 8_000,
     });
+
     assert.deepEqual(
       [
         partial.status,
@@ -330,6 +365,7 @@ describe('settlement (Slice 4)', () => {
       ],
       ['partially_paid', 8_000, 2_000, 2_000, 0],
     );
+
     assert.equal(
       s({
         decision: { decision: 'partially_approved', approvedMinor: 8_000 },
@@ -338,16 +374,19 @@ describe('settlement (Slice 4)', () => {
       }).status,
       'settled',
     );
+
     assert.equal(s({ decision: { decision: 'denied', approvedMinor: 0 } }).status, 'denied');
     assert.equal(s({ decision: { decision: 'queried', approvedMinor: 0 } }).status, 'queried');
     assert.equal(s({ openDisputeMinor: 1_000 }).status, 'disputed');
     assert.equal(s({ submitted: false }).status, 'not_submitted');
   });
+
   it('is overdue only against payment terms the contract states', () => {
     assert.equal(s({}).overdue, false, 'no terms recorded: nothing is called overdue');
     assert.equal(s({ paymentDueDays: 30 }).overdue, true);
     assert.equal(s({ paymentDueDays: 60 }).overdue, false);
   });
+
   it('validates decisions and remittances before anything is stored', () => {
     assert.equal(
       PayerDecisionInput.safeParse({
@@ -359,6 +398,7 @@ describe('settlement (Slice 4)', () => {
       false,
       "a denial needs the payer's reason",
     );
+
     assert.equal(
       PayerDecisionInput.safeParse({
         claimId: 'c',
@@ -370,6 +410,7 @@ describe('settlement (Slice 4)', () => {
       }).success,
       false,
     );
+
     assert.equal(
       RemittanceInput.safeParse({
         payerId: 'p',
@@ -384,6 +425,7 @@ describe('settlement (Slice 4)', () => {
       false,
     );
   });
+
   it('matches remittance rows by claim number only; anything else waits for a person', () => {
     const claims = [
       {
@@ -394,6 +436,7 @@ describe('settlement (Slice 4)', () => {
         outstandingMinor: 5_000,
       },
     ];
+
     const m = matchRemittanceRows(
       [
         { sourceRow: 2, claimNumber: 'clm-000001', paidMinor: 5_000 },
@@ -403,10 +446,12 @@ describe('settlement (Slice 4)', () => {
       ],
       claims,
     );
+
     assert.deepEqual(
       m.map((x) => x.confidence),
       ['exact', 'uncertain', 'uncertain', 'none'],
     );
+
     assert.match(m[1].problems[0], /more than/);
   });
 });

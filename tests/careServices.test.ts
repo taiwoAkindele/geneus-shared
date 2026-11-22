@@ -20,6 +20,7 @@ import * as contract from '../src/index.ts';
 
 const createdOn = '2026-11-15T08:00:00.000Z';
 const envelope = { facilityId: 'TEST', deviceId: 'device:one', createdBy: 'staff:one', createdOn };
+
 const offering = (id: string, patch: Record<string, unknown> = {}) =>
   ServiceOffering.parse({
     ...envelope,
@@ -36,6 +37,7 @@ const offering = (id: string, patch: Record<string, unknown> = {}) =>
     configuration: 'active',
     ...patch,
   });
+
 const definitions = [
   { id: 'def:hb', investigation: { specimen: 'Blood', department: 'Haematology', aliases: [] } },
   { id: 'def:opd' },
@@ -43,6 +45,7 @@ const definitions = [
   { id: 'def:ward' },
   { id: 'def:spec' },
 ];
+
 const opd = offering('opd', { visitTypes: ['general', 'follow_up'] });
 const anc = offering('anc', { visitTypes: ['antenatal'], intakePolicy: 'scheduled' });
 const ward = offering('ward', { intakePolicy: 'walk_in' });
@@ -63,18 +66,22 @@ describe('care services', () => {
       careServiceOfferings(all, definitions).map((o) => o.id),
       ['opd', 'anc', 'ward', 'spec'],
     );
+
     assert.deepEqual(
       visitCareServices(all, definitions).map((o) => o.id),
       ['opd', 'anc'],
     );
+
     assert.deepEqual(
       visitCareServices(all, definitions, 'walk_in').map((o) => o.id),
       ['opd'],
     );
+
     assert.deepEqual(
       visitCareServices(all, definitions, 'scheduled').map((o) => o.id),
       ['opd', 'anc'],
     );
+
     assert.equal(defaultVisitType(opd), 'general');
   });
 
@@ -88,6 +95,7 @@ describe('care services', () => {
       ),
       [],
     );
+
     assert.match(
       careServiceVisitIssues(
         { facilityId: 'TEST', offeringId: 'opd', visitType: 'antenatal' },
@@ -95,18 +103,22 @@ describe('care services', () => {
       )[0],
       /does not record this kind/,
     );
+
     assert.match(
       careServiceVisitIssues({ facilityId: 'TEST', offeringId: 'hb' }, data)[0],
       /care service of this hospital/,
     );
+
     assert.match(
       careServiceVisitIssues({ facilityId: 'TEST', offeringId: 'ward' }, data)[0],
       /does not take booked/,
     );
+
     assert.match(
       careServiceVisitIssues({ facilityId: 'TEST', offeringId: 'spec' }, data)[0],
       /not an active/,
     );
+
     assert.deepEqual(
       careServiceVisitIssues(
         { facilityId: 'TEST', offeringId: 'spec', visitType: 'general' },
@@ -116,6 +128,7 @@ describe('care services', () => {
       [],
       'care recorded offline is kept after the service is retired',
     );
+
     assert.match(
       careServiceVisitIssues({ facilityId: 'OTHER', offeringId: 'opd' }, data)[0],
       /care service of this hospital/,
@@ -130,11 +143,13 @@ describe('care services', () => {
       patientId: 'TEST-000001-K2',
       reason: 'Consultation',
     };
+
     assert.equal(Appointment.parse(booking).offeringId, undefined);
     assert.equal(
       Appointment.parse({ ...booking, offeringId: 'opd', visitType: 'general' }).offeringId,
       'opd',
     );
+
     const allocation = { offeringId: 'anc', endsAt: '2026-11-16T10:00:00.000Z' };
     assert.ok(
       !Appointment.safeParse({
@@ -146,6 +161,7 @@ describe('care services', () => {
       }).success,
       'resources are reserved for the booked service',
     );
+
     assert.ok(
       Appointment.safeParse({
         ...booking,
@@ -155,6 +171,7 @@ describe('care services', () => {
         allocation,
       }).success,
     );
+
     assert.equal(
       Encounter.parse({
         ...envelope,
@@ -178,6 +195,7 @@ describe('care services', () => {
       lga: 'Ikeja',
       state: 'Lagos',
     });
+
     assert.equal(facility.country, undefined);
     assert.ok(
       Facility.safeParse({
@@ -188,7 +206,9 @@ describe('care services', () => {
         phone: '+234 800 000 0000',
       }).success,
     );
+
     assert.ok(!Facility.safeParse({ ...facility, country: 'Nigeria' }).success);
+
     const update = {
       name: 'Test',
       level: 'general_hospital',
@@ -197,6 +217,7 @@ describe('care services', () => {
       country: 'NG',
       currency: 'NGN',
     };
+
     assert.ok(FacilityDetailsUpdate.safeParse(update).success);
     assert.ok(!FacilityDetailsUpdate.safeParse({ ...update, code: 'OTHER' }).success);
   });
@@ -209,11 +230,13 @@ describe('care services', () => {
       id: 'booking:1',
       data: { offeringId: 'opd' },
     };
+
     const current = { careServiceVersion: 1, facilityContractVersion: 1, schemaVersion: 5 };
     assert.ok(!UploadRequest.safeParse({ transactionId: null, mutations: [put] }).success);
     assert.ok(
       UploadRequest.safeParse({ ...current, transactionId: null, mutations: [put] }).success,
     );
+
     assert.ok(
       UploadRequest.safeParse({
         transactionId: null,

@@ -11,10 +11,13 @@ export const BILLING_CATEGORY_SUGGESTIONS = {
   procedure: 'procedure',
   imaging: 'imaging',
 } as const satisfies Record<string, FeeCategory>;
+
 export const isLegacyFeeCategory = (category: unknown) =>
   (LEGACY_FEE_CATEGORIES as readonly unknown[]).includes(category);
+
 export const usesBillingCatalogue = (m: UploadMutation): boolean => {
   const data = m.data;
+
   if (
     ['fee_item', 'charge'].includes(m.table) &&
     data.category !== undefined &&
@@ -22,6 +25,7 @@ export const usesBillingCatalogue = (m: UploadMutation): boolean => {
   ) {
     return true;
   }
+
   if (
     m.table === 'charge' &&
     ['feePriceVersion', 'quantity', 'unitPriceMinor', 'servicePointId'].some(
@@ -30,11 +34,14 @@ export const usesBillingCatalogue = (m: UploadMutation): boolean => {
   ) {
     return true;
   }
+
   if (m.table === 'service_definition' && data.feeItemId !== undefined) {
     return true;
   }
+
   const values = data.values as
     { items?: { catalogueSource?: string }[]; supply?: { catalogueVersion?: number } } | undefined;
+
   return (
     m.table === 'encounter_entry' &&
     Boolean(
@@ -43,6 +50,7 @@ export const usesBillingCatalogue = (m: UploadMutation): boolean => {
     )
   );
 };
+
 /** Candidates require review, never establish that a bill covers an activity. */
 export const manualBillCandidates = (
   charges: readonly Charge[],

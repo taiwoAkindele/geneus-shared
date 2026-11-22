@@ -13,21 +13,26 @@ const staff = {
   fullName: 'Test Cashier',
   role: 'cashier',
 };
+
 describe('staff login access', () => {
   it('reads existing staff without a new access setting', () =>
     assert.equal(Staff.parse(staff).loginAccess, undefined));
+
   it('accepts scheduled or around-the-clock access and rejects unknown modes', () => {
     for (const loginAccess of ['shift', 'always']) {
       assert.equal(Staff.parse({ ...staff, loginAccess }).loginAccess, loginAccess);
     }
+
     assert.equal(Staff.safeParse({ ...staff, loginAccess: 'admin' }).success, false);
   });
+
   it('does not grant more capabilities when 24-hour access is assigned', () => {
     assert.deepEqual(staffPermissions(Staff.parse({ ...staff, loginAccess: 'always' })), [
       'payment:receive',
       'coverage:elect_self_pay',
       'charge:associate',
     ]);
+
     assert.deepEqual(
       staffPermissions(Staff.parse({ ...staff, loginAccess: 'always', permission: 'read_only' })),
       [],

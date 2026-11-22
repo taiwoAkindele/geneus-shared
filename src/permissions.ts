@@ -10,7 +10,9 @@
  */
 import { z } from 'zod';
 import { AssignablePermission, Permission } from './capabilities.ts';
+
 export { AssignablePermission, Permission } from './capabilities.ts';
+
 import { Role, StaffPermission, type Payment, type Staff } from './documents.ts';
 import { type ClinicalAction } from './facilityTypes.ts';
 
@@ -34,7 +36,9 @@ import { type ClinicalAction } from './facilityTypes.ts';
  * v4: billing — the cashier role, fees, charges, payments, waivers, reversals.
  */
 export const POLICY_VERSION = 17 as const;
+
 export const READ_PERMISSIONS: readonly Permission[] = ['patient_chart:read'];
+
 export const canReadPatientChart = (context: Pick<AuthorizationContext, 'permissions'>): boolean =>
   context.permissions.includes('patient_chart:read');
 
@@ -220,9 +224,11 @@ export const paymentPermission = (payment: Pick<Payment, 'method' | 'reverses'>)
   if (payment.reverses) {
     return 'payment:reverse';
   }
+
   if (payment.method === 'waiver') {
     return 'payment:waive';
   }
+
   return 'payment:receive';
 };
 
@@ -241,11 +247,13 @@ export const permissionsFor = (
 
 /** One primary role for attribution; additional duties contribute access too. */
 export type StaffRoles = Pick<Staff, 'role' | 'additionalRoles'>;
+
 export type StaffAccess = StaffRoles & Pick<Staff, 'permission' | 'additionalPermissions'>;
 
 export const rolesFor = (staff: StaffRoles): Role[] => [
   ...new Set([staff.role, ...(staff.additionalRoles ?? [])]),
 ];
+
 export const hasRole = (staff: StaffRoles, role: Role): boolean => rolesFor(staff).includes(role);
 
 /** Read-only removes mutations while preserving explicitly granted read access. */
@@ -253,9 +261,11 @@ export const staffPermissions = (staff: StaffAccess): Permission[] => {
   const assigned = (staff.additionalPermissions ?? []).filter((permission) =>
     AssignablePermission.options.includes(permission),
   );
+
   const granted = [
     ...new Set([...rolesFor(staff).flatMap((role) => ROLE_PERMISSIONS[role]), ...assigned]),
   ];
+
   return staff.permission === 'read_only'
     ? granted.filter((permission) => READ_PERMISSIONS.includes(permission))
     : granted;
@@ -266,7 +276,9 @@ export const mayApprovePin = (approver: StaffAccess, target: StaffAccess): boole
   if (approver.permission !== 'read_write') {
     return false;
   }
+
   const granted = staffPermissions(approver);
+
   if (
     !hasRole(approver, 'facility_admin') &&
     !hasRole(approver, 'supervisor') &&
@@ -274,9 +286,11 @@ export const mayApprovePin = (approver: StaffAccess, target: StaffAccess): boole
   ) {
     return false;
   }
+
   if (hasRole(target, 'facility_admin') && !hasRole(approver, 'facility_admin')) {
     return false;
   }
+
   return staffPermissions(target).every((permission) => granted.includes(permission));
 };
 
@@ -337,10 +351,13 @@ export const isWithinOfflineWindow = (
   if (!lastServerContactOn) {
     return false;
   }
+
   const elapsed = now - new Date(lastServerContactOn).getTime();
+
   const window = isHighRisk(permission)
     ? OFFLINE_AUTHORIZATION_POLICY.highRiskMs
     : OFFLINE_AUTHORIZATION_POLICY.generalMs;
+
   return elapsed >= 0 && elapsed <= window;
 };
 
@@ -361,6 +378,7 @@ export const AuthorizationContext = z.object({
   /** Server clock at the last successful contact (see isWithinOfflineWindow). */
   lastServerContactOn: z.string().optional(),
 });
+
 export type AuthorizationContext = z.infer<typeof AuthorizationContext>;
 
 /** Why an action was refused — shared so both sides report the same reasons. */
@@ -385,6 +403,7 @@ export const decide = (
   if (!context.permissions.includes(permission)) {
     return { kind: 'not_granted', permission };
   }
+
   if (!isWithinOfflineWindow(permission, context.lastServerContactOn, now)) {
     return {
       kind: 'stale_authorization',
@@ -392,5 +411,6 @@ export const decide = (
       lastServerContactOn: context.lastServerContactOn,
     };
   }
+
   return undefined;
 };

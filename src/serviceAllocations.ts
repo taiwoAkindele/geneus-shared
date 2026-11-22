@@ -34,18 +34,24 @@ export const ServiceChargeAllocation = baseEnvelope
     if (a.action === 'allocate' && (a.reversesId || a.returnEntryId || a.creditReturnedUnits)) {
       c.addIssue({ code: 'custom', message: 'An allocation cannot release or credit quantity' });
     }
+
     if (a.action === 'release' && !a.reversesId) {
       c.addIssue({ code: 'custom', message: 'A release names the exact accepted allocation' });
     }
+
     if (a.creditReturnedUnits && !a.returnEntryId) {
       c.addIssue({ code: 'custom', message: 'A credit requires an actual returned supply' });
     }
   });
+
 export type ServiceChargeAllocation = z.infer<typeof ServiceChargeAllocation>;
+
 /** Integer millionths avoid a floating-point tolerance permitting capacity overdrafts. */
 export const serviceQuantityUnits = (quantity: number) => Math.round(quantity * 1e6);
+
 export const acceptedServiceAllocations = (records: readonly ServiceChargeAllocation[]) =>
   records.filter((a) => Boolean(a.acceptedOn));
+
 export const allocatedQuantity = (
   records: readonly ServiceChargeAllocation[],
   filter: (a: ServiceChargeAllocation) => boolean,
@@ -53,6 +59,7 @@ export const allocatedQuantity = (
   acceptedServiceAllocations(records)
     .filter(filter)
     .reduce((n, a) => n + (a.action === 'allocate' ? a.quantity : -a.quantity), 0);
+
 export const creditedQuantity = (records: readonly ServiceChargeAllocation[], chargeId: string) =>
   acceptedServiceAllocations(records)
     .filter((a) => a.chargeId === chargeId && a.action === 'release' && a.creditReturnedUnits)
