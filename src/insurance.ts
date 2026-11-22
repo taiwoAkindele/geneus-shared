@@ -25,7 +25,14 @@
  */
 import { z } from 'zod';
 import { baseEnvelope, isoDate, isoDateTime, patientId } from './common.ts';
-import { FeeCategory, Role, currencyCode, minorUnits, type Charge, type EncounterEntry } from './documents.ts';
+import {
+  FeeCategory,
+  Role,
+  currencyCode,
+  minorUnits,
+  type Charge,
+  type EncounterEntry,
+} from './documents.ts';
 import { dispensingDetails } from './pharmacy.ts';
 
 const text = z.string().trim().min(1);
@@ -41,16 +48,30 @@ export const INSURANCE_WORKFLOW_VERSION = 1 as const;
  */
 export const InsuranceState = z.enum(['off', 'setup', 'active']);
 export type InsuranceState = z.infer<typeof InsuranceState>;
-export const insuranceConfigurable = (state: InsuranceState | undefined) => state === 'setup' || state === 'active';
+export const insuranceConfigurable = (state: InsuranceState | undefined) =>
+  state === 'setup' || state === 'active';
 
 /** Insurance records a device may upload; every other insurance record is server-written. */
-export const INSURANCE_UPLOAD_TYPES = ['patient_cover', 'cover_check', 'coverage_election'] as const;
+export const INSURANCE_UPLOAD_TYPES = [
+  'patient_cover',
+  'cover_check',
+  'coverage_election',
+] as const;
 /**
  * Synced only to devices that negotiated the insurance workflow: an older client
  * cannot read them, so it never receives them. Refunds ride with them because an
  * older client could not subtract them from a balance.
  */
-export const INSURANCE_SYNCED_TYPES = ['payer', 'cover_schedule', 'patient_cover', 'cover_check', 'coverage_election', 'coverage_allocation', 'refund', 'service_completion'] as const;
+export const INSURANCE_SYNCED_TYPES = [
+  'payer',
+  'cover_schedule',
+  'patient_cover',
+  'cover_check',
+  'coverage_election',
+  'coverage_allocation',
+  'refund',
+  'service_completion',
+] as const;
 /** Stored on every confirmed snapshot. A change to the arithmetic is a new version. */
 export const CALCULATION_VERSION = 1 as const;
 
@@ -73,8 +94,13 @@ export type SelfPayElectionRule = z.infer<typeof SelfPayElectionRule>;
 export const Arrangement = z.enum(['per_service', 'capitation', 'per_diem', 'package']);
 export type Arrangement = z.infer<typeof Arrangement>;
 /** Calculated in calculation version 1. The others are modelled and never produce money. */
-export const SUPPORTED_ARRANGEMENTS = ['per_service', 'capitation'] as const satisfies readonly Arrangement[];
-export const isSupportedArrangement = (arrangement: Arrangement): arrangement is (typeof SUPPORTED_ARRANGEMENTS)[number] =>
+export const SUPPORTED_ARRANGEMENTS = [
+  'per_service',
+  'capitation',
+] as const satisfies readonly Arrangement[];
+export const isSupportedArrangement = (
+  arrangement: Arrangement,
+): arrangement is (typeof SUPPORTED_ARRANGEMENTS)[number] =>
   (SUPPORTED_ARRANGEMENTS as readonly Arrangement[]).includes(arrangement);
 
 /** Basis points: 1000 = 10%. Integer, so rounding is defined, not floating. */
@@ -86,7 +112,13 @@ const basisPoints = z.number().int().min(0).max(10_000);
  * A co-pay once per charge, dispense, visit or claim is recorded as such and
  * leaves the charge undetermined — it is never approximated as per unit.
  */
-export const FixedCopayBasis = z.enum(['per_unit', 'per_charge', 'per_dispense', 'per_visit', 'per_claim']);
+export const FixedCopayBasis = z.enum([
+  'per_unit',
+  'per_charge',
+  'per_dispense',
+  'per_visit',
+  'per_claim',
+]);
 export type FixedCopayBasis = z.infer<typeof FixedCopayBasis>;
 
 /** A percentage applies to the tariff of the units supplied, so it needs no basis. */
@@ -103,8 +135,16 @@ export type Copay = z.infer<typeof Copay>;
  * patient for it; unset means the hospital has not recorded which applies.
  */
 export const PlanRule = z.discriminatedUnion('coverage', [
-  z.strictObject({ coverage: z.literal('covered'), copay: Copay, approvalRequired: z.boolean().default(false), limitNote: text.max(500).optional() }),
-  z.strictObject({ coverage: z.literal('excluded'), patientLiability: z.enum(['patient_pays', 'not_billable']).optional() }),
+  z.strictObject({
+    coverage: z.literal('covered'),
+    copay: Copay,
+    approvalRequired: z.boolean().default(false),
+    limitNote: text.max(500).optional(),
+  }),
+  z.strictObject({
+    coverage: z.literal('excluded'),
+    patientLiability: z.enum(['patient_pays', 'not_billable']).optional(),
+  }),
 ]);
 export type PlanRule = z.infer<typeof PlanRule>;
 
@@ -126,30 +166,49 @@ export const ContractPlan = z.strictObject({
 export type ContractPlan = z.infer<typeof ContractPlan>;
 
 /** What a hospital edits. Ids, versions and status are the server's. */
-export const PayerContractTerms = z.strictObject({
-  payerId: z.string().min(1),
-  effectiveFrom: isoDate,
-  effectiveTo: isoDate.optional(),
-  currency: currencyCode,
-  arrangements: z.strictObject({
-    categories: z.partialRecord(FeeCategory, Arrangement).default({}),
-    items: z.record(feeItemKey, Arrangement).default({}),
-  }),
-  /** Negotiated price per unit, by fee item, with the payer's own service code for claims. */
-  tariff: z.record(feeItemKey, z.strictObject({ unitMinor: minorUnits, payerCode: text.max(60).optional() })).default({}),
-  plans: z.array(ContractPlan).min(1).max(50),
-  /**
-   * Whether a covered member may choose to pay without their insurance under
-   * this contract. Versioned with the contract, so a choice is judged by the
-   * rule in force on the date of service. Unset: not offered at the till.
-   */
-  selfPayElection: SelfPayElectionRule.optional(),
-  note: text.max(2000).optional(),
-}).superRefine((terms, context) => {
-  if (terms.effectiveTo && terms.effectiveTo < terms.effectiveFrom) context.addIssue({ code: 'custom', path: ['effectiveTo'], message: 'The contract must end on or after it starts' });
-  const codes = terms.plans.map((plan) => plan.planCode);
-  if (new Set(codes).size !== codes.length) context.addIssue({ code: 'custom', path: ['plans'], message: 'Each plan code must be unique in a contract' });
-});
+export const PayerContractTerms = z
+  .strictObject({
+    payerId: z.string().min(1),
+    effectiveFrom: isoDate,
+    effectiveTo: isoDate.optional(),
+    currency: currencyCode,
+    arrangements: z.strictObject({
+      categories: z.partialRecord(FeeCategory, Arrangement).default({}),
+      items: z.record(feeItemKey, Arrangement).default({}),
+    }),
+    /** Negotiated price per unit, by fee item, with the payer's own service code for claims. */
+    tariff: z
+      .record(
+        feeItemKey,
+        z.strictObject({ unitMinor: minorUnits, payerCode: text.max(60).optional() }),
+      )
+      .default({}),
+    plans: z.array(ContractPlan).min(1).max(50),
+    /**
+     * Whether a covered member may choose to pay without their insurance under
+     * this contract. Versioned with the contract, so a choice is judged by the
+     * rule in force on the date of service. Unset: not offered at the till.
+     */
+    selfPayElection: SelfPayElectionRule.optional(),
+    note: text.max(2000).optional(),
+  })
+  .superRefine((terms, context) => {
+    if (terms.effectiveTo && terms.effectiveTo < terms.effectiveFrom) {
+      context.addIssue({
+        code: 'custom',
+        path: ['effectiveTo'],
+        message: 'The contract must end on or after it starts',
+      });
+    }
+    const codes = terms.plans.map((plan) => plan.planCode);
+    if (new Set(codes).size !== codes.length) {
+      context.addIssue({
+        code: 'custom',
+        path: ['plans'],
+        message: 'Each plan code must be unique in a contract',
+      });
+    }
+  });
 export type PayerContractTerms = z.infer<typeof PayerContractTerms>;
 
 /** One immutable version once active. Id convention `${contractId}:v${version}`. */
@@ -174,7 +233,8 @@ export const PayerContractVersion = z.strictObject({
 });
 export type PayerContractVersion = z.infer<typeof PayerContractVersion>;
 export const contractIdFor = (payerId: string) => `contract:${payerId}`;
-export const contractVersionId = (contractId: string, version: number) => `${contractId}:v${version}`;
+export const contractVersionId = (contractId: string, version: number) =>
+  `${contractId}:v${version}`;
 
 /* ------------------------------------------------------------------ */
 /* Patient-facing tier — synced                                        */
@@ -195,10 +255,28 @@ export type PatientAmount = z.infer<typeof PatientAmount>;
 
 export const NotConfiguredPart = z.enum(['arrangement', 'rule', 'tariff']);
 export const ScheduleLine = z.discriminatedUnion('status', [
-  z.strictObject({ status: z.literal('covered'), arrangement: z.enum(SUPPORTED_ARRANGEMENTS), patient: PatientAmount, approvalRequired: z.boolean() }),
-  z.strictObject({ status: z.literal('excluded'), patientLiability: z.enum(['patient_pays', 'not_billable', 'not_configured']) }),
+  z.strictObject({
+    status: z.literal('covered'),
+    arrangement: z.enum(SUPPORTED_ARRANGEMENTS),
+    patient: PatientAmount,
+    approvalRequired: z.boolean(),
+  }),
+  z.strictObject({
+    status: z.literal('excluded'),
+    patientLiability: z.enum(['patient_pays', 'not_billable', 'not_configured']),
+  }),
   z.strictObject({ status: z.literal('not_configured'), missing: NotConfiguredPart }),
-  z.strictObject({ status: z.literal('unsupported'), feature: z.enum(['per_diem', 'package', 'copay_per_charge', 'copay_per_dispense', 'copay_per_visit', 'copay_per_claim']) }),
+  z.strictObject({
+    status: z.literal('unsupported'),
+    feature: z.enum([
+      'per_diem',
+      'package',
+      'copay_per_charge',
+      'copay_per_dispense',
+      'copay_per_visit',
+      'copay_per_claim',
+    ]),
+  }),
 ]);
 export type ScheduleLine = z.infer<typeof ScheduleLine>;
 
@@ -234,35 +312,52 @@ export const CoverSchedule = baseEnvelope.extend({
 export type CoverSchedule = z.infer<typeof CoverSchedule>;
 
 /** A patient's membership of a payer plan. Insert-only: a change is a new record that `replaces` the old. */
-export const PatientCover = baseEnvelope.extend({
-  type: z.literal('patient_cover'),
-  patientId,
-  payerId: z.string().min(1),
-  planCode,
-  enrolleeNumber: z.string().trim().min(1).max(60),
-  relationship: z.enum(['principal', 'dependant']),
-  principalName: text.max(200).optional(),
-  validFrom: isoDate.optional(),
-  validTo: isoDate.optional(),
-  active: z.boolean(),
-  replaces: z.string().min(1).optional(),
-}).refine((cover) => !cover.validFrom || !cover.validTo || cover.validFrom <= cover.validTo, { message: 'Cover must end on or after it starts', path: ['validTo'] });
+export const PatientCover = baseEnvelope
+  .extend({
+    type: z.literal('patient_cover'),
+    patientId,
+    payerId: z.string().min(1),
+    planCode,
+    enrolleeNumber: z.string().trim().min(1).max(60),
+    relationship: z.enum(['principal', 'dependant']),
+    principalName: text.max(200).optional(),
+    validFrom: isoDate.optional(),
+    validTo: isoDate.optional(),
+    active: z.boolean(),
+    replaces: z.string().min(1).optional(),
+  })
+  .refine((cover) => !cover.validFrom || !cover.validTo || cover.validFrom <= cover.validTo, {
+    message: 'Cover must end on or after it starts',
+    path: ['validTo'],
+  });
 export type PatientCover = z.infer<typeof PatientCover>;
 
-export const CoverCheckMethod = z.enum(['portal', 'phone', 'email', 'card_seen', 'letter', 'other']);
+export const CoverCheckMethod = z.enum([
+  'portal',
+  'phone',
+  'email',
+  'card_seen',
+  'letter',
+  'other',
+]);
 /** Evidence that someone checked cover, and for which dates. Insert-only. */
-export const CoverCheck = baseEnvelope.extend({
-  type: z.literal('cover_check'),
-  patientId,
-  coverId: z.string().min(1),
-  method: CoverCheckMethod,
-  reference: text.max(200).optional(),
-  result: z.enum(['verified', 'pending', 'not_eligible']),
-  /** The dates the checker confirmed. Geneus never assumes how long a check lasts. */
-  coversFrom: isoDate,
-  coversTo: isoDate,
-  note: text.max(1000).optional(),
-}).refine((check) => check.coversFrom <= check.coversTo, { message: 'The checked period must end on or after it starts', path: ['coversTo'] });
+export const CoverCheck = baseEnvelope
+  .extend({
+    type: z.literal('cover_check'),
+    patientId,
+    coverId: z.string().min(1),
+    method: CoverCheckMethod,
+    reference: text.max(200).optional(),
+    result: z.enum(['verified', 'pending', 'not_eligible']),
+    /** The dates the checker confirmed. Geneus never assumes how long a check lasts. */
+    coversFrom: isoDate,
+    coversTo: isoDate,
+    note: text.max(1000).optional(),
+  })
+  .refine((check) => check.coversFrom <= check.coversTo, {
+    message: 'The checked period must end on or after it starts',
+    path: ['coversTo'],
+  });
 export type CoverCheck = z.infer<typeof CoverCheck>;
 
 /**
@@ -271,26 +366,52 @@ export type CoverCheck = z.infer<typeof CoverCheck>;
  * insurance — offered only when the payer's rule allows it, or when a check
  * found the patient not eligible. Insert-only.
  */
-export const CoverageElection = baseEnvelope.extend({
-  type: z.literal('coverage_election'),
-  patientId,
-  kind: z.enum(['use_cover', 'self_pay']),
-  coverId: z.string().min(1),
-  chargeIds: z.array(z.string().min(1)).min(1).max(200),
-  reason: z.enum(['patient_choice', 'not_eligible']).optional(),
-  coverCheckId: z.string().min(1).optional(),
-  patientAgreed: z.literal(true).optional(),
-  note: text.max(1000).optional(),
-}).superRefine((election, context) => {
-  if (new Set(election.chargeIds).size !== election.chargeIds.length) context.addIssue({ code: 'custom', path: ['chargeIds'], message: 'Name each charge once' });
-  if (election.kind === 'self_pay') {
-    if (!election.reason) context.addIssue({ code: 'custom', path: ['reason'], message: 'Say why the patient is paying without insurance' });
-    if (!election.patientAgreed) context.addIssue({ code: 'custom', path: ['patientAgreed'], message: 'Record that the patient agreed to pay' });
-    if (election.reason === 'not_eligible' && !election.coverCheckId) context.addIssue({ code: 'custom', path: ['coverCheckId'], message: 'Name the check that found the patient not eligible' });
-  } else if (election.reason || election.coverCheckId || election.patientAgreed) {
-    context.addIssue({ code: 'custom', path: ['kind'], message: 'Choosing a cover records no self-pay details' });
-  }
-});
+export const CoverageElection = baseEnvelope
+  .extend({
+    type: z.literal('coverage_election'),
+    patientId,
+    kind: z.enum(['use_cover', 'self_pay']),
+    coverId: z.string().min(1),
+    chargeIds: z.array(z.string().min(1)).min(1).max(200),
+    reason: z.enum(['patient_choice', 'not_eligible']).optional(),
+    coverCheckId: z.string().min(1).optional(),
+    patientAgreed: z.literal(true).optional(),
+    note: text.max(1000).optional(),
+  })
+  .superRefine((election, context) => {
+    if (new Set(election.chargeIds).size !== election.chargeIds.length) {
+      context.addIssue({ code: 'custom', path: ['chargeIds'], message: 'Name each charge once' });
+    }
+    if (election.kind === 'self_pay') {
+      if (!election.reason) {
+        context.addIssue({
+          code: 'custom',
+          path: ['reason'],
+          message: 'Say why the patient is paying without insurance',
+        });
+      }
+      if (!election.patientAgreed) {
+        context.addIssue({
+          code: 'custom',
+          path: ['patientAgreed'],
+          message: 'Record that the patient agreed to pay',
+        });
+      }
+      if (election.reason === 'not_eligible' && !election.coverCheckId) {
+        context.addIssue({
+          code: 'custom',
+          path: ['coverCheckId'],
+          message: 'Name the check that found the patient not eligible',
+        });
+      }
+    } else if (election.reason || election.coverCheckId || election.patientAgreed) {
+      context.addIssue({
+        code: 'custom',
+        path: ['kind'],
+        message: 'Choosing a cover records no self-pay details',
+      });
+    }
+  });
 export type CoverageElection = z.infer<typeof CoverageElection>;
 
 /**
@@ -319,33 +440,62 @@ export type CoverageAllocation = z.infer<typeof CoverageAllocation>;
 
 /** Half-up rounding to a whole minor unit, for non-negative amounts. */
 export const roundHalfUp = (value: number): number => {
-  if (!Number.isFinite(value) || value < 0) throw new Error('Amounts must be finite and non-negative');
+  if (!Number.isFinite(value) || value < 0) {
+    throw new Error('Amounts must be finite and non-negative');
+  }
   return Math.floor(value + 0.5 + 1e-9);
 };
 /** Integer percentage of an integer amount, half up, with no floating-point step. */
-export const percentOf = (amountMinor: number, bp: number): number => Math.floor((amountMinor * bp + 5_000) / 10_000);
+export const percentOf = (amountMinor: number, bp: number): number =>
+  Math.floor((amountMinor * bp + 5_000) / 10_000);
 
 /** A co-pay calculation version 1 can perform: none, a percentage, or a fixed amount per unit. */
-export const calculableCopay = (copay: Copay): boolean => copay.kind !== 'fixed' || copay.basis === 'per_unit';
-type CopayFeature = 'copay_per_charge' | 'copay_per_dispense' | 'copay_per_visit' | 'copay_per_claim';
-const unsupportedCopay = (copay: Copay): CopayFeature | undefined => (copay.kind === 'fixed' && copay.basis !== 'per_unit' ? (`copay_${copay.basis}` as CopayFeature) : undefined);
+export const calculableCopay = (copay: Copay): boolean =>
+  copay.kind !== 'fixed' || copay.basis === 'per_unit';
+type CopayFeature =
+  'copay_per_charge' | 'copay_per_dispense' | 'copay_per_visit' | 'copay_per_claim';
+const unsupportedCopay = (copay: Copay): CopayFeature | undefined =>
+  copay.kind === 'fixed' && copay.basis !== 'per_unit'
+    ? (`copay_${copay.basis}` as CopayFeature)
+    : undefined;
 
 /** The per-unit patient amount a co-pay gives on a tariff. Never more than the tariff. Callers check `calculableCopay` first. */
 export const copayPerUnit = (copay: Copay, unitTariffMinor: number): number => {
-  if (!calculableCopay(copay)) throw new Error('This co-pay basis is not calculable in version 1');
-  return copay.kind === 'none' ? 0 : copay.kind === 'percent' ? percentOf(unitTariffMinor, copay.basisPoints) : Math.min(copay.amountMinor, unitTariffMinor);
+  if (!calculableCopay(copay)) {
+    throw new Error('This co-pay basis is not calculable in version 1');
+  }
+  return copay.kind === 'none'
+    ? 0
+    : copay.kind === 'percent'
+      ? percentOf(unitTariffMinor, copay.basisPoints)
+      : Math.min(copay.amountMinor, unitTariffMinor);
 };
 
 /** The patient's share of one charge from a schedule line amount. Same formula on device and server. */
-export const patientShareFor = (amount: PatientAmount, units: number, listPriceMinor: number): number => {
-  if (amount.kind === 'per_unit') return roundHalfUp(amount.amountMinor * units);
-  if (amount.kind === 'percent_of_list') return percentOf(listPriceMinor, amount.basisPoints);
+export const patientShareFor = (
+  amount: PatientAmount,
+  units: number,
+  listPriceMinor: number,
+): number => {
+  if (amount.kind === 'per_unit') {
+    return roundHalfUp(amount.amountMinor * units);
+  }
+  if (amount.kind === 'percent_of_list') {
+    return percentOf(listPriceMinor, amount.basisPoints);
+  }
   return Math.min(roundHalfUp(amount.amountMinor * units), listPriceMinor);
 };
 
 type Resolved = { arrangement?: Arrangement; rule?: PlanRule; tariffMinor?: number };
-const resolveTerms = (terms: PayerContractTerms, plan: ContractPlan, feeItemId: string | undefined, category: FeeCategory): Resolved => ({
-  arrangement: (feeItemId ? terms.arrangements.items[feeItemId] : undefined) ?? terms.arrangements.categories[category],
+const resolveTerms = (
+  terms: PayerContractTerms,
+  plan: ContractPlan,
+  feeItemId: string | undefined,
+  category: FeeCategory,
+): Resolved => ({
+  arrangement:
+    (feeItemId ? terms.arrangements.items[feeItemId] : undefined) ??
+    terms.arrangements.categories[category],
   rule: (feeItemId ? plan.rules.items[feeItemId] : undefined) ?? plan.rules.categories[category],
   tariffMinor: feeItemId ? terms.tariff[feeItemId]?.unitMinor : undefined,
 });
@@ -356,52 +506,123 @@ const resolveTerms = (terms: PayerContractTerms, plan: ContractPlan, feeItemId: 
  * with no co-pay or a co-pay on the list price. Per-service cover needs a tariff
  * per fee item, so a category line for it is `not_configured`.
  */
-export const scheduleLineFor = (terms: PayerContractTerms, plan: ContractPlan, feeItemId: string | undefined, category: FeeCategory): ScheduleLine => {
+export const scheduleLineFor = (
+  terms: PayerContractTerms,
+  plan: ContractPlan,
+  feeItemId: string | undefined,
+  category: FeeCategory,
+): ScheduleLine => {
   const { arrangement, rule, tariffMinor } = resolveTerms(terms, plan, feeItemId, category);
-  if (rule?.coverage === 'excluded') return { status: 'excluded', patientLiability: rule.patientLiability ?? 'not_configured' };
-  if (!arrangement) return { status: 'not_configured', missing: 'arrangement' };
-  if (!isSupportedArrangement(arrangement)) return { status: 'unsupported', feature: arrangement };
-  if (!rule) return { status: 'not_configured', missing: 'rule' };
+  if (rule?.coverage === 'excluded') {
+    return { status: 'excluded', patientLiability: rule.patientLiability ?? 'not_configured' };
+  }
+  if (!arrangement) {
+    return { status: 'not_configured', missing: 'arrangement' };
+  }
+  if (!isSupportedArrangement(arrangement)) {
+    return { status: 'unsupported', feature: arrangement };
+  }
+  if (!rule) {
+    return { status: 'not_configured', missing: 'rule' };
+  }
   const copayFeature = unsupportedCopay(rule.copay);
-  if (copayFeature) return { status: 'unsupported', feature: copayFeature };
+  if (copayFeature) {
+    return { status: 'unsupported', feature: copayFeature };
+  }
   const approvalRequired = rule.approvalRequired;
-  if (tariffMinor !== undefined) return { status: 'covered', arrangement, approvalRequired, patient: { kind: 'per_unit', amountMinor: copayPerUnit(rule.copay, tariffMinor) } };
-  if (arrangement === 'per_service') return { status: 'not_configured', missing: 'tariff' };
+  if (tariffMinor !== undefined) {
+    return {
+      status: 'covered',
+      arrangement,
+      approvalRequired,
+      patient: { kind: 'per_unit', amountMinor: copayPerUnit(rule.copay, tariffMinor) },
+    };
+  }
+  if (arrangement === 'per_service') {
+    return { status: 'not_configured', missing: 'tariff' };
+  }
   // Capitation without a tariff: the co-pay can only be stated against the list price.
-  if (rule.copay.kind === 'none') return { status: 'covered', arrangement, approvalRequired, patient: { kind: 'per_unit', amountMinor: 0 } };
-  if (rule.copay.kind === 'percent') return { status: 'covered', arrangement, approvalRequired, patient: { kind: 'percent_of_list', basisPoints: rule.copay.basisPoints } };
-  return { status: 'covered', arrangement, approvalRequired, patient: { kind: 'fixed_per_unit_capped_at_list', amountMinor: rule.copay.amountMinor } };
+  if (rule.copay.kind === 'none') {
+    return {
+      status: 'covered',
+      arrangement,
+      approvalRequired,
+      patient: { kind: 'per_unit', amountMinor: 0 },
+    };
+  }
+  if (rule.copay.kind === 'percent') {
+    return {
+      status: 'covered',
+      arrangement,
+      approvalRequired,
+      patient: { kind: 'percent_of_list', basisPoints: rule.copay.basisPoints },
+    };
+  }
+  return {
+    status: 'covered',
+    arrangement,
+    approvalRequired,
+    patient: { kind: 'fixed_per_unit_capped_at_list', amountMinor: rule.copay.amountMinor },
+  };
 };
 
 /** Every fee item the terms mention, so the schedule can carry an exact line for each. */
 const mentionedItems = (terms: PayerContractTerms, plan: ContractPlan): string[] =>
-  [...new Set([...Object.keys(terms.tariff), ...Object.keys(terms.arrangements.items), ...Object.keys(plan.rules.items)])].sort();
+  [
+    ...new Set([
+      ...Object.keys(terms.tariff),
+      ...Object.keys(terms.arrangements.items),
+      ...Object.keys(plan.rules.items),
+    ]),
+  ].sort();
 
 /**
  * The patient-facing lines for one plan. `categoryOf` names each mentioned fee
  * item's category; an item the hospital no longer has resolves to
  * `not_configured` rather than guessing its category.
  */
-export const buildScheduleLines = (terms: PayerContractTerms, plan: ContractPlan, categoryOf: (feeItemId: string) => FeeCategory | undefined) => {
+export const buildScheduleLines = (
+  terms: PayerContractTerms,
+  plan: ContractPlan,
+  categoryOf: (feeItemId: string) => FeeCategory | undefined,
+) => {
   const items: Record<string, ScheduleLine> = {};
   for (const feeItemId of mentionedItems(terms, plan)) {
     const category = categoryOf(feeItemId);
-    items[feeItemId] = category ? scheduleLineFor(terms, plan, feeItemId, category) : { status: 'not_configured', missing: 'arrangement' };
+    items[feeItemId] = category
+      ? scheduleLineFor(terms, plan, feeItemId, category)
+      : { status: 'not_configured', missing: 'arrangement' };
   }
   const categories: Partial<Record<FeeCategory, ScheduleLine>> = {};
   // Do not introduce unknown enum keys into older facilities' activated schedules.
-  for (const category of FeeCategory.options.filter((c) => ['registration', 'card', 'consultation', 'laboratory', 'procedure', 'other'].includes(c) || c in terms.arrangements.categories || c in plan.rules.categories)) categories[category] = scheduleLineFor(terms, plan, undefined, category);
+  for (const category of FeeCategory.options.filter(
+    (c) =>
+      ['registration', 'card', 'consultation', 'laboratory', 'procedure', 'other'].includes(c) ||
+      c in terms.arrangements.categories ||
+      c in plan.rules.categories,
+  )) {
+    categories[category] = scheduleLineFor(terms, plan, undefined, category);
+  }
   return { items, categories };
 };
 
-export type UnsupportedTerm = { scope: 'category' | 'item'; key: string; feature: string; planCode?: string };
+export type UnsupportedTerm = {
+  scope: 'category' | 'item';
+  key: string;
+  feature: string;
+  planCode?: string;
+};
 /**
  * What activation must point out by name: every arrangement and every co-pay
  * basis calculation version 1 cannot calculate. Those services stay undetermined.
  */
 export const unsupportedArrangements = (terms: PayerContractTerms): UnsupportedTerm[] => [
-  ...Object.entries(terms.arrangements.categories).filter(([, a]) => a && !isSupportedArrangement(a)).map(([key, a]) => ({ scope: 'category' as const, key, feature: a as string })),
-  ...Object.entries(terms.arrangements.items).filter(([, a]) => !isSupportedArrangement(a)).map(([key, a]) => ({ scope: 'item' as const, key, feature: a as string })),
+  ...Object.entries(terms.arrangements.categories)
+    .filter(([, a]) => a && !isSupportedArrangement(a))
+    .map(([key, a]) => ({ scope: 'category' as const, key, feature: a as string })),
+  ...Object.entries(terms.arrangements.items)
+    .filter(([, a]) => !isSupportedArrangement(a))
+    .map(([key, a]) => ({ scope: 'item' as const, key, feature: a as string })),
   ...terms.plans.flatMap((plan) => [
     ...Object.entries(plan.rules.categories).flatMap(([key, rule]) => {
       const feature = rule?.coverage === 'covered' ? unsupportedCopay(rule.copay) : undefined;
@@ -437,42 +658,111 @@ export type ComputeResult =
  * same terms — `scheduleAgrees` checks that at confirmation, and a property test
  * checks it over generated contracts.
  */
-export const computeAllocation = (input: { terms: PayerContractTerms; planCode: string; charge: Pick<Charge, 'feeItemId' | 'category' | 'listPriceMinor' | 'currency'>; units: number | undefined }): ComputeResult => {
+export const computeAllocation = (input: {
+  terms: PayerContractTerms;
+  planCode: string;
+  charge: Pick<Charge, 'feeItemId' | 'category' | 'listPriceMinor' | 'currency'>;
+  units: number | undefined;
+}): ComputeResult => {
   const { terms, charge, units } = input;
   const plan = terms.plans.find((candidate) => candidate.planCode === input.planCode);
-  if (!plan) return { ok: false, reason: 'not_configured', detail: 'plan' };
-  if (charge.currency !== terms.currency) return { ok: false, reason: 'not_configured', detail: 'currency' };
-  const { arrangement, rule, tariffMinor } = resolveTerms(terms, plan, charge.feeItemId, charge.category);
-  if (rule?.coverage === 'excluded') return { ok: false, reason: rule.patientLiability === 'not_billable' ? 'not_billable_to_patient' : rule.patientLiability === 'patient_pays' ? 'excluded_patient_pays' : 'exclusion_liability_not_configured' };
-  if (!arrangement) return { ok: false, reason: 'not_configured', detail: 'arrangement' };
-  if (!isSupportedArrangement(arrangement)) return { ok: false, reason: 'unsupported_arrangement', detail: arrangement };
-  if (!rule) return { ok: false, reason: 'not_configured', detail: 'rule' };
-  if (!calculableCopay(rule.copay)) return { ok: false, reason: 'unsupported_arrangement', detail: unsupportedCopay(rule.copay) };
-  if (units === undefined || !(units > 0)) return { ok: false, reason: 'quantity_unavailable' };
+  if (!plan) {
+    return { ok: false, reason: 'not_configured', detail: 'plan' };
+  }
+  if (charge.currency !== terms.currency) {
+    return { ok: false, reason: 'not_configured', detail: 'currency' };
+  }
+  const { arrangement, rule, tariffMinor } = resolveTerms(
+    terms,
+    plan,
+    charge.feeItemId,
+    charge.category,
+  );
+  if (rule?.coverage === 'excluded') {
+    return {
+      ok: false,
+      reason:
+        rule.patientLiability === 'not_billable'
+          ? 'not_billable_to_patient'
+          : rule.patientLiability === 'patient_pays'
+            ? 'excluded_patient_pays'
+            : 'exclusion_liability_not_configured',
+    };
+  }
+  if (!arrangement) {
+    return { ok: false, reason: 'not_configured', detail: 'arrangement' };
+  }
+  if (!isSupportedArrangement(arrangement)) {
+    return { ok: false, reason: 'unsupported_arrangement', detail: arrangement };
+  }
+  if (!rule) {
+    return { ok: false, reason: 'not_configured', detail: 'rule' };
+  }
+  if (!calculableCopay(rule.copay)) {
+    return { ok: false, reason: 'unsupported_arrangement', detail: unsupportedCopay(rule.copay) };
+  }
+  if (units === undefined || !(units > 0)) {
+    return { ok: false, reason: 'quantity_unavailable' };
+  }
   const list = charge.listPriceMinor;
   if (tariffMinor !== undefined) {
     const tariffTotal = roundHalfUp(tariffMinor * units);
     const patient = roundHalfUp(copayPerUnit(rule.copay, tariffMinor) * units);
     const remainder = tariffTotal - patient;
-    return { ok: true, rule, tariffUnitMinor: tariffMinor, split: {
-      arrangement, patientShareMinor: patient, tariffTotalMinor: tariffTotal, contractAdjustmentMinor: list - tariffTotal,
-      payerShareMinor: arrangement === 'per_service' ? remainder : 0,
-      capitationCoveredMinor: arrangement === 'capitation' ? remainder : 0,
-    } };
+    return {
+      ok: true,
+      rule,
+      tariffUnitMinor: tariffMinor,
+      split: {
+        arrangement,
+        patientShareMinor: patient,
+        tariffTotalMinor: tariffTotal,
+        contractAdjustmentMinor: list - tariffTotal,
+        payerShareMinor: arrangement === 'per_service' ? remainder : 0,
+        capitationCoveredMinor: arrangement === 'capitation' ? remainder : 0,
+      },
+    };
   }
-  if (arrangement === 'per_service') return { ok: false, reason: 'not_configured', detail: 'tariff' };
+  if (arrangement === 'per_service') {
+    return { ok: false, reason: 'not_configured', detail: 'tariff' };
+  }
   const line = scheduleLineFor(terms, plan, charge.feeItemId, charge.category);
-  if (line.status !== 'covered') return { ok: false, reason: 'not_configured', detail: 'rule' };
+  if (line.status !== 'covered') {
+    return { ok: false, reason: 'not_configured', detail: 'rule' };
+  }
   const patient = patientShareFor(line.patient, units, list);
-  return { ok: true, rule, split: { arrangement, patientShareMinor: patient, payerShareMinor: 0, contractAdjustmentMinor: 0, capitationCoveredMinor: list - patient } };
+  return {
+    ok: true,
+    rule,
+    split: {
+      arrangement,
+      patientShareMinor: patient,
+      payerShareMinor: 0,
+      contractAdjustmentMinor: 0,
+      capitationCoveredMinor: list - patient,
+    },
+  };
 };
 
 /** Invariant of every split: the parts account for the list price exactly. */
 export const splitBalances = (split: AllocationSplit, listPriceMinor: number): boolean =>
-  [split.patientShareMinor, split.payerShareMinor, split.contractAdjustmentMinor, split.capitationCoveredMinor].every(Number.isInteger)
-  && split.patientShareMinor >= 0 && split.payerShareMinor >= 0 && split.capitationCoveredMinor >= 0
-  && (split.arrangement === 'per_service' ? split.capitationCoveredMinor === 0 : split.payerShareMinor === 0)
-  && split.patientShareMinor + split.payerShareMinor + split.contractAdjustmentMinor + split.capitationCoveredMinor === listPriceMinor;
+  [
+    split.patientShareMinor,
+    split.payerShareMinor,
+    split.contractAdjustmentMinor,
+    split.capitationCoveredMinor,
+  ].every(Number.isInteger) &&
+  split.patientShareMinor >= 0 &&
+  split.payerShareMinor >= 0 &&
+  split.capitationCoveredMinor >= 0 &&
+  (split.arrangement === 'per_service'
+    ? split.capitationCoveredMinor === 0
+    : split.payerShareMinor === 0) &&
+  split.patientShareMinor +
+    split.payerShareMinor +
+    split.contractAdjustmentMinor +
+    split.capitationCoveredMinor ===
+    listPriceMinor;
 
 /* ------------------------------------------------------------------ */
 /* Units and service dates                                             */
@@ -483,10 +773,19 @@ export const splitBalances = (split: AllocationSplit, listPriceMinor: number): b
  * dispense entry; every other charge in Geneus is one unit. When a supply's
  * entry is not available the quantity is unknown — not assumed to be one.
  */
-export const chargeUnits = (charge: Pick<Charge, 'dispenseEntryId' | 'quantity'>, dispenseEntry?: EncounterEntry): number | undefined => {
-  if (charge.quantity !== undefined) return charge.quantity;
-  if (!charge.dispenseEntryId) return 1;
-  if (!dispenseEntry || dispenseEntry.id !== charge.dispenseEntryId) return undefined;
+export const chargeUnits = (
+  charge: Pick<Charge, 'dispenseEntryId' | 'quantity'>,
+  dispenseEntry?: EncounterEntry,
+): number | undefined => {
+  if (charge.quantity !== undefined) {
+    return charge.quantity;
+  }
+  if (!charge.dispenseEntryId) {
+    return 1;
+  }
+  if (!dispenseEntry || dispenseEntry.id !== charge.dispenseEntryId) {
+    return undefined;
+  }
   const quantity = dispensingDetails(dispenseEntry)?.quantity;
   return quantity !== undefined && quantity > 0 ? quantity : undefined;
 };
@@ -498,11 +797,24 @@ export const chargeUnits = (charge: Pick<Charge, 'dispenseEntryId' | 'quantity'>
  * date: the caller gets `undefined`, never a UTC guess.
  */
 const dateFormats = new Map<string, Intl.DateTimeFormat>();
-export const serviceDateOf = (createdOn: string, timeZone: string | undefined): string | undefined => {
-  if (!timeZone) return undefined;
+export const serviceDateOf = (
+  createdOn: string,
+  timeZone: string | undefined,
+): string | undefined => {
+  if (!timeZone) {
+    return undefined;
+  }
   // Building a formatter is far costlier than using one; billing dates thousands of charges at a time.
   let format = dateFormats.get(timeZone);
-  if (!format) { format = new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }); dateFormats.set(timeZone, format); }
+  if (!format) {
+    format = new Intl.DateTimeFormat('en-CA', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+    dateFormats.set(timeZone, format);
+  }
   return format.format(new Date(createdOn));
 };
 
@@ -511,9 +823,18 @@ export const serviceDateOf = (createdOn: string, timeZone: string | undefined): 
 /* ------------------------------------------------------------------ */
 
 export const UndeterminedReason = z.enum([
-  'cover_not_checked', 'check_pending', 'not_eligible', 'choose_cover', 'not_configured',
-  'unsupported_arrangement', 'quantity_unavailable', 'not_billable_to_patient', 'exclusion_liability_not_configured',
-  'excluded_patient_pays', 'facility_timezone_missing', 'self_pay_not_permitted',
+  'cover_not_checked',
+  'check_pending',
+  'not_eligible',
+  'choose_cover',
+  'not_configured',
+  'unsupported_arrangement',
+  'quantity_unavailable',
+  'not_billable_to_patient',
+  'exclusion_liability_not_configured',
+  'excluded_patient_pays',
+  'facility_timezone_missing',
+  'self_pay_not_permitted',
 ]);
 export type UndeterminedReason = z.infer<typeof UndeterminedReason>;
 
@@ -524,8 +845,24 @@ export type CoverageEstimate =
   | { state: 'self_pay_confirmed'; allocation: CoverageAllocation }
   | { state: 'self_pay_elected'; election: CoverageElection; cover: PatientCover }
   | { state: 'not_covered'; cover: PatientCover; check: CoverCheck; schedule: CoverSchedule }
-  | { state: 'undetermined'; reason: UndeterminedReason; detail?: string; cover?: PatientCover; check?: CoverCheck; schedule?: CoverSchedule }
-  | { state: 'estimated'; cover: PatientCover; check: CoverCheck; schedule: CoverSchedule; line: Extract<ScheduleLine, { status: 'covered' }>; units: number; patientShareMinor: number; election?: CoverageElection };
+  | {
+      state: 'undetermined';
+      reason: UndeterminedReason;
+      detail?: string;
+      cover?: PatientCover;
+      check?: CoverCheck;
+      schedule?: CoverSchedule;
+    }
+  | {
+      state: 'estimated';
+      cover: PatientCover;
+      check: CoverCheck;
+      schedule: CoverSchedule;
+      line: Extract<ScheduleLine, { status: 'covered' }>;
+      units: number;
+      patientShareMinor: number;
+      election?: CoverageElection;
+    };
 
 export type CoverageRecords = {
   covers: readonly PatientCover[];
@@ -535,26 +872,52 @@ export type CoverageRecords = {
   schedules: readonly CoverSchedule[];
 };
 
-const byNewest = <T extends { createdOn: string; id: string }>(a: T, b: T) => b.createdOn.localeCompare(a.createdOn) || b.id.localeCompare(a.id);
+const byNewest = <T extends { createdOn: string; id: string }>(a: T, b: T) =>
+  b.createdOn.localeCompare(a.createdOn) || b.id.localeCompare(a.id);
 
 /** The head of an insert-only chain: the record nothing supersedes. */
-export const currentAllocation = (chargeId: string, allocations: readonly CoverageAllocation[]): CoverageAllocation | undefined => {
+export const currentAllocation = (
+  chargeId: string,
+  allocations: readonly CoverageAllocation[],
+): CoverageAllocation | undefined => {
   const mine = allocations.filter((allocation) => allocation.chargeId === chargeId);
   const superseded = new Set(mine.map((allocation) => allocation.supersedes).filter(Boolean));
   return mine.filter((allocation) => !superseded.has(allocation.id)).sort(byNewest)[0];
 };
 
 /** Covers nothing has replaced, active and valid on the date. */
-export const coversOn = (patientId: string, date: string, covers: readonly PatientCover[]): PatientCover[] => {
+export const coversOn = (
+  patientId: string,
+  date: string,
+  covers: readonly PatientCover[],
+): PatientCover[] => {
   const mine = covers.filter((cover) => cover.patientId === patientId);
   const replaced = new Set(mine.map((cover) => cover.replaces).filter(Boolean));
-  return mine.filter((cover) => !replaced.has(cover.id) && cover.active && (!cover.validFrom || cover.validFrom <= date) && (!cover.validTo || date <= cover.validTo));
+  return mine.filter(
+    (cover) =>
+      !replaced.has(cover.id) &&
+      cover.active &&
+      (!cover.validFrom || cover.validFrom <= date) &&
+      (!cover.validTo || date <= cover.validTo),
+  );
 };
 
 /** The schedule in force: the highest active version of the payer's contract that has started and not ended. */
-export const scheduleOn = (payerId: string, plan: string, date: string, schedules: readonly CoverSchedule[]): CoverSchedule | undefined =>
+export const scheduleOn = (
+  payerId: string,
+  plan: string,
+  date: string,
+  schedules: readonly CoverSchedule[],
+): CoverSchedule | undefined =>
   schedules
-    .filter((s) => s.payerId === payerId && s.planCode === plan && s.effectiveFrom <= date && (!s.effectiveTo || date <= s.effectiveTo) && (!s.endedOn || date < s.endedOn))
+    .filter(
+      (s) =>
+        s.payerId === payerId &&
+        s.planCode === plan &&
+        s.effectiveFrom <= date &&
+        (!s.effectiveTo || date <= s.effectiveTo) &&
+        (!s.endedOn || date < s.endedOn),
+    )
     .sort((a, b) => b.contractVersion - a.contractVersion)[0];
 
 /**
@@ -562,12 +925,26 @@ export const scheduleOn = (payerId: string, plan: string, date: string, schedule
  * "not eligible" choice rests on the cited check. A member's own choice rests on
  * the contract version in force that day: only `allowed` permits it.
  */
-export const selfPayPermitted = (election: CoverageElection, cover: PatientCover, serviceDate: string, records: Pick<CoverageRecords, 'checks' | 'schedules'>): boolean => {
+export const selfPayPermitted = (
+  election: CoverageElection,
+  cover: PatientCover,
+  serviceDate: string,
+  records: Pick<CoverageRecords, 'checks' | 'schedules'>,
+): boolean => {
   if (election.reason === 'not_eligible') {
     const check = records.checks.find((c) => c.id === election.coverCheckId);
-    return Boolean(check && check.coverId === cover.id && check.result === 'not_eligible' && check.coversFrom <= serviceDate && serviceDate <= check.coversTo);
+    return Boolean(
+      check &&
+      check.coverId === cover.id &&
+      check.result === 'not_eligible' &&
+      check.coversFrom <= serviceDate &&
+      serviceDate <= check.coversTo,
+    );
   }
-  return scheduleOn(cover.payerId, cover.planCode, serviceDate, records.schedules)?.selfPayElection === 'allowed';
+  return (
+    scheduleOn(cover.payerId, cover.planCode, serviceDate, records.schedules)?.selfPayElection ===
+    'allowed'
+  );
 };
 
 /**
@@ -576,7 +953,18 @@ export const selfPayPermitted = (election: CoverageElection, cover: PatientCover
  * missing fact, so whoever resolves it knows what to do.
  */
 export const estimateCoverage = (input: {
-  charge: Pick<Charge, 'id' | 'patientId' | 'feeItemId' | 'category' | 'listPriceMinor' | 'amountMinor' | 'currency' | 'createdOn' | 'dispenseEntryId'>;
+  charge: Pick<
+    Charge,
+    | 'id'
+    | 'patientId'
+    | 'feeItemId'
+    | 'category'
+    | 'listPriceMinor'
+    | 'amountMinor'
+    | 'currency'
+    | 'createdOn'
+    | 'dispenseEntryId'
+  >;
   records: CoverageRecords;
   serviceDate: string | undefined;
   units: number | undefined;
@@ -588,48 +976,148 @@ export const estimateCoverage = (input: {
   billingActive: boolean;
 }): CoverageEstimate => {
   const { charge, records } = input;
-  if (charge.amountMinor === 0) return { state: 'exempt' };
+  if (charge.amountMinor === 0) {
+    return { state: 'exempt' };
+  }
   const confirmed = currentAllocation(charge.id, records.allocations);
-  if (confirmed) return confirmed.state === 'finalised' ? { state: 'finalised', allocation: confirmed } : { state: 'self_pay_confirmed', allocation: confirmed };
-  if (!input.billingActive) return { state: 'self_pay' };
+  if (confirmed) {
+    return confirmed.state === 'finalised'
+      ? { state: 'finalised', allocation: confirmed }
+      : { state: 'self_pay_confirmed', allocation: confirmed };
+  }
+  if (!input.billingActive) {
+    return { state: 'self_pay' };
+  }
 
   const allCovers = records.covers.filter((c) => c.patientId === charge.patientId);
-  if (!input.serviceDate) return allCovers.length ? { state: 'undetermined', reason: 'facility_timezone_missing' } : { state: 'self_pay' };
+  if (!input.serviceDate) {
+    return allCovers.length
+      ? { state: 'undetermined', reason: 'facility_timezone_missing' }
+      : { state: 'self_pay' };
+  }
   const serviceDate = input.serviceDate;
   const valid = coversOn(charge.patientId, serviceDate, records.covers);
-  const elections = records.elections.filter((e) => e.patientId === charge.patientId && e.chargeIds.includes(charge.id)).sort(byNewest);
+  const elections = records.elections
+    .filter((e) => e.patientId === charge.patientId && e.chargeIds.includes(charge.id))
+    .sort(byNewest);
   const selfPay = elections.find((e) => e.kind === 'self_pay');
   if (selfPay) {
     const cover = allCovers.find((c) => c.id === selfPay.coverId);
     if (cover) {
       // A recorded choice always stays on record; it counts only while the rule in force on the date of service permits it.
-      if (selfPayPermitted(selfPay, cover, serviceDate, records)) return { state: 'self_pay_elected', election: selfPay, cover };
+      if (selfPayPermitted(selfPay, cover, serviceDate, records)) {
+        return { state: 'self_pay_elected', election: selfPay, cover };
+      }
       return { state: 'undetermined', reason: 'self_pay_not_permitted', cover };
     }
   }
-  if (!valid.length) return { state: 'self_pay' };
-  const chosen = elections.find((e) => e.kind === 'use_cover' && valid.some((c) => c.id === e.coverId));
-  const cover = chosen ? valid.find((c) => c.id === chosen.coverId)! : valid.length === 1 ? valid[0] : undefined;
-  if (!cover) return { state: 'undetermined', reason: 'choose_cover' };
+  if (!valid.length) {
+    return { state: 'self_pay' };
+  }
+  const chosen = elections.find(
+    (e) => e.kind === 'use_cover' && valid.some((c) => c.id === e.coverId),
+  );
+  const cover = chosen
+    ? valid.find((c) => c.id === chosen.coverId)!
+    : valid.length === 1
+      ? valid[0]
+      : undefined;
+  if (!cover) {
+    return { state: 'undetermined', reason: 'choose_cover' };
+  }
 
-  const check = records.checks.filter((c) => c.coverId === cover.id && c.patientId === charge.patientId && c.coversFrom <= serviceDate && serviceDate <= c.coversTo).sort(byNewest)[0];
-  if (!check) return { state: 'undetermined', reason: 'cover_not_checked', cover };
-  if (check.result === 'pending') return { state: 'undetermined', reason: 'check_pending', cover, check };
-  if (check.result === 'not_eligible') return { state: 'undetermined', reason: 'not_eligible', cover, check };
+  const check = records.checks
+    .filter(
+      (c) =>
+        c.coverId === cover.id &&
+        c.patientId === charge.patientId &&
+        c.coversFrom <= serviceDate &&
+        serviceDate <= c.coversTo,
+    )
+    .sort(byNewest)[0];
+  if (!check) {
+    return { state: 'undetermined', reason: 'cover_not_checked', cover };
+  }
+  if (check.result === 'pending') {
+    return { state: 'undetermined', reason: 'check_pending', cover, check };
+  }
+  if (check.result === 'not_eligible') {
+    return { state: 'undetermined', reason: 'not_eligible', cover, check };
+  }
 
   const schedule = scheduleOn(cover.payerId, cover.planCode, serviceDate, records.schedules);
-  if (!schedule) return { state: 'undetermined', reason: 'not_configured', detail: 'contract', cover, check };
-  if (schedule.currency !== charge.currency) return { state: 'undetermined', reason: 'not_configured', detail: 'currency', cover, check, schedule };
-  const line = schedule.items[charge.feeItemId] ?? schedule.categories[charge.category];
-  if (!line) return { state: 'undetermined', reason: 'not_configured', detail: 'rule', cover, check, schedule };
-  if (line.status === 'not_configured') return { state: 'undetermined', reason: 'not_configured', detail: line.missing, cover, check, schedule };
-  if (line.status === 'unsupported') return { state: 'undetermined', reason: 'unsupported_arrangement', detail: line.feature, cover, check, schedule };
-  if (line.status === 'excluded') {
-    if (line.patientLiability === 'patient_pays') return { state: 'not_covered', cover, check, schedule };
-    return { state: 'undetermined', reason: line.patientLiability === 'not_billable' ? 'not_billable_to_patient' : 'exclusion_liability_not_configured', cover, check, schedule };
+  if (!schedule) {
+    return { state: 'undetermined', reason: 'not_configured', detail: 'contract', cover, check };
   }
-  if (input.units === undefined || !(input.units > 0)) return { state: 'undetermined', reason: 'quantity_unavailable', cover, check, schedule };
-  return { state: 'estimated', cover, check, schedule, line, units: input.units, patientShareMinor: patientShareFor(line.patient, input.units, charge.listPriceMinor), ...(chosen ? { election: chosen } : {}) };
+  if (schedule.currency !== charge.currency) {
+    return {
+      state: 'undetermined',
+      reason: 'not_configured',
+      detail: 'currency',
+      cover,
+      check,
+      schedule,
+    };
+  }
+  const line = schedule.items[charge.feeItemId] ?? schedule.categories[charge.category];
+  if (!line) {
+    return {
+      state: 'undetermined',
+      reason: 'not_configured',
+      detail: 'rule',
+      cover,
+      check,
+      schedule,
+    };
+  }
+  if (line.status === 'not_configured') {
+    return {
+      state: 'undetermined',
+      reason: 'not_configured',
+      detail: line.missing,
+      cover,
+      check,
+      schedule,
+    };
+  }
+  if (line.status === 'unsupported') {
+    return {
+      state: 'undetermined',
+      reason: 'unsupported_arrangement',
+      detail: line.feature,
+      cover,
+      check,
+      schedule,
+    };
+  }
+  if (line.status === 'excluded') {
+    if (line.patientLiability === 'patient_pays') {
+      return { state: 'not_covered', cover, check, schedule };
+    }
+    return {
+      state: 'undetermined',
+      reason:
+        line.patientLiability === 'not_billable'
+          ? 'not_billable_to_patient'
+          : 'exclusion_liability_not_configured',
+      cover,
+      check,
+      schedule,
+    };
+  }
+  if (input.units === undefined || !(input.units > 0)) {
+    return { state: 'undetermined', reason: 'quantity_unavailable', cover, check, schedule };
+  }
+  return {
+    state: 'estimated',
+    cover,
+    check,
+    schedule,
+    line,
+    units: input.units,
+    patientShareMinor: patientShareFor(line.patient, input.units, charge.listPriceMinor),
+    ...(chosen ? { election: chosen } : {}),
+  };
 };
 
 /**
@@ -638,20 +1126,40 @@ export const estimateCoverage = (input: {
  * never added to what is due. `final` is true only when no later decision can
  * change the figure — the condition for refunding a credit.
  */
-export const patientResponsibility = (charge: Pick<Charge, 'amountMinor'>, estimate: CoverageEstimate): { baseMinor: number; undeterminedMinor: number; estimated: boolean; final: boolean } => {
+export const patientResponsibility = (
+  charge: Pick<Charge, 'amountMinor'>,
+  estimate: CoverageEstimate,
+): { baseMinor: number; undeterminedMinor: number; estimated: boolean; final: boolean } => {
   switch (estimate.state) {
-    case 'self_pay': case 'self_pay_elected': case 'not_covered':
+    case 'self_pay':
+    case 'self_pay_elected':
+    case 'not_covered':
       return { baseMinor: charge.amountMinor, undeterminedMinor: 0, estimated: false, final: true };
     case 'self_pay_confirmed':
       return { baseMinor: charge.amountMinor, undeterminedMinor: 0, estimated: false, final: true };
     case 'exempt':
       return { baseMinor: 0, undeterminedMinor: 0, estimated: false, final: true };
     case 'finalised':
-      return { baseMinor: estimate.allocation.patientShareMinor, undeterminedMinor: 0, estimated: false, final: true };
+      return {
+        baseMinor: estimate.allocation.patientShareMinor,
+        undeterminedMinor: 0,
+        estimated: false,
+        final: true,
+      };
     case 'estimated':
-      return { baseMinor: estimate.patientShareMinor, undeterminedMinor: 0, estimated: true, final: false };
+      return {
+        baseMinor: estimate.patientShareMinor,
+        undeterminedMinor: 0,
+        estimated: true,
+        final: false,
+      };
     case 'undetermined':
-      return { baseMinor: 0, undeterminedMinor: charge.amountMinor, estimated: false, final: false };
+      return {
+        baseMinor: 0,
+        undeterminedMinor: charge.amountMinor,
+        estimated: false,
+        final: false,
+      };
   }
 };
 
@@ -660,26 +1168,47 @@ export const patientResponsibility = (charge: Pick<Charge, 'amountMinor'>, estim
  * approvals, overpayments, anything undetermined — needs individual review.
  */
 export const isRoutine = (estimate: CoverageEstimate, paidMinor: number): boolean =>
-  estimate.state === 'estimated' && !estimate.election && !estimate.line.approvalRequired && paidMinor <= estimate.patientShareMinor;
+  estimate.state === 'estimated' &&
+  !estimate.election &&
+  !estimate.line.approvalRequired &&
+  paidMinor <= estimate.patientShareMinor;
 
 /**
  * Groups coverage records by patient once, so estimating many charges costs
  * one pass over the records plus one small lookup per charge — never every
  * record for every charge. Schedules are shared by all patients.
  */
-export const indexCoverageRecords = (records: CoverageRecords): ((patientId: string) => CoverageRecords) => {
+export const indexCoverageRecords = (
+  records: CoverageRecords,
+): ((patientId: string) => CoverageRecords) => {
   const group = <T extends { patientId: string }>(items: readonly T[]) => {
     const map = new Map<string, T[]>();
-    for (const item of items) { const list = map.get(item.patientId); if (list) list.push(item); else map.set(item.patientId, [item]); }
+    for (const item of items) {
+      const list = map.get(item.patientId);
+      if (list) {
+        list.push(item);
+      } else {
+        map.set(item.patientId, [item]);
+      }
+    }
     return map;
   };
-  const covers = group(records.covers), checks = group(records.checks), elections = group(records.elections), allocations = group(records.allocations);
+  const covers = group(records.covers);
+  const checks = group(records.checks);
+  const elections = group(records.elections);
+  const allocations = group(records.allocations);
   const empty: never[] = [];
   const cache = new Map<string, CoverageRecords>();
   return (patientId) => {
     let found = cache.get(patientId);
     if (!found) {
-      found = { covers: covers.get(patientId) ?? empty, checks: checks.get(patientId) ?? empty, elections: elections.get(patientId) ?? empty, allocations: allocations.get(patientId) ?? empty, schedules: records.schedules };
+      found = {
+        covers: covers.get(patientId) ?? empty,
+        checks: checks.get(patientId) ?? empty,
+        elections: elections.get(patientId) ?? empty,
+        allocations: allocations.get(patientId) ?? empty,
+        schedules: records.schedules,
+      };
       cache.set(patientId, found);
     }
     return found;
@@ -695,12 +1224,23 @@ export const indexCoverageRecords = (records: CoverageRecords): ((patientId: str
  * hand without any of them. A document is evidence, never configuration.
  */
 export const InsuranceDocumentType = z.enum([
-  'contract', 'tariff_schedule', 'benefit_schedule', 'authorization_policy', 'claim_template',
-  'referral_form', 'remittance_advice', 'enrollee_roster', 'other',
+  'contract',
+  'tariff_schedule',
+  'benefit_schedule',
+  'authorization_policy',
+  'claim_template',
+  'referral_form',
+  'remittance_advice',
+  'enrollee_roster',
+  'other',
   // Claim evidence (Milestone 3): kept with the payer, attached to claims only by a person's choice.
-  'authorization_evidence', 'referral_letter', 'submission_evidence', 'acknowledgement',
+  'authorization_evidence',
+  'referral_letter',
+  'submission_evidence',
+  'acknowledgement',
   // Settlement evidence: the payer's decision letter and dispute correspondence.
-  'payer_decision', 'dispute_correspondence',
+  'payer_decision',
+  'dispute_correspondence',
 ]);
 export type InsuranceDocumentType = z.infer<typeof InsuranceDocumentType>;
 export const DocumentVerification = z.enum(['unverified', 'verified', 'rejected']);
@@ -737,39 +1277,68 @@ export type InsuranceDocument = z.infer<typeof InsuranceDocument>;
 export const SubmissionMethod = z.enum(['manual', 'direct']);
 export const SubmissionChannel = z.enum(['portal', 'email', 'physical', 'other']);
 export const ClaimFormat = z.enum(['csv', 'xlsx', 'pdf']);
-export const DiagnosisRequirement = z.enum(['codes_verified', 'codes_as_entered', 'free_text', 'not_required']);
+export const DiagnosisRequirement = z.enum([
+  'codes_verified',
+  'codes_as_entered',
+  'free_text',
+  'not_required',
+]);
 export type DiagnosisRequirement = z.infer<typeof DiagnosisRequirement>;
-export const SubmissionProfile = z.strictObject({
-  method: SubmissionMethod,
-  channel: SubmissionChannel,
-  portalUrl: z.url().max(500).optional(),
-  recipient: text.max(200).optional(),
-  instructions: text.max(2000).optional(),
-  /** Days after the service by which claims must reach the payer — as the contract states it, never defaulted. */
-  deadlineDays: z.number().int().positive().max(730).optional(),
-  /** Days after submission by which the payer should pay, as the contract states it. Without it nothing is called overdue. */
-  paymentDueDays: z.number().int().positive().max(730).optional(),
-  claimFormat: ClaimFormat.optional(),
-  requiredAttachments: z.array(InsuranceDocumentType.or(text.max(100))).max(20).default([]),
-  /**
-   * What diagnosis this payer's claims need, as the payer states it:
-   *   codes_verified   — every code must be found in a diagnosis catalogue the hospital imported under its own licence;
-   *   codes_as_entered — the payer accepts codes as the clinician recorded them; Geneus checks only their format;
-   *   free_text        — the payer accepts written diagnoses;
-   *   not_required.
-   * The strictest is the default. The earlier `coded_icd10` setting reads as `codes_verified`, never weaker.
-   */
-  diagnosisRequirement: z.preprocess((value) => (value === 'coded_icd10' ? 'codes_verified' : value), DiagnosisRequirement).default('codes_verified'),
-  /** The code system the payer's claims use. */
-  diagnosisCodeSystem: z.string().trim().min(1).max(30).default('ICD-10'),
-  /** Every claim needs a recorded, approved referral for the patient. */
-  referralRequired: z.boolean().default(false),
-}).superRefine((profile, context) => {
-  if (profile.channel === 'portal' && !profile.portalUrl) context.addIssue({ code: 'custom', path: ['portalUrl'], message: 'Give the portal address' });
-  if (profile.channel === 'email' && !profile.recipient) context.addIssue({ code: 'custom', path: ['recipient'], message: 'Give the approved claims email address' });
-});
+export const SubmissionProfile = z
+  .strictObject({
+    method: SubmissionMethod,
+    channel: SubmissionChannel,
+    portalUrl: z.url().max(500).optional(),
+    recipient: text.max(200).optional(),
+    instructions: text.max(2000).optional(),
+    /** Days after the service by which claims must reach the payer — as the contract states it, never defaulted. */
+    deadlineDays: z.number().int().positive().max(730).optional(),
+    /** Days after submission by which the payer should pay, as the contract states it. Without it nothing is called overdue. */
+    paymentDueDays: z.number().int().positive().max(730).optional(),
+    claimFormat: ClaimFormat.optional(),
+    requiredAttachments: z
+      .array(InsuranceDocumentType.or(text.max(100)))
+      .max(20)
+      .default([]),
+    /**
+     * What diagnosis this payer's claims need, as the payer states it:
+     *   codes_verified   — every code must be found in a diagnosis catalogue the hospital imported under its own licence;
+     *   codes_as_entered — the payer accepts codes as the clinician recorded them; Geneus checks only their format;
+     *   free_text        — the payer accepts written diagnoses;
+     *   not_required.
+     * The strictest is the default. The earlier `coded_icd10` setting reads as `codes_verified`, never weaker.
+     */
+    diagnosisRequirement: z
+      .preprocess(
+        (value) => (value === 'coded_icd10' ? 'codes_verified' : value),
+        DiagnosisRequirement,
+      )
+      .default('codes_verified'),
+    /** The code system the payer's claims use. */
+    diagnosisCodeSystem: z.string().trim().min(1).max(30).default('ICD-10'),
+    /** Every claim needs a recorded, approved referral for the patient. */
+    referralRequired: z.boolean().default(false),
+  })
+  .superRefine((profile, context) => {
+    if (profile.channel === 'portal' && !profile.portalUrl) {
+      context.addIssue({ code: 'custom', path: ['portalUrl'], message: 'Give the portal address' });
+    }
+    if (profile.channel === 'email' && !profile.recipient) {
+      context.addIssue({
+        code: 'custom',
+        path: ['recipient'],
+        message: 'Give the approved claims email address',
+      });
+    }
+  });
 export type SubmissionProfile = z.infer<typeof SubmissionProfile>;
-export const StoredSubmissionProfile = z.strictObject({ payerId: z.string().min(1), profile: SubmissionProfile, revision: z.number().int().positive(), updatedBy: z.string().min(1), updatedOn: z.string().min(1) });
+export const StoredSubmissionProfile = z.strictObject({
+  payerId: z.string().min(1),
+  profile: SubmissionProfile,
+  revision: z.number().int().positive(),
+  updatedBy: z.string().min(1),
+  updatedOn: z.string().min(1),
+});
 export type StoredSubmissionProfile = z.infer<typeof StoredSubmissionProfile>;
 
 /** What a hospital still needs before insurance billing can be switched on, as the server sees it. */
@@ -777,12 +1346,32 @@ export type StoredSubmissionProfile = z.infer<typeof StoredSubmissionProfile>;
  * One readiness item as facts, not prose: the screen turns them into what is
  * missing, why it matters, who resolves it and where.
  */
-export type InsuranceSetupKind = 'time_zone_recorded' | 'payers_added' | 'active_contract' | 'officer_with_verified_email' | 'devices_ready' | 'submission_method_per_payer' | 'contract_document_verified';
-export type DeviceBlockReason = 'no_insurance_support' | 'unsent_changes' | 'not_seen_in_24_hours' | 'never_reported' | 'revoked_with_unsent_changes';
-export type SetupDevice = { deviceId: string; label?: string; reasons: DeviceBlockReason[]; pendingMutationCount?: number; lastReportedOn?: string };
+export type InsuranceSetupKind =
+  | 'time_zone_recorded'
+  | 'payers_added'
+  | 'active_contract'
+  | 'officer_with_verified_email'
+  | 'devices_ready'
+  | 'submission_method_per_payer'
+  | 'contract_document_verified';
+export type DeviceBlockReason =
+  | 'no_insurance_support'
+  | 'unsent_changes'
+  | 'not_seen_in_24_hours'
+  | 'never_reported'
+  | 'revoked_with_unsent_changes';
+export type SetupDevice = {
+  deviceId: string;
+  label?: string;
+  reasons: DeviceBlockReason[];
+  pendingMutationCount?: number;
+  lastReportedOn?: string;
+};
 export type SetupPerson = { staffId: string; name: string; email: 'none' | 'pending' | 'verified' };
 export type InsuranceSetupItem = {
-  kind: InsuranceSetupKind; ok: boolean; requiredFor: 'billing' | 'claims' | 'optional';
+  kind: InsuranceSetupKind;
+  ok: boolean;
+  requiredFor: 'billing' | 'claims' | 'optional';
   /** How many exist (payers, active contracts, officers with a verified email). */
   count?: number;
   /** Payers this item is still missing for. */
@@ -797,11 +1386,23 @@ export type InsuranceSetupItem = {
 export const ActivationRequestStatus = z.enum(['requested', 'approved', 'rejected', 'withdrawn']);
 export type ActivationRequestStatus = z.infer<typeof ActivationRequestStatus>;
 export type InsuranceActivationRequest = {
-  id: string; facilityId: string; status: ActivationRequestStatus; note?: string;
-  requestedBy: string; requestedByName?: string; requestedOn: string;
-  decidedBy?: string; decidedOn?: string; decisionNote?: string;
+  id: string;
+  facilityId: string;
+  status: ActivationRequestStatus;
+  note?: string;
+  requestedBy: string;
+  requestedByName?: string;
+  requestedOn: string;
+  decidedBy?: string;
+  decidedOn?: string;
+  decisionNote?: string;
 };
-export type InsuranceSetupStatus = { state: InsuranceState; timeZone?: string; items: InsuranceSetupItem[]; activation?: InsuranceActivationRequest };
+export type InsuranceSetupStatus = {
+  state: InsuranceState;
+  timeZone?: string;
+  items: InsuranceSetupItem[];
+  activation?: InsuranceActivationRequest;
+};
 
 /* ------------------------------------------------------------------ */
 /* Spreadsheet import (Milestone 2)                                    */
@@ -812,9 +1413,20 @@ export type InsuranceSetupStatus = { state: InsuranceState; timeZone?: string; i
  * own fields, and a template remembers which column held each field for a
  * given sheet layout, so the next file in the same layout maps itself.
  */
-export const ImportKind = z.enum(['contract_tariff', 'claim_export', 'diagnosis_catalogue', 'remittance']);
+export const ImportKind = z.enum([
+  'contract_tariff',
+  'claim_export',
+  'diagnosis_catalogue',
+  'remittance',
+]);
 export type ImportKind = z.infer<typeof ImportKind>;
-export const IMPORT_LIMITS = { maxFileBytes: 5 * 1024 * 1024, maxRows: 5000, maxColumns: 60, maxCellChars: 1000, maxSheets: 30 } as const;
+export const IMPORT_LIMITS = {
+  maxFileBytes: 5 * 1024 * 1024,
+  maxRows: 5000,
+  maxColumns: 60,
+  maxCellChars: 1000,
+  maxSheets: 30,
+} as const;
 
 const headerCell = z.string().max(200);
 export const ImportTemplateSave = z.strictObject({
@@ -825,14 +1437,29 @@ export const ImportTemplateSave = z.strictObject({
   headers: z.array(headerCell).max(IMPORT_LIMITS.maxColumns),
   headerRow: z.number().int().min(0).max(50),
   /** Field key → zero-based column index. */
-  mapping: z.record(z.string().min(1).max(60), z.number().int().min(0).max(IMPORT_LIMITS.maxColumns - 1)),
+  mapping: z.record(
+    z.string().min(1).max(60),
+    z
+      .number()
+      .int()
+      .min(0)
+      .max(IMPORT_LIMITS.maxColumns - 1),
+  ),
   /** Export only: how a field is written, such as dates as day/month/year or amounts in naira. */
-  formats: z.record(z.string().min(1).max(60), z.enum(['date_iso', 'date_dmy', 'amount_major', 'amount_minor'])).optional(),
+  formats: z
+    .record(
+      z.string().min(1).max(60),
+      z.enum(['date_iso', 'date_dmy', 'amount_major', 'amount_minor']),
+    )
+    .optional(),
   expectedRevision: z.number().int().positive().optional(),
 });
 export type ImportTemplateSave = z.infer<typeof ImportTemplateSave>;
 export const ImportTemplate = ImportTemplateSave.omit({ expectedRevision: true }).extend({
-  id: z.string().min(1), revision: z.number().int().positive(), updatedBy: z.string().min(1), updatedOn: z.string().min(1),
+  id: z.string().min(1),
+  revision: z.number().int().positive(),
+  updatedBy: z.string().min(1),
+  updatedOn: z.string().min(1),
 });
 export type ImportTemplate = z.infer<typeof ImportTemplate>;
 
@@ -843,7 +1470,13 @@ export const formulaLike = (value: string) => /^[=+@\t\r]/.test(value);
 export const TariffImportLine = z.strictObject({
   feeItemId: z.string().min(1).max(200),
   unitMinor: z.number().int().nonnegative().max(100_000_000_000),
-  payerCode: z.string().trim().min(1).max(60).refine((v) => !formulaLike(v), 'A payer code cannot start with =, +, @ or a control character').optional(),
+  payerCode: z
+    .string()
+    .trim()
+    .min(1)
+    .max(60)
+    .refine((v) => !formulaLike(v), 'A payer code cannot start with =, +, @ or a control character')
+    .optional(),
   /** The 1-based row in the file, for the audit trail and error messages. */
   sourceRow: z.number().int().positive(),
 });
@@ -854,29 +1487,46 @@ export type TariffImportLine = z.infer<typeof TariffImportLine>;
  * prices the sheet does not mention; `replace` makes the sheet the whole
  * tariff. The original file is not sent or kept: only its name and checksum.
  */
-export const TariffImport = z.strictObject({
-  payerId: z.string().min(1),
-  requestKey: z.string().min(8).max(100),
-  expectedRevision: z.number().int().positive().optional(),
-  mode: z.enum(['merge', 'replace']),
-  lines: z.array(TariffImportLine).min(1).max(IMPORT_LIMITS.maxRows),
-  source: z.strictObject({
-    fileName: z.string().trim().min(1).max(255),
-    sha256: z.string().regex(/^[0-9a-f]{64}$/),
-    sheet: z.string().max(100).optional(),
-    rows: z.number().int().nonnegative().max(IMPORT_LIMITS.maxRows),
-    templateId: z.string().min(1).optional(),
-  }),
-}).superRefine((value, context) => {
-  const seen = new Set<string>();
-  for (const [index, line] of value.lines.entries()) {
-    if (seen.has(line.feeItemId)) context.addIssue({ code: 'custom', path: ['lines', index, 'feeItemId'], message: `Row ${line.sourceRow} prices a service already priced by an earlier row` });
-    seen.add(line.feeItemId);
-  }
-});
+export const TariffImport = z
+  .strictObject({
+    payerId: z.string().min(1),
+    requestKey: z.string().min(8).max(100),
+    expectedRevision: z.number().int().positive().optional(),
+    mode: z.enum(['merge', 'replace']),
+    lines: z.array(TariffImportLine).min(1).max(IMPORT_LIMITS.maxRows),
+    source: z.strictObject({
+      fileName: z.string().trim().min(1).max(255),
+      sha256: z.string().regex(/^[0-9a-f]{64}$/),
+      sheet: z.string().max(100).optional(),
+      rows: z.number().int().nonnegative().max(IMPORT_LIMITS.maxRows),
+      templateId: z.string().min(1).optional(),
+    }),
+  })
+  .superRefine((value, context) => {
+    const seen = new Set<string>();
+    for (const [index, line] of value.lines.entries()) {
+      if (seen.has(line.feeItemId)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['lines', index, 'feeItemId'],
+          message: `Row ${line.sourceRow} prices a service already priced by an earlier row`,
+        });
+      }
+      seen.add(line.feeItemId);
+    }
+  });
 export type TariffImport = z.infer<typeof TariffImport>;
 /** `payloadSha256` is the server's own checksum of the validated rows it applied; the file checksum in the request is only what the browser reported. */
-export type TariffImportResult = { contractVersionId: string; version: number; revision: number; added: number; changed: number; unchanged: number; removed: number; payloadSha256?: string };
+export type TariffImportResult = {
+  contractVersionId: string;
+  version: number;
+  revision: number;
+  added: number;
+  changed: number;
+  unchanged: number;
+  removed: number;
+  payloadSha256?: string;
+};
 
 /* ------------------------------------------------------------------ */
 /* Billing periods (activation effective dates)                        */
@@ -888,11 +1538,20 @@ export type TariffImportResult = { contractVersionId: string; version: number; r
  * state now: activation never reclassifies earlier cash charges, and turning
  * billing off never strips cover from charges raised while it was on.
  */
-export const InsuranceBillingPeriod = z.strictObject({ from: z.string().min(1), to: z.string().min(1).optional() });
+export const InsuranceBillingPeriod = z.strictObject({
+  from: z.string().min(1),
+  to: z.string().min(1).optional(),
+});
 export type InsuranceBillingPeriod = z.infer<typeof InsuranceBillingPeriod>;
-export const inBillingPeriod = (at: string, periods: readonly InsuranceBillingPeriod[]): boolean => {
+export const inBillingPeriod = (
+  at: string,
+  periods: readonly InsuranceBillingPeriod[],
+): boolean => {
   const t = Date.parse(at);
-  return Number.isFinite(t) && periods.some((p) => Date.parse(p.from) <= t && (!p.to || t < Date.parse(p.to)));
+  return (
+    Number.isFinite(t) &&
+    periods.some((p) => Date.parse(p.from) <= t && (!p.to || t < Date.parse(p.to)))
+  );
 };
 
 /* ------------------------------------------------------------------ */
@@ -908,25 +1567,37 @@ export const inBillingPeriod = (at: string, periods: readonly InsuranceBillingPe
  */
 export const ServiceCompletionStatus = z.enum(['completed', 'not_done']);
 export type ServiceCompletionStatus = z.infer<typeof ServiceCompletionStatus>;
-export const ServiceCompletion = baseEnvelope.extend({
-  type: z.literal('service_completion'),
-  patientId,
-  chargeId: z.string().min(1),
-  status: ServiceCompletionStatus,
-  /** When the service was done (or found not done), as the person recording it states. */
-  completedOn: isoDateTime,
-  actorRole: Role,
-  note: text.max(1000).optional(),
-  replaces: z.string().min(1).optional(),
-}).refine((c) => c.status === 'completed' || Boolean(c.note), { message: 'Say why the service was not done', path: ['note'] });
+export const ServiceCompletion = baseEnvelope
+  .extend({
+    type: z.literal('service_completion'),
+    patientId,
+    chargeId: z.string().min(1),
+    status: ServiceCompletionStatus,
+    /** When the service was done (or found not done), as the person recording it states. */
+    completedOn: isoDateTime,
+    actorRole: Role,
+    note: text.max(1000).optional(),
+    replaces: z.string().min(1).optional(),
+  })
+  .refine((c) => c.status === 'completed' || Boolean(c.note), {
+    message: 'Say why the service was not done',
+    path: ['note'],
+  });
 export type ServiceCompletion = z.infer<typeof ServiceCompletion>;
 
 /** The roles that perform services. An insurance officer, cashier or administrator records no clinical evidence. */
-export const COMPLETION_ROLES = ['doctor', 'nurse', 'chew', 'laboratory_staff', 'pharmacy_staff', 'supervisor'] as const;
+export const COMPLETION_ROLES = [
+  'doctor',
+  'nurse',
+  'chew',
+  'laboratory_staff',
+  'pharmacy_staff',
+  'supervisor',
+] as const;
 
 /** How a claim line shows the service happened. `missing` and `not_done` block a claim. */
 export type FulfillmentEvidence =
-  | {kind:'association';allocationIds:string[];entryIds:string[];on:string;by:string}
+  | { kind: 'association'; allocationIds: string[]; entryIds: string[]; on: string; by: string }
   | { kind: 'administrative' }
   | { kind: 'result'; entryId: string; on: string; by: string }
   | { kind: 'dispense'; entryId: string; on: string; by: string }
@@ -936,10 +1607,16 @@ export type FulfillmentEvidence =
   | { kind: 'missing'; ordered: boolean };
 
 /** The latest completion for each charge, following `replaces`. */
-export const currentCompletions = (completions: readonly ServiceCompletion[]): Map<string, ServiceCompletion> => {
+export const currentCompletions = (
+  completions: readonly ServiceCompletion[],
+): Map<string, ServiceCompletion> => {
   const replaced = new Set(completions.map((c) => c.replaces).filter(Boolean));
   const current = new Map<string, ServiceCompletion>();
-  for (const c of [...completions].sort((a, b) => a.createdOn.localeCompare(b.createdOn))) if (!replaced.has(c.id)) current.set(c.chargeId, c);
+  for (const c of [...completions].sort((a, b) => a.createdOn.localeCompare(b.createdOn))) {
+    if (!replaced.has(c.id)) {
+      current.set(c.chargeId, c);
+    }
+  }
   return current;
 };
 
@@ -949,65 +1626,188 @@ export const currentCompletions = (completions: readonly ServiceCompletion[]): M
  * attended, not that a consultation took place.
  */
 export const CONSULTING_ROLES: readonly Role[] = ['doctor', 'chew'];
-const NOT_CONSULTATION_STEPS = new Set<string>(['vitals', 'amendment', 'dispense', 'lab_results', 'injection']);
-const isConsultationEvidence = (entry: EncounterEntry) => CONSULTING_ROLES.includes(entry.actorRole) && !NOT_CONSULTATION_STEPS.has(entry.step);
+const NOT_CONSULTATION_STEPS = new Set<string>([
+  'vitals',
+  'amendment',
+  'dispense',
+  'lab_results',
+  'injection',
+]);
+const isConsultationEvidence = (entry: EncounterEntry) =>
+  CONSULTING_ROLES.includes(entry.actorRole) && !NOT_CONSULTATION_STEPS.has(entry.step);
 
 /**
  * Classifies how one charge was fulfilled from records both the device and
  * the server hold. A clinician's "not done" always wins; otherwise existing
  * clinical evidence is preferred to a completion record.
  */
-export const serviceFulfillment = (charge: Charge, evidence: {
-  associations?:readonly import('./serviceAllocations.ts').ServiceChargeAllocation[];
-  associatedEntries?:readonly EncounterEntry[];
-  /** lab_results entries of the charge's encounter. */
-  results: readonly EncounterEntry[];
-  /** The dispense entry the charge was raised by, if any. */
-  dispense?: EncounterEntry;
-  /** Entries of the visit the charge belongs to. */
-  visitEntries: readonly EncounterEntry[];
-  completion?: ServiceCompletion;
-}): FulfillmentEvidence => {
+export const serviceFulfillment = (
+  charge: Charge,
+  evidence: {
+    associations?: readonly import('./serviceAllocations.ts').ServiceChargeAllocation[];
+    associatedEntries?: readonly EncounterEntry[];
+    /** lab_results entries of the charge's encounter. */
+    results: readonly EncounterEntry[];
+    /** The dispense entry the charge was raised by, if any. */
+    dispense?: EncounterEntry;
+    /** Entries of the visit the charge belongs to. */
+    visitEntries: readonly EncounterEntry[];
+    completion?: ServiceCompletion;
+  },
+): FulfillmentEvidence => {
   const c = evidence.completion;
-  if (c?.status === 'not_done') return { kind: 'not_done', completionId: c.id, reason: c.note ?? '' };
-  if (charge.category === 'registration' || charge.category === 'card') return { kind: 'administrative' };
-  const associated=(evidence.associations??[]).filter(a=>a.chargeId===charge.id&&a.acceptedOn);
-  if(associated.length){
-    const allocations=associated.filter(a=>a.action==='allocate'),entries=evidence.associatedEntries??[],ids:string[]=[],events:EncounterEntry[]=[];
-    let performed=0;
-    for(const a of allocations){
-      const released=associated.filter(r=>r.reversesId===a.id).reduce((n,r)=>n+r.quantity,0),net=Math.max(0,a.quantity-released);
-      if(net<=0)continue;
-      if(a.sourceKind==='pharmacy'){
-        const entry=entries.find(e=>e.id===a.sourceEntryId&&e.patientId===charge.patientId),supply=entry?.values.supply as {action?:string;quantity?:number}|undefined;
-        const returned=entries.reduce((n,e)=>{const d=e.values.supply as {action?:string;returnOf?:string;quantity?:number}|undefined;return n+(d?.action==='return'&&d.returnOf===a.sourceEntryId?(d.quantity??0):0);},0);
-        const resolved=(evidence.associations??[]).filter(r=>r.acceptedOn&&r.action==='release'&&r.returnEntryId&&r.sourceEntryId===a.sourceEntryId).reduce((n,r)=>n+r.quantity,0);
-        if(returned>resolved+0.000001)return {kind:'missing',ordered:true};
-        if(entry&&supply?.action==='supply'){performed+=Math.min(net,Math.max(0,(supply.quantity??0)-returned));ids.push(a.id);events.push(entry);}
-      }else{
-        const result=entries.find(e=>e.step==='lab_results'&&e.patientId===charge.patientId&&(e.values.results as {orderItemId?:string}[]|undefined)?.some(r=>r.orderItemId===a.sourceItemId));
-        if(result){performed+=net;ids.push(a.id);events.push(result);}
+  if (c?.status === 'not_done') {
+    return { kind: 'not_done', completionId: c.id, reason: c.note ?? '' };
+  }
+  if (charge.category === 'registration' || charge.category === 'card') {
+    return { kind: 'administrative' };
+  }
+  const associated = (evidence.associations ?? []).filter(
+    (a) => a.chargeId === charge.id && a.acceptedOn,
+  );
+  if (associated.length) {
+    const allocations = associated.filter((a) => a.action === 'allocate');
+    const entries = evidence.associatedEntries ?? [];
+    const ids: string[] = [];
+    const events: EncounterEntry[] = [];
+    let performed = 0;
+    for (const a of allocations) {
+      const released = associated
+        .filter((r) => r.reversesId === a.id)
+        .reduce((n, r) => n + r.quantity, 0);
+      const net = Math.max(0, a.quantity - released);
+      if (net <= 0) {
+        continue;
+      }
+      if (a.sourceKind === 'pharmacy') {
+        const entry = entries.find(
+          (e) => e.id === a.sourceEntryId && e.patientId === charge.patientId,
+        );
+        const supply = entry?.values.supply as { action?: string; quantity?: number } | undefined;
+        const returned = entries.reduce((n, e) => {
+          const d = e.values.supply as
+            { action?: string; returnOf?: string; quantity?: number } | undefined;
+          return (
+            n + (d?.action === 'return' && d.returnOf === a.sourceEntryId ? (d.quantity ?? 0) : 0)
+          );
+        }, 0);
+        const resolved = (evidence.associations ?? [])
+          .filter(
+            (r) =>
+              r.acceptedOn &&
+              r.action === 'release' &&
+              r.returnEntryId &&
+              r.sourceEntryId === a.sourceEntryId,
+          )
+          .reduce((n, r) => n + r.quantity, 0);
+        if (returned > resolved + 0.000001) {
+          return { kind: 'missing', ordered: true };
+        }
+        if (entry && supply?.action === 'supply') {
+          performed += Math.min(net, Math.max(0, (supply.quantity ?? 0) - returned));
+          ids.push(a.id);
+          events.push(entry);
+        }
+      } else {
+        const result = entries.find(
+          (e) =>
+            e.step === 'lab_results' &&
+            e.patientId === charge.patientId &&
+            (e.values.results as { orderItemId?: string }[] | undefined)?.some(
+              (r) => r.orderItemId === a.sourceItemId,
+            ),
+        );
+        if (result) {
+          performed += net;
+          ids.push(a.id);
+          events.push(result);
+        }
       }
     }
-    const credited=associated.filter(a=>a.action==='release'&&a.creditReturnedUnits).reduce((n,a)=>n+a.quantity,0);
-    if(charge.quantity!==undefined&&performed+0.000001>=charge.quantity-credited&&performed>0){const latest=events.sort((a,b)=>b.createdOn.localeCompare(a.createdOn))[0];return {kind:'association',allocationIds:ids,entryIds:[...new Set(events.map(e=>e.id))],on:latest.performedOn??latest.createdOn,by:latest.createdBy};}
-    return {kind:'missing',ordered:true};
+    const credited = associated
+      .filter((a) => a.action === 'release' && a.creditReturnedUnits)
+      .reduce((n, a) => n + a.quantity, 0);
+    if (
+      charge.quantity !== undefined &&
+      performed + 0.000001 >= charge.quantity - credited &&
+      performed > 0
+    ) {
+      const latest = events.sort((a, b) => b.createdOn.localeCompare(a.createdOn))[0];
+      return {
+        kind: 'association',
+        allocationIds: ids,
+        entryIds: [...new Set(events.map((e) => e.id))],
+        on: latest.performedOn ?? latest.createdOn,
+        by: latest.createdBy,
+      };
+    }
+    return { kind: 'missing', ordered: true };
   }
   if (charge.dispenseEntryId && evidence.dispense) {
-    const source=(evidence.dispense.values.supply as {priceFor?:string}|undefined)?.priceFor??evidence.dispense.id;
-    const laterReturn=(evidence.associatedEntries??[]).some(e=>{const d=e.values.supply as {action?:string;returnOf?:string}|undefined;return e.schemaVersion>=7&&e.patientId===charge.patientId&&d?.action==='return'&&d.returnOf===source&&Date.parse(e.createdOn)>=Date.parse(charge.createdOn);});
-    if(laterReturn)return {kind:'missing',ordered:true};
-    return { kind: 'dispense', entryId: evidence.dispense.id, on: evidence.dispense.performedOn ?? evidence.dispense.createdOn, by: evidence.dispense.createdBy };
+    const source =
+      (evidence.dispense.values.supply as { priceFor?: string } | undefined)?.priceFor ??
+      evidence.dispense.id;
+    const laterReturn = (evidence.associatedEntries ?? []).some((e) => {
+      const d = e.values.supply as { action?: string; returnOf?: string } | undefined;
+      return (
+        e.schemaVersion >= 7 &&
+        e.patientId === charge.patientId &&
+        d?.action === 'return' &&
+        d.returnOf === source &&
+        Date.parse(e.createdOn) >= Date.parse(charge.createdOn)
+      );
+    });
+    if (laterReturn) {
+      return { kind: 'missing', ordered: true };
+    }
+    return {
+      kind: 'dispense',
+      entryId: evidence.dispense.id,
+      on: evidence.dispense.performedOn ?? evidence.dispense.createdOn,
+      by: evidence.dispense.createdBy,
+    };
   }
   if (charge.orderItemId) {
-    const result = evidence.results.find((e) => e.step === 'lab_results' && (e.values.results as { orderItemId?: string }[] | undefined)?.some((r) => r.orderItemId === charge.orderItemId));
-    if (result) return { kind: 'result', entryId: result.id, on: result.performedOn ?? result.createdOn, by: result.createdBy };
+    const result = evidence.results.find(
+      (e) =>
+        e.step === 'lab_results' &&
+        (e.values.results as { orderItemId?: string }[] | undefined)?.some(
+          (r) => r.orderItemId === charge.orderItemId,
+        ),
+    );
+    if (result) {
+      return {
+        kind: 'result',
+        entryId: result.id,
+        on: result.performedOn ?? result.createdOn,
+        by: result.createdBy,
+      };
+    }
   } else if (!charge.dispenseEntryId && charge.category === 'consultation') {
     const seen = evidence.visitEntries.find(isConsultationEvidence);
-    if (seen) return { kind: 'visit', entryId: seen.id, on: seen.performedOn ?? seen.createdOn, by: seen.createdBy, role: seen.actorRole };
+    if (seen) {
+      return {
+        kind: 'visit',
+        entryId: seen.id,
+        on: seen.performedOn ?? seen.createdOn,
+        by: seen.createdBy,
+        role: seen.actorRole,
+      };
+    }
   }
   // A consultation's completion counts only from someone who consults.
-  if (c?.status === 'completed' && (charge.category !== 'consultation' || CONSULTING_ROLES.includes(c.actorRole))) return { kind: 'completion', completionId: c.id, on: c.completedOn, by: c.createdBy, role: c.actorRole };
+  if (
+    c?.status === 'completed' &&
+    (charge.category !== 'consultation' || CONSULTING_ROLES.includes(c.actorRole))
+  ) {
+    return {
+      kind: 'completion',
+      completionId: c.id,
+      on: c.completedOn,
+      by: c.createdBy,
+      role: c.actorRole,
+    };
+  }
   return { kind: 'missing', ordered: Boolean(charge.orderItemId || charge.dispenseEntryId) };
 };
 
@@ -1024,41 +1824,104 @@ export type AuthorizationKind = z.infer<typeof AuthorizationKind>;
  * could not wait. Care goes on; the claim stays blocked until the payer's own
  * decision is recorded as a replacing record (approved or denied).
  */
-export const AuthorizationStatus = z.enum(['requested', 'approved', 'denied', 'emergency_exception']);
+export const AuthorizationStatus = z.enum([
+  'requested',
+  'approved',
+  'denied',
+  'emergency_exception',
+]);
 export type AuthorizationStatus = z.infer<typeof AuthorizationStatus>;
-export const AuthorizationInput = z.strictObject({
-  patientId: z.string().min(1),
-  payerId: z.string().min(1),
-  kind: AuthorizationKind,
-  status: AuthorizationStatus,
-  /** The payer's authorization code or the referral number. */
-  reference: text.max(100).optional(),
-  validFrom: isoDate,
-  validTo: isoDate,
-  /** What it covers: named services, kinds of service, or one visit. Empty means the whole episode for a referral only. */
-  feeItemIds: z.array(z.string().min(1).max(200)).max(200).default([]),
-  categories: z.array(FeeCategory).max(10).default([]),
-  /** Quantities the payer approved per named service, where it limits them. A claim beyond them is blocked. */
-  approvedQuantities: z.record(z.string().min(1).max(200), z.number().int().positive().max(100_000)).default({}),
-  /** When the hospital asked the payer. */
-  requestedOn: isoDate.optional(),
-  encounterId: z.string().min(1).optional(),
-  obtainedVia: z.enum(['portal', 'phone', 'email', 'letter', 'other']),
-  referredFrom: text.max(200).optional(),
-  note: text.max(1000).optional(),
-  evidenceDocumentId: z.string().min(1).optional(),
-  replaces: z.string().min(1).optional(),
-}).superRefine((a, context) => {
-  if (a.validTo < a.validFrom) context.addIssue({ code: 'custom', path: ['validTo'], message: 'It must end on or after it starts' });
-  if (a.status === 'approved' && !a.reference) context.addIssue({ code: 'custom', path: ['reference'], message: 'An approval needs the payer\'s code or referral number' });
-  if (a.kind === 'pre_authorization' && !a.feeItemIds.length && !a.categories.length && !a.encounterId) context.addIssue({ code: 'custom', path: ['feeItemIds'], message: 'Say which services or visit the authorization covers' });
-  if (a.status === 'emergency_exception' && a.kind !== 'pre_authorization') context.addIssue({ code: 'custom', path: ['status'], message: 'An emergency exception applies to a prior authorization' });
-  if (a.status === 'emergency_exception' && !a.note) context.addIssue({ code: 'custom', path: ['note'], message: 'Say why care could not wait for the payer\'s approval' });
-  for (const id of Object.keys(a.approvedQuantities)) if (!a.feeItemIds.includes(id)) context.addIssue({ code: 'custom', path: ['approvedQuantities', id], message: 'A quantity must be for a service the authorization names' });
-  if (a.requestedOn && a.requestedOn > a.validTo) context.addIssue({ code: 'custom', path: ['requestedOn'], message: 'It cannot be requested after it ends' });
-});
+export const AuthorizationInput = z
+  .strictObject({
+    patientId: z.string().min(1),
+    payerId: z.string().min(1),
+    kind: AuthorizationKind,
+    status: AuthorizationStatus,
+    /** The payer's authorization code or the referral number. */
+    reference: text.max(100).optional(),
+    validFrom: isoDate,
+    validTo: isoDate,
+    /** What it covers: named services, kinds of service, or one visit. Empty means the whole episode for a referral only. */
+    feeItemIds: z.array(z.string().min(1).max(200)).max(200).default([]),
+    categories: z.array(FeeCategory).max(10).default([]),
+    /** Quantities the payer approved per named service, where it limits them. A claim beyond them is blocked. */
+    approvedQuantities: z
+      .record(z.string().min(1).max(200), z.number().int().positive().max(100_000))
+      .default({}),
+    /** When the hospital asked the payer. */
+    requestedOn: isoDate.optional(),
+    encounterId: z.string().min(1).optional(),
+    obtainedVia: z.enum(['portal', 'phone', 'email', 'letter', 'other']),
+    referredFrom: text.max(200).optional(),
+    note: text.max(1000).optional(),
+    evidenceDocumentId: z.string().min(1).optional(),
+    replaces: z.string().min(1).optional(),
+  })
+  .superRefine((a, context) => {
+    if (a.validTo < a.validFrom) {
+      context.addIssue({
+        code: 'custom',
+        path: ['validTo'],
+        message: 'It must end on or after it starts',
+      });
+    }
+    if (a.status === 'approved' && !a.reference) {
+      context.addIssue({
+        code: 'custom',
+        path: ['reference'],
+        message: "An approval needs the payer's code or referral number",
+      });
+    }
+    if (
+      a.kind === 'pre_authorization' &&
+      !a.feeItemIds.length &&
+      !a.categories.length &&
+      !a.encounterId
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['feeItemIds'],
+        message: 'Say which services or visit the authorization covers',
+      });
+    }
+    if (a.status === 'emergency_exception' && a.kind !== 'pre_authorization') {
+      context.addIssue({
+        code: 'custom',
+        path: ['status'],
+        message: 'An emergency exception applies to a prior authorization',
+      });
+    }
+    if (a.status === 'emergency_exception' && !a.note) {
+      context.addIssue({
+        code: 'custom',
+        path: ['note'],
+        message: "Say why care could not wait for the payer's approval",
+      });
+    }
+    for (const id of Object.keys(a.approvedQuantities)) {
+      if (!a.feeItemIds.includes(id)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['approvedQuantities', id],
+          message: 'A quantity must be for a service the authorization names',
+        });
+      }
+    }
+    if (a.requestedOn && a.requestedOn > a.validTo) {
+      context.addIssue({
+        code: 'custom',
+        path: ['requestedOn'],
+        message: 'It cannot be requested after it ends',
+      });
+    }
+  });
 export type AuthorizationInput = z.infer<typeof AuthorizationInput>;
-export type ClaimAuthorization = AuthorizationInput & { id: string; recordedBy: string; recordedOn: string; replacedBy?: string };
+export type ClaimAuthorization = AuthorizationInput & {
+  id: string;
+  recordedBy: string;
+  recordedOn: string;
+  replacedBy?: string;
+};
 
 /**
  * Claim states. Each is a separate fact: preparing a file is not sending it,
@@ -1073,27 +1936,83 @@ export const ClaimState = z.enum(['draft', 'ready', 'exported', 'submitted', 'ac
 export type ClaimState = z.infer<typeof ClaimState>;
 
 export type ClaimIssueCode =
-  | 'fulfillment_missing' | 'not_performed'
-  | 'authorization_missing' | 'authorization_pending' | 'authorization_denied' | 'authorization_emergency_followup' | 'authorization_quantity_exceeded'
+  | 'fulfillment_missing'
+  | 'not_performed'
+  | 'authorization_missing'
+  | 'authorization_pending'
+  | 'authorization_denied'
+  | 'authorization_emergency_followup'
+  | 'authorization_quantity_exceeded'
   | 'referral_missing'
-  | 'diagnosis_missing' | 'diagnosis_code_missing' | 'diagnosis_code_format' | 'diagnosis_code_not_in_catalogue' | 'diagnosis_catalogue_missing'
-  | 'admission_date_missing' | 'discharge_date_missing'
-  | 'enrollee_number_missing' | 'service_date_invalid' | 'amount_invalid'
-  | 'allocation_superseded' | 'submission_method_missing' | 'payer_code_missing' | 'attachment_missing';
-export type ClaimIssue = { code: ClaimIssueCode; blocking: boolean; chargeId?: string; message: string };
+  | 'diagnosis_missing'
+  | 'diagnosis_code_missing'
+  | 'diagnosis_code_format'
+  | 'diagnosis_code_not_in_catalogue'
+  | 'diagnosis_catalogue_missing'
+  | 'admission_date_missing'
+  | 'discharge_date_missing'
+  | 'enrollee_number_missing'
+  | 'service_date_invalid'
+  | 'amount_invalid'
+  | 'allocation_superseded'
+  | 'submission_method_missing'
+  | 'payer_code_missing'
+  | 'attachment_missing';
+export type ClaimIssue = {
+  code: ClaimIssueCode;
+  blocking: boolean;
+  chargeId?: string;
+  message: string;
+};
 
 /** Fields a payer's export template can place, in any order, under its own headers. */
 export const CLAIM_EXPORT_FIELDS = [
-  'claimNumber', 'claimRevision', 'claimStatus', 'batchReference', 'facilityName', 'patientName', 'hospitalNumber', 'enrolleeNumber', 'planCode',
-  'serviceDate', 'admissionDate', 'dischargeDate', 'diagnosis', 'diagnosisCode', 'diagnosisCodeStatus', 'authorizationCode', 'referralNumber',
-  'payerServiceCode', 'serviceName', 'category', 'quantity', 'unitPrice', 'amountClaimed', 'patientShare', 'listPrice', 'fulfilledOn',
+  'claimNumber',
+  'claimRevision',
+  'claimStatus',
+  'batchReference',
+  'facilityName',
+  'patientName',
+  'hospitalNumber',
+  'enrolleeNumber',
+  'planCode',
+  'serviceDate',
+  'admissionDate',
+  'dischargeDate',
+  'diagnosis',
+  'diagnosisCode',
+  'diagnosisCodeStatus',
+  'authorizationCode',
+  'referralNumber',
+  'payerServiceCode',
+  'serviceName',
+  'category',
+  'quantity',
+  'unitPrice',
+  'amountClaimed',
+  'patientShare',
+  'listPrice',
+  'fulfilledOn',
 ] as const;
 export type ClaimExportField = (typeof CLAIM_EXPORT_FIELDS)[number];
 export const ClaimExportFormat = z.enum(['date_iso', 'date_dmy', 'amount_major', 'amount_minor']);
 export type ClaimExportFormat = z.infer<typeof ClaimExportFormat>;
 export const DEFAULT_CLAIM_COLUMNS: readonly ClaimExportField[] = [
-  'claimNumber', 'claimStatus', 'patientName', 'enrolleeNumber', 'planCode', 'serviceDate', 'diagnosis', 'diagnosisCode', 'authorizationCode', 'referralNumber',
-  'payerServiceCode', 'serviceName', 'quantity', 'unitPrice', 'amountClaimed',
+  'claimNumber',
+  'claimStatus',
+  'patientName',
+  'enrolleeNumber',
+  'planCode',
+  'serviceDate',
+  'diagnosis',
+  'diagnosisCode',
+  'authorizationCode',
+  'referralNumber',
+  'payerServiceCode',
+  'serviceName',
+  'quantity',
+  'unitPrice',
+  'amountClaimed',
 ];
 
 export const ClaimSubmissionInput = z.strictObject({
@@ -1120,23 +2039,63 @@ export const ClaimAcknowledgementInput = z.strictObject({
 export type ClaimAcknowledgementInput = z.infer<typeof ClaimAcknowledgementInput>;
 
 export type ClaimLineView = {
-  chargeId: string; allocationId: string; contractVersionId: string; feeItemId: string; description: string; category: string;
-  serviceDate: string; units: number; unitPriceMinor: number | null; payerShareMinor: number; patientShareMinor: number; listPriceMinor: number;
-  payerCode?: string; fulfillment: FulfillmentEvidence; authorization?: { id: string; reference?: string; status: AuthorizationStatus };
+  chargeId: string;
+  allocationId: string;
+  contractVersionId: string;
+  feeItemId: string;
+  description: string;
+  category: string;
+  serviceDate: string;
+  units: number;
+  unitPriceMinor: number | null;
+  payerShareMinor: number;
+  patientShareMinor: number;
+  listPriceMinor: number;
+  payerCode?: string;
+  fulfillment: FulfillmentEvidence;
+  authorization?: { id: string; reference?: string; status: AuthorizationStatus };
   /** The payer's latest decision on this service, when it decided per service. */
   decision?: { approvedMinor: number; reasonCode?: string; reason?: string };
 };
-export type ClaimDecisionView = { id: string; claimId: string; decision: PayerDecisionKind; decidedOn: string; approvedMinor: number; payerReference?: string; reasonCode?: string; reason?: string; recordedBy: string; recordedOn: string };
+export type ClaimDecisionView = {
+  id: string;
+  claimId: string;
+  decision: PayerDecisionKind;
+  decidedOn: string;
+  approvedMinor: number;
+  payerReference?: string;
+  reasonCode?: string;
+  reason?: string;
+  recordedBy: string;
+  recordedOn: string;
+};
 export type ClaimView = {
-  id: string; claimNumber: string; revision: number; supersedes?: string; supersededBy?: string; state: ClaimState;
-  payerId: string; patientId: string; patientName: string; enrolleeNumber: string; planCode: string; coverId: string;
-  episode: { kind: 'admission' | 'encounter' | 'appointment' | 'day'; key: string }; serviceFrom: string; serviceTo: string;
-  currency: string; payerShareMinor: number; batchId?: string;
+  id: string;
+  claimNumber: string;
+  revision: number;
+  supersedes?: string;
+  supersededBy?: string;
+  state: ClaimState;
+  payerId: string;
+  patientId: string;
+  patientName: string;
+  enrolleeNumber: string;
+  planCode: string;
+  coverId: string;
+  episode: { kind: 'admission' | 'encounter' | 'appointment' | 'day'; key: string };
+  serviceFrom: string;
+  serviceTo: string;
+  currency: string;
+  payerShareMinor: number;
+  batchId?: string;
   /** From the admission's own arrival and discharge records; absent when Geneus holds no such record. */
-  admittedOn?: string; dischargedOn?: string;
+  admittedOn?: string;
+  dischargedOn?: string;
   diagnoses: ClaimDiagnosis[];
   referral?: { id: string; reference?: string };
-  lines: ClaimLineView[]; issues: ClaimIssue[]; attachments: { documentId: string; documentType: string; title: string }[];
+  lines: ClaimLineView[];
+  issues: ClaimIssue[];
+  attachments: { documentId: string; documentType: string; title: string }[];
   events: { state: ClaimState; at: string; by: string; note?: string }[];
   createdOn: string;
   /** Payer decisions on this revision, newest first; and the money position of the claim number. */
@@ -1148,7 +2107,12 @@ export type ClaimView = {
 /* Authorization at the point of care (audit H2)                       */
 /* ------------------------------------------------------------------ */
 
-export type ApprovalNotice = { coverId: string; payerId: string; planCode: string; scheduleId: string };
+export type ApprovalNotice = {
+  coverId: string;
+  payerId: string;
+  planCode: string;
+  scheduleId: string;
+};
 
 /**
  * Whether a payer of this patient needs its prior approval for a service, from
@@ -1157,14 +2121,28 @@ export type ApprovalNotice = { coverId: string; payerId: string; planCode: strin
  * staff are warned early, and the warning never blocks care.
  */
 export const approvalNeeded = (input: {
-  patientId: string; feeItemId?: string; category: FeeCategory; date: string;
+  patientId: string;
+  feeItemId?: string;
+  category: FeeCategory;
+  date: string;
   records: Pick<CoverageRecords, 'covers' | 'schedules'>;
 }): ApprovalNotice | undefined => {
   for (const cover of coversOn(input.patientId, input.date, input.records.covers)) {
     const schedule = scheduleOn(cover.payerId, cover.planCode, input.date, input.records.schedules);
-    if (!schedule) continue;
-    const line = (input.feeItemId ? schedule.items[input.feeItemId] : undefined) ?? schedule.categories[input.category];
-    if (line?.status === 'covered' && line.approvalRequired) return { coverId: cover.id, payerId: cover.payerId, planCode: cover.planCode, scheduleId: schedule.id };
+    if (!schedule) {
+      continue;
+    }
+    const line =
+      (input.feeItemId ? schedule.items[input.feeItemId] : undefined) ??
+      schedule.categories[input.category];
+    if (line?.status === 'covered' && line.approvalRequired) {
+      return {
+        coverId: cover.id,
+        payerId: cover.payerId,
+        planCode: cover.planCode,
+        scheduleId: schedule.id,
+      };
+    }
   }
   return undefined;
 };
@@ -1179,16 +2157,28 @@ export const approvalNeeded = (input: {
  * `format_checked` (a well-formed code, not looked up), `format_invalid`,
  * `not_in_catalogue` and `not_coded`. None of them means the payer accepts it.
  */
-export type DiagnosisVerification = 'catalogue_verified' | 'format_checked' | 'format_invalid' | 'not_in_catalogue' | 'not_coded';
-export type ClaimDiagnosis = { label: string; code?: string; codingSystem?: string; verification: DiagnosisVerification; catalogueDescription?: string };
+export type DiagnosisVerification =
+  'catalogue_verified' | 'format_checked' | 'format_invalid' | 'not_in_catalogue' | 'not_coded';
+export type ClaimDiagnosis = {
+  label: string;
+  code?: string;
+  codingSystem?: string;
+  verification: DiagnosisVerification;
+  catalogueDescription?: string;
+};
 
 const ICD10_FORMAT = /^[A-TV-Z][0-9][0-9A-Z](\.[0-9A-Z]{1,4})?$/;
-export const diagnosisSystemKey = (system: string | undefined) => (system ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+export const diagnosisSystemKey = (system: string | undefined) =>
+  (system ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 /** A code's shape for its system. ICD-10 has a known shape; other systems are only bounded. */
 export const diagnosisCodeWellFormed = (codingSystem: string, code: string): boolean => {
   const value = code.trim().toUpperCase();
-  if (!value || value.length > 20 || formulaLike(value)) return false;
-  return diagnosisSystemKey(codingSystem) === 'ICD10' ? ICD10_FORMAT.test(value) : /^[A-Z0-9.\-]+$/.test(value);
+  if (!value || value.length > 20 || formulaLike(value)) {
+    return false;
+  }
+  return diagnosisSystemKey(codingSystem) === 'ICD10'
+    ? ICD10_FORMAT.test(value)
+    : /^[A-Z0-9.\-]+$/.test(value);
 };
 export const normaliseDiagnosisCode = (code: string) => code.trim().toUpperCase();
 
@@ -1200,41 +2190,110 @@ export const normaliseDiagnosisCode = (code: string) => code.trim().toUpperCase(
  */
 export const assessClaimDiagnoses = (input: {
   recorded: readonly { label: string; code?: string; codingSystem?: string }[];
-  requirement: DiagnosisRequirement; codeSystem: string;
-  catalogueSize: number; lookup: (code: string) => string | undefined;
+  requirement: DiagnosisRequirement;
+  codeSystem: string;
+  catalogueSize: number;
+  lookup: (code: string) => string | undefined;
 }): { diagnoses: ClaimDiagnosis[]; issues: ClaimIssue[] } => {
   const issues: ClaimIssue[] = [];
   const diagnoses: ClaimDiagnosis[] = input.recorded.map((d) => {
-    if (!d.code) return { label: d.label, verification: 'not_coded' };
+    if (!d.code) {
+      return { label: d.label, verification: 'not_coded' };
+    }
     const code = normaliseDiagnosisCode(d.code);
     const system = d.codingSystem ?? input.codeSystem;
-    const base = { label: d.label, code, ...(d.codingSystem ? { codingSystem: d.codingSystem } : {}) };
-    if (!diagnosisCodeWellFormed(system, code)) return { ...base, verification: 'format_invalid' };
-    if (diagnosisSystemKey(system) === diagnosisSystemKey(input.codeSystem) && input.catalogueSize > 0) {
+    const base = {
+      label: d.label,
+      code,
+      ...(d.codingSystem ? { codingSystem: d.codingSystem } : {}),
+    };
+    if (!diagnosisCodeWellFormed(system, code)) {
+      return { ...base, verification: 'format_invalid' };
+    }
+    if (
+      diagnosisSystemKey(system) === diagnosisSystemKey(input.codeSystem) &&
+      input.catalogueSize > 0
+    ) {
       const found = input.lookup(code);
-      return found !== undefined ? { ...base, verification: 'catalogue_verified', catalogueDescription: found } : { ...base, verification: 'not_in_catalogue' };
+      return found !== undefined
+        ? { ...base, verification: 'catalogue_verified', catalogueDescription: found }
+        : { ...base, verification: 'not_in_catalogue' };
     }
     return { ...base, verification: 'format_checked' };
   });
-  if (input.requirement === 'not_required') return { diagnoses, issues };
-  if (!diagnoses.length) return { diagnoses, issues: [{ code: 'diagnosis_missing', blocking: true, message: 'No diagnosis is recorded for this visit. The clinician who saw the patient records it' }] };
-  if (input.requirement === 'free_text') return { diagnoses, issues };
-  const ofSystem = diagnoses.filter((d) => d.code && diagnosisSystemKey(d.codingSystem ?? input.codeSystem) === diagnosisSystemKey(input.codeSystem));
-  if (!ofSystem.length) return { diagnoses, issues: [{ code: 'diagnosis_code_missing', blocking: true, message: `This payer needs a ${input.codeSystem} code. The clinician who saw the patient adds it` }] };
+  if (input.requirement === 'not_required') {
+    return { diagnoses, issues };
+  }
+  if (!diagnoses.length) {
+    return {
+      diagnoses,
+      issues: [
+        {
+          code: 'diagnosis_missing',
+          blocking: true,
+          message:
+            'No diagnosis is recorded for this visit. The clinician who saw the patient records it',
+        },
+      ],
+    };
+  }
+  if (input.requirement === 'free_text') {
+    return { diagnoses, issues };
+  }
+  const ofSystem = diagnoses.filter(
+    (d) =>
+      d.code &&
+      diagnosisSystemKey(d.codingSystem ?? input.codeSystem) ===
+        diagnosisSystemKey(input.codeSystem),
+  );
+  if (!ofSystem.length) {
+    return {
+      diagnoses,
+      issues: [
+        {
+          code: 'diagnosis_code_missing',
+          blocking: true,
+          message: `This payer needs a ${input.codeSystem} code. The clinician who saw the patient adds it`,
+        },
+      ],
+    };
+  }
   const malformed = ofSystem.filter((d) => d.verification === 'format_invalid');
-  if (malformed.length) issues.push({ code: 'diagnosis_code_format', blocking: true, message: `Not a valid ${input.codeSystem} code: ${malformed.map((d) => d.code).join(', ')}` });
+  if (malformed.length) {
+    issues.push({
+      code: 'diagnosis_code_format',
+      blocking: true,
+      message: `Not a valid ${input.codeSystem} code: ${malformed.map((d) => d.code).join(', ')}`,
+    });
+  }
   if (input.requirement === 'codes_verified') {
-    if (input.catalogueSize === 0) issues.push({ code: 'diagnosis_catalogue_missing', blocking: true, message: `This payer needs verified ${input.codeSystem} codes. Import your licensed ${input.codeSystem} list in Insurance settings` });
-    else {
+    if (input.catalogueSize === 0) {
+      issues.push({
+        code: 'diagnosis_catalogue_missing',
+        blocking: true,
+        message: `This payer needs verified ${input.codeSystem} codes. Import your licensed ${input.codeSystem} list in Insurance settings`,
+      });
+    } else {
       const unknown = ofSystem.filter((d) => d.verification === 'not_in_catalogue');
-      if (unknown.length) issues.push({ code: 'diagnosis_code_not_in_catalogue', blocking: true, message: `Not in your ${input.codeSystem} list: ${unknown.map((d) => d.code).join(', ')}` });
+      if (unknown.length) {
+        issues.push({
+          code: 'diagnosis_code_not_in_catalogue',
+          blocking: true,
+          message: `Not in your ${input.codeSystem} list: ${unknown.map((d) => d.code).join(', ')}`,
+        });
+      }
     }
   }
   return { diagnoses, issues };
 };
 
 export const DiagnosisCatalogueLine = z.strictObject({
-  code: z.string().trim().min(1).max(20).refine((v) => !formulaLike(v), 'A code cannot start with =, +, @ or a control character'),
+  code: z
+    .string()
+    .trim()
+    .min(1)
+    .max(20)
+    .refine((v) => !formulaLike(v), 'A code cannot start with =, +, @ or a control character'),
   description: z.string().trim().min(1).max(500),
   sourceRow: z.number().int().positive(),
 });
@@ -1243,25 +2302,51 @@ export const DiagnosisCatalogueLine = z.strictObject({
  * column-mapping screen. Geneus ships none: the licence reference names the
  * hospital's own source and terms.
  */
-export const DiagnosisCatalogueImport = z.strictObject({
-  codeSystem: z.string().trim().min(1).max(30),
-  edition: z.string().trim().min(1).max(60),
-  licenceReference: z.string().trim().min(3).max(500),
-  mode: z.enum(['merge', 'replace']),
-  lines: z.array(DiagnosisCatalogueLine).min(1).max(20_000),
-  source: z.strictObject({ fileName: z.string().trim().min(1).max(255), sha256: z.string().regex(/^[0-9a-f]{64}$/), rows: z.number().int().nonnegative().max(20_000), templateId: z.string().min(1).optional() }),
-  requestKey: z.string().min(8).max(100),
-}).superRefine((value, context) => {
-  const seen = new Set<string>();
-  for (const [index, line] of value.lines.entries()) {
-    const code = normaliseDiagnosisCode(line.code);
-    if (!diagnosisCodeWellFormed(value.codeSystem, code)) context.addIssue({ code: 'custom', path: ['lines', index, 'code'], message: `Row ${line.sourceRow}: "${line.code}" is not a ${value.codeSystem} code` });
-    if (seen.has(code)) context.addIssue({ code: 'custom', path: ['lines', index, 'code'], message: `Row ${line.sourceRow} repeats ${code}` });
-    seen.add(code);
-  }
-});
+export const DiagnosisCatalogueImport = z
+  .strictObject({
+    codeSystem: z.string().trim().min(1).max(30),
+    edition: z.string().trim().min(1).max(60),
+    licenceReference: z.string().trim().min(3).max(500),
+    mode: z.enum(['merge', 'replace']),
+    lines: z.array(DiagnosisCatalogueLine).min(1).max(20_000),
+    source: z.strictObject({
+      fileName: z.string().trim().min(1).max(255),
+      sha256: z.string().regex(/^[0-9a-f]{64}$/),
+      rows: z.number().int().nonnegative().max(20_000),
+      templateId: z.string().min(1).optional(),
+    }),
+    requestKey: z.string().min(8).max(100),
+  })
+  .superRefine((value, context) => {
+    const seen = new Set<string>();
+    for (const [index, line] of value.lines.entries()) {
+      const code = normaliseDiagnosisCode(line.code);
+      if (!diagnosisCodeWellFormed(value.codeSystem, code)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['lines', index, 'code'],
+          message: `Row ${line.sourceRow}: "${line.code}" is not a ${value.codeSystem} code`,
+        });
+      }
+      if (seen.has(code)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['lines', index, 'code'],
+          message: `Row ${line.sourceRow} repeats ${code}`,
+        });
+      }
+      seen.add(code);
+    }
+  });
 export type DiagnosisCatalogueImport = z.infer<typeof DiagnosisCatalogueImport>;
-export type DiagnosisCatalogueSummary = { codeSystem: string; edition: string; licenceReference: string; codes: number; importedBy: string; importedOn: string };
+export type DiagnosisCatalogueSummary = {
+  codeSystem: string;
+  edition: string;
+  licenceReference: string;
+  codes: number;
+  importedBy: string;
+  importedOn: string;
+};
 
 /* ------------------------------------------------------------------ */
 /* Moving a payer's share to the patient (audit H3)                    */
@@ -1281,19 +2366,39 @@ export type DiagnosisCatalogueSummary = { codeSystem: string; edition: string; l
  */
 export const LiabilityGround = z.enum(['patient_election', 'not_eligible', 'contract_clause']);
 export type LiabilityGround = z.infer<typeof LiabilityGround>;
-export const LiabilityChange = z.strictObject({
-  ground: LiabilityGround,
-  /** patient_election: how the patient agreed (signed form, in person, reference). */
-  patientAgreement: z.string().trim().min(3).max(500).optional(),
-  /** not_eligible: the check that found it. */
-  coverCheckId: z.string().min(1).optional(),
-  /** contract_clause: the clause, as the contract numbers or names it. */
-  contractClause: z.string().trim().min(2).max(300).optional(),
-}).superRefine((v, context) => {
-  if (v.ground === 'patient_election' && !v.patientAgreement) context.addIssue({ code: 'custom', path: ['patientAgreement'], message: 'Record how the patient agreed to pay' });
-  if (v.ground === 'not_eligible' && !v.coverCheckId) context.addIssue({ code: 'custom', path: ['coverCheckId'], message: 'Name the check that found the cover not eligible' });
-  if (v.ground === 'contract_clause' && !v.contractClause) context.addIssue({ code: 'custom', path: ['contractClause'], message: 'Name the contract clause' });
-});
+export const LiabilityChange = z
+  .strictObject({
+    ground: LiabilityGround,
+    /** patient_election: how the patient agreed (signed form, in person, reference). */
+    patientAgreement: z.string().trim().min(3).max(500).optional(),
+    /** not_eligible: the check that found it. */
+    coverCheckId: z.string().min(1).optional(),
+    /** contract_clause: the clause, as the contract numbers or names it. */
+    contractClause: z.string().trim().min(2).max(300).optional(),
+  })
+  .superRefine((v, context) => {
+    if (v.ground === 'patient_election' && !v.patientAgreement) {
+      context.addIssue({
+        code: 'custom',
+        path: ['patientAgreement'],
+        message: 'Record how the patient agreed to pay',
+      });
+    }
+    if (v.ground === 'not_eligible' && !v.coverCheckId) {
+      context.addIssue({
+        code: 'custom',
+        path: ['coverCheckId'],
+        message: 'Name the check that found the cover not eligible',
+      });
+    }
+    if (v.ground === 'contract_clause' && !v.contractClause) {
+      context.addIssue({
+        code: 'custom',
+        path: ['contractClause'],
+        message: 'Name the contract clause',
+      });
+    }
+  });
 export type LiabilityChange = z.infer<typeof LiabilityChange>;
 
 /* ------------------------------------------------------------------ */
@@ -1305,75 +2410,180 @@ export type LiabilityChange = z.infer<typeof LiabilityChange>;
  * payer's decision; it never decides. Insert-only: a later decision on the
  * same claim revision supersedes the earlier one, which stays on record.
  */
-export const PayerDecisionKind = z.enum(['approved', 'partially_approved', 'queried', 'returned', 'denied']);
+export const PayerDecisionKind = z.enum([
+  'approved',
+  'partially_approved',
+  'queried',
+  'returned',
+  'denied',
+]);
 export type PayerDecisionKind = z.infer<typeof PayerDecisionKind>;
-export const PayerDecisionInput = z.strictObject({
-  claimId: z.string().min(1),
-  decision: PayerDecisionKind,
-  decidedOn: isoDate,
-  payerReference: text.max(200).optional(),
-  reasonCode: text.max(60).optional(),
-  reason: text.max(2000).optional(),
-  /** The total the payer approved, when its advice does not itemise services (a partial approval only). */
-  approvedMinor: minorUnits.optional(),
-  /** Per service: what the payer approved, with its own reason. */
-  lines: z.array(z.strictObject({ chargeId: z.string().min(1), approvedMinor: minorUnits, reasonCode: text.max(60).optional(), reason: text.max(1000).optional() })).max(2000).default([]),
-  evidenceDocumentId: z.string().min(1).optional(),
-  requestKey: z.string().min(8).max(100),
-}).superRefine((d, context) => {
-  if (d.decision === 'partially_approved' && !d.lines.length && d.approvedMinor === undefined) context.addIssue({ code: 'custom', path: ['lines'], message: 'Enter what the payer approved, in total or for each service' });
-  if (d.lines.length && d.approvedMinor !== undefined) context.addIssue({ code: 'custom', path: ['approvedMinor'], message: 'Give the approval per service or in total, not both' });
-  if (d.decision !== 'partially_approved' && d.approvedMinor !== undefined) context.addIssue({ code: 'custom', path: ['approvedMinor'], message: 'Only a partial approval states its own total' });
-  if (['queried', 'returned'].includes(d.decision) && d.lines.length) context.addIssue({ code: 'custom', path: ['lines'], message: 'A query or return approves nothing yet' });
-  if (d.decision !== 'approved' && !d.reason && !d.reasonCode) context.addIssue({ code: 'custom', path: ['reason'], message: 'Record the payer\'s reason' });
-});
+export const PayerDecisionInput = z
+  .strictObject({
+    claimId: z.string().min(1),
+    decision: PayerDecisionKind,
+    decidedOn: isoDate,
+    payerReference: text.max(200).optional(),
+    reasonCode: text.max(60).optional(),
+    reason: text.max(2000).optional(),
+    /** The total the payer approved, when its advice does not itemise services (a partial approval only). */
+    approvedMinor: minorUnits.optional(),
+    /** Per service: what the payer approved, with its own reason. */
+    lines: z
+      .array(
+        z.strictObject({
+          chargeId: z.string().min(1),
+          approvedMinor: minorUnits,
+          reasonCode: text.max(60).optional(),
+          reason: text.max(1000).optional(),
+        }),
+      )
+      .max(2000)
+      .default([]),
+    evidenceDocumentId: z.string().min(1).optional(),
+    requestKey: z.string().min(8).max(100),
+  })
+  .superRefine((d, context) => {
+    if (d.decision === 'partially_approved' && !d.lines.length && d.approvedMinor === undefined) {
+      context.addIssue({
+        code: 'custom',
+        path: ['lines'],
+        message: 'Enter what the payer approved, in total or for each service',
+      });
+    }
+    if (d.lines.length && d.approvedMinor !== undefined) {
+      context.addIssue({
+        code: 'custom',
+        path: ['approvedMinor'],
+        message: 'Give the approval per service or in total, not both',
+      });
+    }
+    if (d.decision !== 'partially_approved' && d.approvedMinor !== undefined) {
+      context.addIssue({
+        code: 'custom',
+        path: ['approvedMinor'],
+        message: 'Only a partial approval states its own total',
+      });
+    }
+    if (['queried', 'returned'].includes(d.decision) && d.lines.length) {
+      context.addIssue({
+        code: 'custom',
+        path: ['lines'],
+        message: 'A query or return approves nothing yet',
+      });
+    }
+    if (d.decision !== 'approved' && !d.reason && !d.reasonCode) {
+      context.addIssue({ code: 'custom', path: ['reason'], message: "Record the payer's reason" });
+    }
+  });
 export type PayerDecisionInput = z.infer<typeof PayerDecisionInput>;
 
 export const RemittanceMethod = z.enum(['transfer', 'cheque', 'cash', 'other']);
-export const RemittanceAllocationInput = z.strictObject({ claimId: z.string().min(1), amountMinor: z.number().int().positive() });
+export const RemittanceAllocationInput = z.strictObject({
+  claimId: z.string().min(1),
+  amountMinor: z.number().int().positive(),
+});
 /**
  * Money received from a payer. Never a patient payment: it settles the payer's
  * share of claims and nothing a patient owes. One remittance may pay many
  * claims; any amount not yet matched stays visibly unallocated.
  */
-export const RemittanceInput = z.strictObject({
-  incomingTransferId: z.string().min(1).optional(),
-  payerId: z.string().min(1),
-  receivedOn: isoDate,
-  /** The payer's payment or advice reference, unique per payer, so the same money is never recorded twice. */
-  reference: text.max(200),
-  amountMinor: z.number().int().positive(),
-  currency: currencyCode,
-  method: RemittanceMethod,
-  receivingAccount: text.max(200).optional(),
-  evidenceDocumentId: z.string().min(1).optional(),
-  note: text.max(1000).optional(),
-  allocations: z.array(RemittanceAllocationInput).max(2000).default([]),
-  /** When the allocations came from the payer's spreadsheet: its name and checksum, never its content. */
-  source: z.strictObject({ fileName: z.string().trim().min(1).max(255), sha256: z.string().regex(/^[0-9a-f]{64}$/), rows: z.number().int().nonnegative(), templateId: z.string().min(1).optional() }).optional(),
-  requestKey: z.string().min(8).max(100),
-}).superRefine((r, context) => {
-  const total = r.allocations.reduce((n, a) => n + a.amountMinor, 0);
-  if (total > r.amountMinor) context.addIssue({ code: 'custom', path: ['allocations'], message: 'More is allocated than was received' });
-  if (new Set(r.allocations.map((a) => a.claimId)).size !== r.allocations.length) context.addIssue({ code: 'custom', path: ['allocations'], message: 'Allocate to each claim once' });
-});
+export const RemittanceInput = z
+  .strictObject({
+    incomingTransferId: z.string().min(1).optional(),
+    payerId: z.string().min(1),
+    receivedOn: isoDate,
+    /** The payer's payment or advice reference, unique per payer, so the same money is never recorded twice. */
+    reference: text.max(200),
+    amountMinor: z.number().int().positive(),
+    currency: currencyCode,
+    method: RemittanceMethod,
+    receivingAccount: text.max(200).optional(),
+    evidenceDocumentId: z.string().min(1).optional(),
+    note: text.max(1000).optional(),
+    allocations: z.array(RemittanceAllocationInput).max(2000).default([]),
+    /** When the allocations came from the payer's spreadsheet: its name and checksum, never its content. */
+    source: z
+      .strictObject({
+        fileName: z.string().trim().min(1).max(255),
+        sha256: z.string().regex(/^[0-9a-f]{64}$/),
+        rows: z.number().int().nonnegative(),
+        templateId: z.string().min(1).optional(),
+      })
+      .optional(),
+    requestKey: z.string().min(8).max(100),
+  })
+  .superRefine((r, context) => {
+    const total = r.allocations.reduce((n, a) => n + a.amountMinor, 0);
+    if (total > r.amountMinor) {
+      context.addIssue({
+        code: 'custom',
+        path: ['allocations'],
+        message: 'More is allocated than was received',
+      });
+    }
+    if (new Set(r.allocations.map((a) => a.claimId)).size !== r.allocations.length) {
+      context.addIssue({
+        code: 'custom',
+        path: ['allocations'],
+        message: 'Allocate to each claim once',
+      });
+    }
+  });
 export type RemittanceInput = z.infer<typeof RemittanceInput>;
-export const RemittanceAllocate = z.strictObject({ remittanceId: z.string().min(1), allocations: z.array(RemittanceAllocationInput).min(1).max(2000), requestKey: z.string().min(8).max(100) })
-  .refine((r) => new Set(r.allocations.map((a) => a.claimId)).size === r.allocations.length, 'Allocate to each claim once');
+export const RemittanceAllocate = z
+  .strictObject({
+    remittanceId: z.string().min(1),
+    allocations: z.array(RemittanceAllocationInput).min(1).max(2000),
+    requestKey: z.string().min(8).max(100),
+  })
+  .refine(
+    (r) => new Set(r.allocations.map((a) => a.claimId)).size === r.allocations.length,
+    'Allocate to each claim once',
+  );
 export type RemittanceAllocate = z.infer<typeof RemittanceAllocate>;
 /** A remittance recorded in error is reversed whole, never edited; the corrected one is recorded again. */
-export const RemittanceReverse = z.strictObject({ remittanceId: z.string().min(1), reason: text.min(3).max(1000), requestKey: z.string().min(8).max(100) });
+export const RemittanceReverse = z.strictObject({
+  remittanceId: z.string().min(1),
+  reason: text.min(3).max(1000),
+  requestKey: z.string().min(8).max(100),
+});
 export type RemittanceReverse = z.infer<typeof RemittanceReverse>;
 
-export const DisputeOpen = z.strictObject({ claimId: z.string().min(1), amountMinor: z.number().int().positive(), reason: text.min(3).max(2000), payerReference: text.max(200).optional(), requestKey: z.string().min(8).max(100) });
+export const DisputeOpen = z.strictObject({
+  claimId: z.string().min(1),
+  amountMinor: z.number().int().positive(),
+  reason: text.min(3).max(2000),
+  payerReference: text.max(200).optional(),
+  requestKey: z.string().min(8).max(100),
+});
 export type DisputeOpen = z.infer<typeof DisputeOpen>;
-export const DisputeResolve = z.strictObject({ disputeId: z.string().min(1), outcome: z.enum(['payer_agreed', 'payer_upheld', 'withdrawn']), note: text.min(3).max(2000), requestKey: z.string().min(8).max(100) });
+export const DisputeResolve = z.strictObject({
+  disputeId: z.string().min(1),
+  outcome: z.enum(['payer_agreed', 'payer_upheld', 'withdrawn']),
+  note: text.min(3).max(2000),
+  requestKey: z.string().min(8).max(100),
+});
 export type DisputeResolve = z.infer<typeof DisputeResolve>;
 /** Giving up an amount the payer will not pay. It never becomes the patient's debt. */
-export const WriteOffInput = z.strictObject({ claimId: z.string().min(1), amountMinor: z.number().int().positive(), reason: text.min(3).max(2000), requestKey: z.string().min(8).max(100) });
+export const WriteOffInput = z.strictObject({
+  claimId: z.string().min(1),
+  amountMinor: z.number().int().positive(),
+  reason: text.min(3).max(2000),
+  requestKey: z.string().min(8).max(100),
+});
 export type WriteOffInput = z.infer<typeof WriteOffInput>;
 
-export type SettlementStatus = 'not_submitted' | 'awaiting_response' | 'queried' | 'returned' | 'denied' | 'approved_unpaid' | 'partially_paid' | 'disputed' | 'settled';
+export type SettlementStatus =
+  | 'not_submitted'
+  | 'awaiting_response'
+  | 'queried'
+  | 'returned'
+  | 'denied'
+  | 'approved_unpaid'
+  | 'partially_paid'
+  | 'disputed'
+  | 'settled';
 
 /**
  * The money position of one claim (all revisions of one claim number). Every
@@ -1387,63 +2597,177 @@ export type SettlementStatus = 'not_submitted' | 'awaiting_response' | 'queried'
  *   payerOwes   — (approved, else expected) − paid, never below zero.
  */
 export type ClaimSettlement = {
-  status: SettlementStatus; expectedMinor: number; approvedMinor?: number; deductedMinor: number; paidMinor: number;
-  writtenOffMinor: number; disputedMinor: number; outstandingMinor: number; payerOwesMinor: number; overdue: boolean;
+  status: SettlementStatus;
+  expectedMinor: number;
+  approvedMinor?: number;
+  deductedMinor: number;
+  paidMinor: number;
+  writtenOffMinor: number;
+  disputedMinor: number;
+  outstandingMinor: number;
+  payerOwesMinor: number;
+  overdue: boolean;
 };
-const addDays = (isoDay: string, days: number) => { const d = new Date(`${isoDay}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + days); return d.toISOString().slice(0, 10); };
+const addDays = (isoDay: string, days: number) => {
+  const d = new Date(`${isoDay}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+};
 export const claimSettlement = (input: {
-  submitted: boolean; submittedOn?: string; expectedMinor: number;
+  submitted: boolean;
+  submittedOn?: string;
+  expectedMinor: number;
   decision?: { decision: PayerDecisionKind; approvedMinor: number };
-  paidMinor: number; writtenOffMinor: number; openDisputeMinor: number;
-  paymentDueDays?: number; today: string;
+  paidMinor: number;
+  writtenOffMinor: number;
+  openDisputeMinor: number;
+  paymentDueDays?: number;
+  today: string;
 }): ClaimSettlement => {
-  const decided = input.decision && ['approved', 'partially_approved', 'denied'].includes(input.decision.decision) ? input.decision.approvedMinor : undefined;
+  const decided =
+    input.decision && ['approved', 'partially_approved', 'denied'].includes(input.decision.decision)
+      ? input.decision.approvedMinor
+      : undefined;
   const deducted = decided === undefined ? 0 : Math.max(0, input.expectedMinor - decided);
   const outstanding = Math.max(0, input.expectedMinor - input.paidMinor - input.writtenOffMinor);
   const payerOwes = Math.max(0, (decided ?? input.expectedMinor) - input.paidMinor);
   let status: SettlementStatus;
-  if (!input.submitted && input.paidMinor === 0) status = 'not_submitted';
-  else if (outstanding === 0) status = 'settled';
-  else if (input.openDisputeMinor > 0) status = 'disputed';
-  else if (input.decision?.decision === 'queried') status = 'queried';
-  else if (input.decision?.decision === 'returned') status = 'returned';
-  else if (input.paidMinor > 0) status = 'partially_paid';
-  else if (input.decision?.decision === 'denied') status = 'denied';
-  else if (decided !== undefined) status = 'approved_unpaid';
-  else status = 'awaiting_response';
-  const due = input.submittedOn && input.paymentDueDays ? addDays(input.submittedOn, input.paymentDueDays) : undefined;
-  const overdue = Boolean(due && due < input.today && payerOwes > 0 && ['awaiting_response', 'approved_unpaid', 'partially_paid'].includes(status));
-  return { status, expectedMinor: input.expectedMinor, ...(decided !== undefined ? { approvedMinor: decided } : {}), deductedMinor: deducted, paidMinor: input.paidMinor,
-    writtenOffMinor: input.writtenOffMinor, disputedMinor: input.openDisputeMinor, outstandingMinor: outstanding, payerOwesMinor: payerOwes, overdue };
+  if (!input.submitted && input.paidMinor === 0) {
+    status = 'not_submitted';
+  } else if (outstanding === 0) {
+    status = 'settled';
+  } else if (input.openDisputeMinor > 0) {
+    status = 'disputed';
+  } else if (input.decision?.decision === 'queried') {
+    status = 'queried';
+  } else if (input.decision?.decision === 'returned') {
+    status = 'returned';
+  } else if (input.paidMinor > 0) {
+    status = 'partially_paid';
+  } else if (input.decision?.decision === 'denied') {
+    status = 'denied';
+  } else if (decided !== undefined) {
+    status = 'approved_unpaid';
+  } else {
+    status = 'awaiting_response';
+  }
+  const due =
+    input.submittedOn && input.paymentDueDays
+      ? addDays(input.submittedOn, input.paymentDueDays)
+      : undefined;
+  const overdue = Boolean(
+    due &&
+    due < input.today &&
+    payerOwes > 0 &&
+    ['awaiting_response', 'approved_unpaid', 'partially_paid'].includes(status),
+  );
+  return {
+    status,
+    expectedMinor: input.expectedMinor,
+    ...(decided !== undefined ? { approvedMinor: decided } : {}),
+    deductedMinor: deducted,
+    paidMinor: input.paidMinor,
+    writtenOffMinor: input.writtenOffMinor,
+    disputedMinor: input.openDisputeMinor,
+    outstandingMinor: outstanding,
+    payerOwesMinor: payerOwes,
+    overdue,
+  };
 };
 
 /** A remittance spreadsheet row, after column mapping, before a person confirms the match. */
-export type RemittanceRow = { sourceRow: number; claimNumber?: string; enrolleeNumber?: string; approvedMinor?: number; deductedMinor?: number; paidMinor?: number; reasonCode?: string; reason?: string };
-export type RemittanceCandidate = { claimId: string; claimNumber: string; patientName: string; outstandingMinor: number };
-export type RemittanceMatch = { sourceRow: number; confidence: 'exact' | 'uncertain' | 'none'; claimId?: string; candidates: RemittanceCandidate[]; paidMinor?: number; approvedMinor?: number; problems: string[] };
+export type RemittanceRow = {
+  sourceRow: number;
+  claimNumber?: string;
+  enrolleeNumber?: string;
+  approvedMinor?: number;
+  deductedMinor?: number;
+  paidMinor?: number;
+  reasonCode?: string;
+  reason?: string;
+};
+export type RemittanceCandidate = {
+  claimId: string;
+  claimNumber: string;
+  patientName: string;
+  outstandingMinor: number;
+};
+export type RemittanceMatch = {
+  sourceRow: number;
+  confidence: 'exact' | 'uncertain' | 'none';
+  claimId?: string;
+  candidates: RemittanceCandidate[];
+  paidMinor?: number;
+  approvedMinor?: number;
+  problems: string[];
+};
 /** Fields a remittance spreadsheet can map. */
-export const REMITTANCE_FIELDS = ['claimNumber', 'enrolleeNumber', 'approvedAmount', 'deductedAmount', 'paidAmount', 'reasonCode', 'reason'] as const;
+export const REMITTANCE_FIELDS = [
+  'claimNumber',
+  'enrolleeNumber',
+  'approvedAmount',
+  'deductedAmount',
+  'paidAmount',
+  'reasonCode',
+  'reason',
+] as const;
 
 /**
  * Matches remittance rows to claims. Only a row naming one of this payer's
  * claim numbers, paying no more than it has outstanding, is `exact`;
  * anything else is for a person to decide. Nothing is accepted automatically.
  */
-export const matchRemittanceRows = (rows: readonly RemittanceRow[], claims: readonly (RemittanceCandidate & { enrolleeNumber: string })[]): RemittanceMatch[] => {
+export const matchRemittanceRows = (
+  rows: readonly RemittanceRow[],
+  claims: readonly (RemittanceCandidate & { enrolleeNumber: string })[],
+): RemittanceMatch[] => {
   const byNumber = new Map(claims.map((c) => [c.claimNumber.trim().toUpperCase(), c]));
-  const amounts = (row: RemittanceRow) => ({ ...(row.paidMinor !== undefined ? { paidMinor: row.paidMinor } : {}), ...(row.approvedMinor !== undefined ? { approvedMinor: row.approvedMinor } : {}) });
-  const candidate = (c: RemittanceCandidate): RemittanceCandidate => ({ claimId: c.claimId, claimNumber: c.claimNumber, patientName: c.patientName, outstandingMinor: c.outstandingMinor });
+  const amounts = (row: RemittanceRow) => ({
+    ...(row.paidMinor !== undefined ? { paidMinor: row.paidMinor } : {}),
+    ...(row.approvedMinor !== undefined ? { approvedMinor: row.approvedMinor } : {}),
+  });
+  const candidate = (c: RemittanceCandidate): RemittanceCandidate => ({
+    claimId: c.claimId,
+    claimNumber: c.claimNumber,
+    patientName: c.patientName,
+    outstandingMinor: c.outstandingMinor,
+  });
   return rows.map((row) => {
     const problems: string[] = [];
-    if (row.paidMinor === undefined) problems.push('No paid amount in this row');
+    if (row.paidMinor === undefined) {
+      problems.push('No paid amount in this row');
+    }
     const exact = row.claimNumber ? byNumber.get(row.claimNumber.trim().toUpperCase()) : undefined;
     if (exact) {
-      if (row.paidMinor !== undefined && row.paidMinor > exact.outstandingMinor) problems.push('Pays more than the claim has outstanding');
-      return { sourceRow: row.sourceRow, confidence: problems.length ? 'uncertain' : 'exact', claimId: exact.claimId, candidates: [candidate(exact)], ...amounts(row), problems };
+      if (row.paidMinor !== undefined && row.paidMinor > exact.outstandingMinor) {
+        problems.push('Pays more than the claim has outstanding');
+      }
+      return {
+        sourceRow: row.sourceRow,
+        confidence: problems.length ? 'uncertain' : 'exact',
+        claimId: exact.claimId,
+        candidates: [candidate(exact)],
+        ...amounts(row),
+        problems,
+      };
     }
-    if (row.claimNumber) problems.push(`No claim ${row.claimNumber} for this payer`);
+    if (row.claimNumber) {
+      problems.push(`No claim ${row.claimNumber} for this payer`);
+    }
     const enrollee = row.enrolleeNumber?.trim().toUpperCase();
-    const candidates = enrollee ? claims.filter((c) => c.enrolleeNumber.trim().toUpperCase() === enrollee && c.outstandingMinor > 0).map(candidate) : [];
-    return { sourceRow: row.sourceRow, confidence: candidates.length ? 'uncertain' : 'none', candidates, ...amounts(row), problems };
+    const candidates = enrollee
+      ? claims
+          .filter(
+            (c) => c.enrolleeNumber.trim().toUpperCase() === enrollee && c.outstandingMinor > 0,
+          )
+          .map(candidate)
+      : [];
+    return {
+      sourceRow: row.sourceRow,
+      confidence: candidates.length ? 'uncertain' : 'none',
+      candidates,
+      ...amounts(row),
+      problems,
+    };
   });
 };

@@ -35,11 +35,23 @@ export const PatientMessage = baseEnvelope.extend({
 export type PatientMessage = z.infer<typeof PatientMessage>;
 
 /** Staff send a bill or receipt to the patient on the channels chosen (only those the patient hasn't stopped). */
-export const SendToPatientRequest = z.discriminatedUnion('kind', [
-  DocumentLinkRequest.options[0].extend({ channels: z.array(MessageChannel).min(1).max(2) }),
-  DocumentLinkRequest.options[1].extend({ channels: z.array(MessageChannel).min(1).max(2) }),
-]).refine((r) => new Set(r.channels).size === r.channels.length, { message: 'Choose each channel once', path: ['channels'] });
+export const SendToPatientRequest = z
+  .discriminatedUnion('kind', [
+    DocumentLinkRequest.options[0].extend({ channels: z.array(MessageChannel).min(1).max(2) }),
+    DocumentLinkRequest.options[1].extend({ channels: z.array(MessageChannel).min(1).max(2) }),
+  ])
+  .refine((r) => new Set(r.channels).size === r.channels.length, {
+    message: 'Choose each channel once',
+    path: ['channels'],
+  });
 export type SendToPatientRequest = z.infer<typeof SendToPatientRequest>;
 /** One entry per channel: queued for sending, or refused with a reason (e.g. the patient stopped it). */
-export type SendToPatientResponse = { messages: { channel: MessageChannel; to?: string; status: 'queued' | 'refused'; reason?: string; messageId?: string }[] };
-
+export type SendToPatientResponse = {
+  messages: {
+    channel: MessageChannel;
+    to?: string;
+    status: 'queued' | 'refused';
+    reason?: string;
+    messageId?: string;
+  }[];
+};

@@ -18,9 +18,23 @@ import { requiresFacilityContract } from './facilitySync.ts';
 import { INSURANCE_UPLOAD_TYPES } from './insurance.ts';
 
 export const PatientIdentityPreview = z.object({
-  revision: z.string(), canonicalPatientId: z.string(), otherRootId: z.string(),
-  records: z.array(z.object({ patient: Patient, counts: z.object({ encounters: z.number(), appointments: z.number(), charges: z.number(), payments: z.number() }) })),
-  retainedIds: z.array(z.string()), otherIds: z.array(z.string()), warning: z.string(),
+  revision: z.string(),
+  canonicalPatientId: z.string(),
+  otherRootId: z.string(),
+  records: z.array(
+    z.object({
+      patient: Patient,
+      counts: z.object({
+        encounters: z.number(),
+        appointments: z.number(),
+        charges: z.number(),
+        payments: z.number(),
+      }),
+    }),
+  ),
+  retainedIds: z.array(z.string()),
+  otherIds: z.array(z.string()),
+  warning: z.string(),
 });
 export type PatientIdentityPreview = z.infer<typeof PatientIdentityPreview>;
 
@@ -57,7 +71,10 @@ export const facilityCode = z
 export const emailAddress = z.string().trim().toLowerCase().pipe(z.email());
 
 /** The 6-digit code that proves someone can read an email address. */
-export const emailCode = z.string().trim().regex(/^\d{6}$/, 'Enter the 6-digit code from the email');
+export const emailCode = z
+  .string()
+  .trim()
+  .regex(/^\d{6}$/, 'Enter the 6-digit code from the email');
 
 export const FacilityRegistration = z.object({
   code: facilityCode,
@@ -104,7 +121,13 @@ export const FacilityRegistrationResult = z.object({
 export type FacilityRegistrationResult = z.infer<typeof FacilityRegistrationResult>;
 
 /** The same facility details are collected for primary and additional facilities. */
-export const FacilityDetails = FacilityRegistration.pick({ code: true, name: true, state: true, lga: true, level: true });
+export const FacilityDetails = FacilityRegistration.pick({
+  code: true,
+  name: true,
+  state: true,
+  lga: true,
+  level: true,
+});
 export type FacilityDetails = z.infer<typeof FacilityDetails>;
 
 /** Reuses the authenticated administrator's verified contact, never a client-supplied email. */
@@ -117,29 +140,52 @@ export const OrganizationFacilityRegistration = FacilityDetails.extend({
   deviceLabel: z.string().max(200).optional(),
   /** Client-generated 256-bit enrollment secret permits safe retries after a lost response. */
   deviceSecret: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
-}).refine((value) => Boolean(value.organizationId || value.organizationName), { path: ['organizationName'], message: 'Enter the organization name' });
+}).refine((value) => Boolean(value.organizationId || value.organizationName), {
+  path: ['organizationName'],
+  message: 'Enter the organization name',
+});
 export type OrganizationFacilityRegistration = z.infer<typeof OrganizationFacilityRegistration>;
 
 export const OrganizationFacilityDefaults = z.object({
   organization: z.object({ id: z.string(), name: z.string() }).nullable(),
-  administrator: z.object({ staffId: z.string(), fullName: z.string(), verifiedEmail: z.string().nullable() }),
+  administrator: z.object({
+    staffId: z.string(),
+    fullName: z.string(),
+    verifiedEmail: z.string().nullable(),
+  }),
 });
 export type OrganizationFacilityDefaults = z.infer<typeof OrganizationFacilityDefaults>;
 
-export const OrganizationFacilityResult = FacilityRegistrationResult.extend({ organization: z.object({ id: z.string(), name: z.string() }) });
+export const OrganizationFacilityResult = FacilityRegistrationResult.extend({
+  organization: z.object({ id: z.string(), name: z.string() }),
+});
 export type OrganizationFacilityResult = z.infer<typeof OrganizationFacilityResult>;
 
 export const OrganizationFacilityDirectory = z.object({
   organization: z.object({ id: z.string(), name: z.string() }).nullable(),
   canCreateFacility: z.boolean(),
-  facilities: z.array(z.object({ id: z.string(), name: z.string(), accessible: z.boolean(), canEnrollDevice: z.boolean() })),
+  facilities: z.array(
+    z.object({
+      id: z.string(),
+      name: z.string(),
+      accessible: z.boolean(),
+      canEnrollDevice: z.boolean(),
+    }),
+  ),
 });
 export type OrganizationFacilityDirectory = z.infer<typeof OrganizationFacilityDirectory>;
 
-export const OrganizationFacilityOpen = z.object({ actorStaffId: z.string().min(1), facilityId: z.string().min(1), deviceId: z.string().min(1).max(200), deviceSecret: OrganizationFacilityRegistration.shape.deviceSecret.optional() });
+export const OrganizationFacilityOpen = z.object({
+  actorStaffId: z.string().min(1),
+  facilityId: z.string().min(1),
+  deviceId: z.string().min(1).max(200),
+  deviceSecret: OrganizationFacilityRegistration.shape.deviceSecret.optional(),
+});
 export type OrganizationFacilityOpen = z.infer<typeof OrganizationFacilityOpen>;
 export const OrganizationFacilityAccess = z.object({
-  facilityId: z.string(), staffId: z.string(), personId: z.string(),
+  facilityId: z.string(),
+  staffId: z.string(),
+  personId: z.string(),
   device: DeviceCredential.optional(),
 });
 export type OrganizationFacilityAccess = z.infer<typeof OrganizationFacilityAccess>;
@@ -288,7 +334,10 @@ export const SyncTokenResponse = z.object({
   /** True only while the hospital's insurance billing is active; setup never changes a bill. */
   insuranceBillingActive: z.boolean().optional(),
   /** When insurance billing was active; a charge is judged against cover only inside one of these. */
-  insuranceBillingPeriods: z.array(z.strictObject({ from: z.string().min(1), to: z.string().min(1).optional() })).max(200).optional(),
+  insuranceBillingPeriods: z
+    .array(z.strictObject({ from: z.string().min(1), to: z.string().min(1).optional() }))
+    .max(200)
+    .optional(),
 });
 export type SyncTokenResponse = z.infer<typeof SyncTokenResponse>;
 
@@ -312,9 +361,16 @@ export const SyncTokenClaims = z.object({
 });
 export type SyncTokenClaims = z.infer<typeof SyncTokenClaims>;
 /** Fields only a client that negotiated care services receives and may write; strict older parsers would refuse them. */
-export const CARE_SERVICE_FIELDS = { service_offering: ['visitTypes'], appointment: ['offeringId'], encounter: ['offeringId'], facility: ['country', 'address', 'phone', 'currency'] } as const;
+export const CARE_SERVICE_FIELDS = {
+  service_offering: ['visitTypes'],
+  appointment: ['offeringId'],
+  encounter: ['offeringId'],
+  facility: ['country', 'address', 'phone', 'currency'],
+} as const;
 const usesCareServiceFields = (m: { table: string; data: Record<string, unknown> }) =>
-  ((CARE_SERVICE_FIELDS as Record<string, readonly string[]>)[m.table] ?? []).some((field) => m.data[field] !== undefined);
+  ((CARE_SERVICE_FIELDS as Record<string, readonly string[]>)[m.table] ?? []).some(
+    (field) => m.data[field] !== undefined,
+  );
 
 /* ------------------------------------------------------------------ */
 /* Upload — POST /sync/upload (Authorization: Bearer <credential>)     */
@@ -345,36 +401,188 @@ export const UploadMutation = z.object({
 });
 export type UploadMutation = z.infer<typeof UploadMutation>;
 
-export const UploadRequest = z.object({
-  integratedBillingVersion: z.literal(1).optional(),
-  billingCatalogueVersion: z.literal(1).optional(),
-  insuranceWorkflowVersion: z.literal(1).optional(),
-  pharmacyWorkflowVersion: z.literal(1).optional(),
-  wardCareVersion: z.literal(1).optional(),
-  resultTemplateWorkflowVersion: z.literal(1).optional(),
-  documentWorkflowVersion: z.literal(1).optional(),
-  inpatientWorkflowVersion: z.literal(1).optional(),
-  clinicalWorkflowVersion: z.literal(1).optional(),
-  careServiceVersion: z.literal(1).optional(),
-  /** PowerSync's local transaction id; null when the write was not transactional. */
-  transactionId: z.number().int().nonnegative().nullable(),
-  mutations: z.array(UploadMutation).min(1),
-  facilityContractVersion: z.literal(FACILITY_CONTRACT_VERSION).optional(),
-  schemaVersion: z.number().int().positive().optional(),
-  policyVersion: z.number().int().positive().optional(),
-}).superRefine((request, context) => {
-  if (request.mutations.some((m) => m.table === 'encounter_entry' && (m.data.pharmacyVersion !== undefined || (m.data.values as Record<string, unknown> | undefined)?.supply !== undefined)) && (request.pharmacyWorkflowVersion !== 1 || request.clinicalWorkflowVersion !== 1 || request.facilityContractVersion !== 1 || (request.schemaVersion ?? 0) < 5 || (request.policyVersion ?? 0) < 13)) context.addIssue({ code: 'custom', message: 'Quantity-based dispensing requires pharmacy workflow 1 and the current clinical contract' });
-    if (request.mutations.some((m) => m.table === 'ward_care_event' || (m.table === 'encounter' && m.data.inpatientContext !== undefined) || (m.table === 'encounter_entry' && m.data.admissionId !== undefined))
-      && (request.wardCareVersion !== 1 || request.inpatientWorkflowVersion !== 1 || request.clinicalWorkflowVersion !== 1 || request.facilityContractVersion !== 1 || (request.schemaVersion ?? 0) < 5 || (request.policyVersion ?? 0) < 13)) context.addIssue({ code: 'custom', message: 'Ward care requires ward care workflow 1 and the current inpatient and clinical contracts' });
-  if(request.mutations.some((mutation)=>['library_document','visit_document'].includes(mutation.table)) && (request.documentWorkflowVersion!==1 || request.facilityContractVersion!==1 || (request.schemaVersion??0)<5 || (request.policyVersion??0)<11)) context.addIssue({code:'custom',message:'Document writes require document workflow 1, facility contract 1, schema 5 and policy 11'});
-  if (request.mutations.some((mutation) => ['inpatient_event', 'bed_ready_event'].includes(mutation.table) || (mutation.table === 'staff' && Array.isArray(mutation.data.additionalPermissions) && mutation.data.additionalPermissions.includes('admission:manage'))) && (request.inpatientWorkflowVersion !== 1 || request.facilityContractVersion !== 1 || (request.schemaVersion ?? 0) < 5 || (request.policyVersion ?? 0) < 11)) context.addIssue({ code: 'custom', message: 'Inpatient writes require inpatient workflow 1, facility contract 1, schema 5 and policy 11' });
-  if (request.mutations.some((m) => ['result_template', 'result_part', 'answer_list'].includes(m.table) || (m.table === 'encounter_entry' && m.data.labReport !== undefined) || (m.table === 'staff' && Array.isArray(m.data.additionalPermissions) && m.data.additionalPermissions.includes('result_template:manage'))) && (request.resultTemplateWorkflowVersion !== 1 || request.clinicalWorkflowVersion !== 1 || (request.policyVersion ?? 0) < 13)) context.addIssue({ code: 'custom', message: 'Structured lab results and template access require result template workflow 1, clinical workflow 1 and policy 13' });
-  if (request.mutations.some((m) => (INSURANCE_UPLOAD_TYPES as readonly string[]).includes(m.table)) && (request.insuranceWorkflowVersion !== 1 || request.facilityContractVersion !== 1 || (request.schemaVersion ?? 0) < 5 || (request.policyVersion ?? 0) < 14)) context.addIssue({ code: 'custom', message: 'Insurance records require insurance workflow 1, facility contract 1, schema 5 and policy 14' });
-  if (request.mutations.some(usesCareServiceFields) && (request.careServiceVersion !== 1 || request.facilityContractVersion !== 1 || (request.schemaVersion ?? 0) < 4)) context.addIssue({ code: 'custom', message: 'Care services on bookings and visits require care service version 1 and facility contract 1' });
-  if (request.clinicalWorkflowVersion === 1 && (request.facilityContractVersion !== 1 || (request.schemaVersion ?? 0) < 4 || (request.policyVersion ?? 0) < 10)) context.addIssue({ code: 'custom', message: 'Clinical workflow v1 requires facility contract 1, schema 4 and policy 10' });
-  if (request.mutations.some((m) => m.table === 'encounter_entry' && (m.data.workflowVersion === 1 || ['investigation_review','result_review','prescription','injection_order','disposition'].includes(String(m.data.step)))) && request.clinicalWorkflowVersion !== 1) context.addIssue({ code: 'custom', message: 'New care entries require clinical workflow version one' });
-  if (request.mutations.some(requiresFacilityContract) && (request.facilityContractVersion !== 1 || (request.schemaVersion ?? 0) < 4 || (request.policyVersion ?? 0) < 10)) context.addIssue({ code: 'custom', message: 'Facility writes require the negotiated v1 contract, schema 4 and policy 10' });
-});
+export const UploadRequest = z
+  .object({
+    integratedBillingVersion: z.literal(1).optional(),
+    billingCatalogueVersion: z.literal(1).optional(),
+    insuranceWorkflowVersion: z.literal(1).optional(),
+    pharmacyWorkflowVersion: z.literal(1).optional(),
+    wardCareVersion: z.literal(1).optional(),
+    resultTemplateWorkflowVersion: z.literal(1).optional(),
+    documentWorkflowVersion: z.literal(1).optional(),
+    inpatientWorkflowVersion: z.literal(1).optional(),
+    clinicalWorkflowVersion: z.literal(1).optional(),
+    careServiceVersion: z.literal(1).optional(),
+    /** PowerSync's local transaction id; null when the write was not transactional. */
+    transactionId: z.number().int().nonnegative().nullable(),
+    mutations: z.array(UploadMutation).min(1),
+    facilityContractVersion: z.literal(FACILITY_CONTRACT_VERSION).optional(),
+    schemaVersion: z.number().int().positive().optional(),
+    policyVersion: z.number().int().positive().optional(),
+  })
+  .superRefine((request, context) => {
+    if (
+      request.mutations.some(
+        (m) =>
+          m.table === 'encounter_entry' &&
+          (m.data.pharmacyVersion !== undefined ||
+            (m.data.values as Record<string, unknown> | undefined)?.supply !== undefined),
+      ) &&
+      (request.pharmacyWorkflowVersion !== 1 ||
+        request.clinicalWorkflowVersion !== 1 ||
+        request.facilityContractVersion !== 1 ||
+        (request.schemaVersion ?? 0) < 5 ||
+        (request.policyVersion ?? 0) < 13)
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message:
+          'Quantity-based dispensing requires pharmacy workflow 1 and the current clinical contract',
+      });
+    }
+    if (
+      request.mutations.some(
+        (m) =>
+          m.table === 'ward_care_event' ||
+          (m.table === 'encounter' && m.data.inpatientContext !== undefined) ||
+          (m.table === 'encounter_entry' && m.data.admissionId !== undefined),
+      ) &&
+      (request.wardCareVersion !== 1 ||
+        request.inpatientWorkflowVersion !== 1 ||
+        request.clinicalWorkflowVersion !== 1 ||
+        request.facilityContractVersion !== 1 ||
+        (request.schemaVersion ?? 0) < 5 ||
+        (request.policyVersion ?? 0) < 13)
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message:
+          'Ward care requires ward care workflow 1 and the current inpatient and clinical contracts',
+      });
+    }
+    if (
+      request.mutations.some((mutation) =>
+        ['library_document', 'visit_document'].includes(mutation.table),
+      ) &&
+      (request.documentWorkflowVersion !== 1 ||
+        request.facilityContractVersion !== 1 ||
+        (request.schemaVersion ?? 0) < 5 ||
+        (request.policyVersion ?? 0) < 11)
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message:
+          'Document writes require document workflow 1, facility contract 1, schema 5 and policy 11',
+      });
+    }
+    if (
+      request.mutations.some(
+        (mutation) =>
+          ['inpatient_event', 'bed_ready_event'].includes(mutation.table) ||
+          (mutation.table === 'staff' &&
+            Array.isArray(mutation.data.additionalPermissions) &&
+            mutation.data.additionalPermissions.includes('admission:manage')),
+      ) &&
+      (request.inpatientWorkflowVersion !== 1 ||
+        request.facilityContractVersion !== 1 ||
+        (request.schemaVersion ?? 0) < 5 ||
+        (request.policyVersion ?? 0) < 11)
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message:
+          'Inpatient writes require inpatient workflow 1, facility contract 1, schema 5 and policy 11',
+      });
+    }
+    if (
+      request.mutations.some(
+        (m) =>
+          ['result_template', 'result_part', 'answer_list'].includes(m.table) ||
+          (m.table === 'encounter_entry' && m.data.labReport !== undefined) ||
+          (m.table === 'staff' &&
+            Array.isArray(m.data.additionalPermissions) &&
+            m.data.additionalPermissions.includes('result_template:manage')),
+      ) &&
+      (request.resultTemplateWorkflowVersion !== 1 ||
+        request.clinicalWorkflowVersion !== 1 ||
+        (request.policyVersion ?? 0) < 13)
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message:
+          'Structured lab results and template access require result template workflow 1, clinical workflow 1 and policy 13',
+      });
+    }
+    if (
+      request.mutations.some((m) =>
+        (INSURANCE_UPLOAD_TYPES as readonly string[]).includes(m.table),
+      ) &&
+      (request.insuranceWorkflowVersion !== 1 ||
+        request.facilityContractVersion !== 1 ||
+        (request.schemaVersion ?? 0) < 5 ||
+        (request.policyVersion ?? 0) < 14)
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message:
+          'Insurance records require insurance workflow 1, facility contract 1, schema 5 and policy 14',
+      });
+    }
+    if (
+      request.mutations.some(usesCareServiceFields) &&
+      (request.careServiceVersion !== 1 ||
+        request.facilityContractVersion !== 1 ||
+        (request.schemaVersion ?? 0) < 4)
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message:
+          'Care services on bookings and visits require care service version 1 and facility contract 1',
+      });
+    }
+    if (
+      request.clinicalWorkflowVersion === 1 &&
+      (request.facilityContractVersion !== 1 ||
+        (request.schemaVersion ?? 0) < 4 ||
+        (request.policyVersion ?? 0) < 10)
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Clinical workflow v1 requires facility contract 1, schema 4 and policy 10',
+      });
+    }
+    if (
+      request.mutations.some(
+        (m) =>
+          m.table === 'encounter_entry' &&
+          (m.data.workflowVersion === 1 ||
+            [
+              'investigation_review',
+              'result_review',
+              'prescription',
+              'injection_order',
+              'disposition',
+            ].includes(String(m.data.step))),
+      ) &&
+      request.clinicalWorkflowVersion !== 1
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message: 'New care entries require clinical workflow version one',
+      });
+    }
+    if (
+      request.mutations.some(requiresFacilityContract) &&
+      (request.facilityContractVersion !== 1 ||
+        (request.schemaVersion ?? 0) < 4 ||
+        (request.policyVersion ?? 0) < 10)
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Facility writes require the negotiated v1 contract, schema 4 and policy 10',
+      });
+    }
+  });
 export type UploadRequest = z.infer<typeof UploadRequest>;
 
 /**
@@ -384,30 +592,52 @@ export type UploadRequest = z.infer<typeof UploadRequest>;
  * retried: retrying would only reproduce the same rejection and stall every
  * mutation queued behind it.
  */
-export const UploadRejection = z.object({
-  clientId: z.number().int().nonnegative(),
-  table: DocType,
-  id: z.string().min(1),
-  category: RejectionCategory,
-  reason: z.string().min(1),
-  dependencies: z.array(FacilityDependency).min(1).optional(),
-}).superRefine((record, context) => {
-  if (record.category === 'dependency' && !record.dependencies?.length) context.addIssue({ code: 'custom', message: 'Dependency refusals must name the unaccepted references' });
-});
+export const UploadRejection = z
+  .object({
+    clientId: z.number().int().nonnegative(),
+    table: DocType,
+    id: z.string().min(1),
+    category: RejectionCategory,
+    reason: z.string().min(1),
+    dependencies: z.array(FacilityDependency).min(1).optional(),
+  })
+  .superRefine((record, context) => {
+    if (record.category === 'dependency' && !record.dependencies?.length) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Dependency refusals must name the unaccepted references',
+      });
+    }
+  });
 export type UploadRejection = z.infer<typeof UploadRejection>;
 
-export const UploadResponse = z.object({
-  applied: z.number().int().nonnegative(),
-  /** Mutations this device had already uploaded; applied once, acknowledged again. */
-  duplicates: z.number().int().nonnegative(),
-  rejected: z.array(UploadRejection),
-  serverTime: isoDateTime,
-  facilityContractVersion: z.literal(FACILITY_CONTRACT_VERSION).optional(),
-}).superRefine((response, context) => {
-  if (response.rejected.some((r) => r.category === 'dependency') && response.facilityContractVersion !== 1) context.addIssue({ code: 'custom', message: 'Dependency reconciliation requires the negotiated v1 connector' });
-  const ids = response.rejected.map((item) => item.clientId);
-  if (new Set(ids).size !== ids.length) context.addIssue({ code: 'custom', message: 'A mutation cannot have duplicate or contradictory outcomes' });
-});
+export const UploadResponse = z
+  .object({
+    applied: z.number().int().nonnegative(),
+    /** Mutations this device had already uploaded; applied once, acknowledged again. */
+    duplicates: z.number().int().nonnegative(),
+    rejected: z.array(UploadRejection),
+    serverTime: isoDateTime,
+    facilityContractVersion: z.literal(FACILITY_CONTRACT_VERSION).optional(),
+  })
+  .superRefine((response, context) => {
+    if (
+      response.rejected.some((r) => r.category === 'dependency') &&
+      response.facilityContractVersion !== 1
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Dependency reconciliation requires the negotiated v1 connector',
+      });
+    }
+    const ids = response.rejected.map((item) => item.clientId);
+    if (new Set(ids).size !== ids.length) {
+      context.addIssue({
+        code: 'custom',
+        message: 'A mutation cannot have duplicate or contradictory outcomes',
+      });
+    }
+  });
 export type UploadResponse = z.infer<typeof UploadResponse>;
 
 /* ------------------------------------------------------------------ */
@@ -426,19 +656,51 @@ export type SignedTime = z.infer<typeof SignedTime>;
 /* ------------------------------------------------------------------ */
 
 /** A member of staff proves an address they own; the code goes to that address. */
-export const OwnEmailCodeRequest = z.strictObject({ staffId: z.string().min(1), email: z.email().max(254) });
-export const OwnEmailConfirm = z.strictObject({ staffId: z.string().min(1), email: z.email().max(254), code: z.string().regex(/^\d{6}$/) });
-export type OwnEmailStatus = { email?: string; verified: boolean; pending?: { id: string; email: string; requestedOn: string } };
-export type StaffEmailRequestView = { id: string; staffId: string; staffName: string; email: string; requestedOn: string; replacing?: string };
+export const OwnEmailCodeRequest = z.strictObject({
+  staffId: z.string().min(1),
+  email: z.email().max(254),
+});
+export const OwnEmailConfirm = z.strictObject({
+  staffId: z.string().min(1),
+  email: z.email().max(254),
+  code: z.string().regex(/^\d{6}$/),
+});
+export type OwnEmailStatus = {
+  email?: string;
+  verified: boolean;
+  pending?: { id: string; email: string; requestedOn: string };
+};
+export type StaffEmailRequestView = {
+  id: string;
+  staffId: string;
+  staffName: string;
+  email: string;
+  requestedOn: string;
+  replacing?: string;
+};
 
 /* ------------------------------------------------------------------ */
 /* Geneus platform operators                                           */
 /* ------------------------------------------------------------------ */
 
 export const OperatorCodeRequest = z.strictObject({ email: z.email().max(254) });
-export const OperatorLogin = z.strictObject({ email: z.email().max(254), code: z.string().regex(/^\d{6}$/) });
-export type OperatorSession = { token: string; expiresOn: string; operator: { id: string; email: string; name: string } };
-export type OperatorFacility = { id: string; name: string; code: string; insuranceState: 'off' | 'setup' | 'active'; timeZone?: string; openRequest?: { id: string; requestedOn: string } };
+export const OperatorLogin = z.strictObject({
+  email: z.email().max(254),
+  code: z.string().regex(/^\d{6}$/),
+});
+export type OperatorSession = {
+  token: string;
+  expiresOn: string;
+  operator: { id: string; email: string; name: string };
+};
+export type OperatorFacility = {
+  id: string;
+  name: string;
+  code: string;
+  insuranceState: 'off' | 'setup' | 'active';
+  timeZone?: string;
+  openRequest?: { id: string; requestedOn: string };
+};
 
 /* ------------------------------------------------------------------ */
 /* Server-verified staff sessions                                      */
@@ -452,8 +714,29 @@ export const StaffSessionOpen = z.strictObject({ staffId: z.string().min(1), pin
  * setup code an administrator issued to that person, or by a code sent to the
  * person's own verified email (for PINs set before server sessions existed).
  */
-export const StaffPinEnrol = z.strictObject({ staffId: z.string().min(1), pin: staffPin, setupCode: z.string().min(4).max(40).optional(), emailCode: z.string().regex(/^\d{6}$/).optional() })
-  .refine((v) => Boolean(v.setupCode) !== Boolean(v.emailCode), 'Prove it with a PIN setup code or an email code');
-export type StaffSession = { token: string; staffId: string; expiresOn: string; idleMinutes: number };
+export const StaffPinEnrol = z
+  .strictObject({
+    staffId: z.string().min(1),
+    pin: staffPin,
+    setupCode: z.string().min(4).max(40).optional(),
+    emailCode: z
+      .string()
+      .regex(/^\d{6}$/)
+      .optional(),
+  })
+  .refine(
+    (v) => Boolean(v.setupCode) !== Boolean(v.emailCode),
+    'Prove it with a PIN setup code or an email code',
+  );
+export type StaffSession = {
+  token: string;
+  staffId: string;
+  expiresOn: string;
+  idleMinutes: number;
+};
 /** Configuration saved online: the same mutations as sync, confirmed by the server before they count. */
-export type ConfigurationSaveResponse = { applied: number; duplicates: number; rejected: { table: string; id: string; category: string; reason: string }[] };
+export type ConfigurationSaveResponse = {
+  applied: number;
+  duplicates: number;
+  rejected: { table: string; id: string; category: string; reason: string }[];
+};

@@ -39,7 +39,10 @@ describe('role permissions', () => {
     for (const role of ['chew', 'nurse', 'doctor', 'supervisor'] as const) {
       assert.ok(permissionsFor(role, 'read_write').includes('encounter:record'), role);
     }
-    assert.equal(permissionsFor('records_officer', 'read_write').includes('encounter:record'), false);
+    assert.equal(
+      permissionsFor('records_officer', 'read_write').includes('encounter:record'),
+      false,
+    );
     assert.equal(permissionsFor('cashier', 'read_write').includes('encounter:record'), false);
   });
 
@@ -63,9 +66,20 @@ describe('role permissions', () => {
    */
   // v15: the facility admin performs every function, insurance included, so a facility can run itself alone.
   it('gives the facility admin every role-granted permission, so a facility can configure and operate itself alone', () => {
-    const roleGranted = Permission.options.filter((permission) => !PROTECTED_PERMISSIONS.includes(permission));
+    const roleGranted = Permission.options.filter(
+      (permission) => !PROTECTED_PERMISSIONS.includes(permission),
+    );
     assert.deepEqual([...ROLE_PERMISSIONS.facility_admin].sort(), [...roleGranted].sort());
-    for (const permission of ['insurance_contract:read', 'insurance_contract:manage', 'coverage:confirm']) assert.ok((AssignablePermission.options as readonly string[]).includes(permission), permission);
+    for (const permission of [
+      'insurance_contract:read',
+      'insurance_contract:manage',
+      'coverage:confirm',
+    ]) {
+      assert.ok(
+        (AssignablePermission.options as readonly string[]).includes(permission),
+        permission,
+      );
+    }
   });
 
   /** Only the person a PIN setup code was issued for may claim it (SCHEMA.md §10). */
@@ -77,12 +91,18 @@ describe('role permissions', () => {
 
   it('preserves only medical-history read access for read-only staff', () => {
     for (const role of Role.options) {
-      assert.deepEqual(permissionsFor(role, 'read_only'), ROLE_PERMISSIONS[role].filter(permission => permission === 'patient_chart:read'), role);
+      assert.deepEqual(
+        permissionsFor(role, 'read_only'),
+        ROLE_PERMISSIONS[role].filter((permission) => permission === 'patient_chart:read'),
+        role,
+      );
     }
   });
 
   it('grants every other permission to at least one role, so none is unreachable', () => {
-    for (const permission of Permission.options.filter((candidate) => !PROTECTED_PERMISSIONS.includes(candidate))) {
+    for (const permission of Permission.options.filter(
+      (candidate) => !PROTECTED_PERMISSIONS.includes(candidate),
+    )) {
       const holders = Role.options.filter((role) => ROLE_PERMISSIONS[role].includes(permission));
       assert.ok(holders.length > 0, `${permission} is granted to no role`);
     }
@@ -90,14 +110,19 @@ describe('role permissions', () => {
 
   /** The cashier takes money and records no care (PRD §9.13.4); v14 adds recording a permitted self-pay choice at the till. */
   it('lets the cashier collect, record a permitted self-pay choice and associate sources without clinical or credit authority', () => {
-    assert.deepEqual([...permissionsFor('cashier', 'read_write')], ['payment:receive', 'coverage:elect_self_pay','charge:associate']);
+    assert.deepEqual(
+      [...permissionsFor('cashier', 'read_write')],
+      ['payment:receive', 'coverage:elect_self_pay', 'charge:associate'],
+    );
   });
 
   /** Booking raises the visit's fees in the same save, so whoever may book may raise them (PRD §9.13.3). */
   it('lets everyone who may book an appointment raise its fees', () => {
     for (const role of Role.options) {
       const permissions = ROLE_PERMISSIONS[role];
-      if (permissions.includes('appointment:create')) assert.ok(permissions.includes('charge:create'), role);
+      if (permissions.includes('appointment:create')) {
+        assert.ok(permissions.includes('charge:create'), role);
+      }
     }
   });
 
@@ -109,7 +134,9 @@ describe('role permissions', () => {
   });
 
   it('keeps the fee schedule to the facility admin', () => {
-    const holders = Role.options.filter((role) => ROLE_PERMISSIONS[role].includes('fee_item:manage'));
+    const holders = Role.options.filter((role) =>
+      ROLE_PERMISSIONS[role].includes('fee_item:manage'),
+    );
     assert.deepEqual(holders, ['facility_admin']);
   });
 
@@ -122,12 +149,18 @@ describe('role permissions', () => {
 
   /** Clinical history is retired by flag, never destroyed (SCHEMA.md §6). */
   it('defines no delete permission for anything', () => {
-    assert.equal(Permission.options.some((permission) => permission.endsWith(':delete')), false);
+    assert.equal(
+      Permission.options.some((permission) => permission.endsWith(':delete')),
+      false,
+    );
   });
 
   it('marks only access-changing actions as high risk', () => {
     for (const permission of HIGH_RISK_PERMISSIONS) {
-      assert.match(permission, /^(staff|device|practitioner|credential|clinical_capability|staff_assignment):/);
+      assert.match(
+        permission,
+        /^(staff|device|practitioner|credential|clinical_capability|staff_assignment):/,
+      );
     }
     assert.equal(HIGH_RISK_PERMISSIONS.includes('patient:update'), false);
   });
@@ -173,11 +206,17 @@ describe('decide', () => {
   });
 
   it('names the missing permission when it is not granted', () => {
-    assert.deepEqual(decide(nurse, 'staff:manage', NOW), { kind: 'not_granted', permission: 'staff:manage' });
+    assert.deepEqual(decide(nurse, 'staff:manage', NOW), {
+      kind: 'not_granted',
+      permission: 'staff:manage',
+    });
   });
 
   it('reports staleness separately, so the UI can say "reconnect" rather than "not allowed"', () => {
-    const admin = { permissions: [...ROLE_PERMISSIONS.facility_admin], lastServerContactOn: agoIso(2 * DAY) };
+    const admin = {
+      permissions: [...ROLE_PERMISSIONS.facility_admin],
+      lastServerContactOn: agoIso(2 * DAY),
+    };
 
     assert.deepEqual(decide(admin, 'staff:manage', NOW), {
       kind: 'stale_authorization',

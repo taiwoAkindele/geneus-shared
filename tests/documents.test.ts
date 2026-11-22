@@ -1,7 +1,13 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { AnyDocument, parseDocument, SCHEMA_BY_TYPE } from '../src/index.ts';
-import { DocType, IMMUTABLE_ENVELOPE_FIELDS, PATIENT_ID_RE, RECEIPT_NUMBER_RE, SCHEMA_VERSION } from '../src/common.ts';
+import {
+  DocType,
+  IMMUTABLE_ENVELOPE_FIELDS,
+  PATIENT_ID_RE,
+  RECEIPT_NUMBER_RE,
+  SCHEMA_VERSION,
+} from '../src/common.ts';
 import {
   Appointment,
   AuditEvent,
@@ -64,7 +70,10 @@ describe('the v6 envelope', () => {
   });
 
   it('names the identity fields a PATCH may never move', () => {
-    assert.deepEqual([...IMMUTABLE_ENVELOPE_FIELDS], ['id', 'facilityId', 'createdBy', 'createdOn', 'deviceId']);
+    assert.deepEqual(
+      [...IMMUTABLE_ENVELOPE_FIELDS],
+      ['id', 'facilityId', 'createdBy', 'createdOn', 'deviceId'],
+    );
   });
 });
 
@@ -99,7 +108,10 @@ describe('record types', () => {
     assert.equal(device.status, 'active');
     assert.equal(device.wipeRequested, false);
     assert.equal('credential' in device, false);
-    assert.equal(Object.keys(Device.shape).some((key) => /credential|secret|hash/i.test(key)), false);
+    assert.equal(
+      Object.keys(Device.shape).some((key) => /credential|secret|hash/i.test(key)),
+      false,
+    );
   });
 
   it('records an audit event as ok unless told otherwise, with the server clock absent until arrival', () => {
@@ -197,7 +209,11 @@ describe('roster signatures', () => {
   };
 
   it('signs the same bytes however each side formats the same instant', () => {
-    const fromPostgres = { ...shift, startsAt: '2026-09-12T07:00:00.000Z', endsAt: '2026-09-12T15:00:00.000Z' };
+    const fromPostgres = {
+      ...shift,
+      startsAt: '2026-09-12T07:00:00.000Z',
+      endsAt: '2026-09-12T15:00:00.000Z',
+    };
     assert.equal(rosterSignaturePayload(fromPostgres), rosterSignaturePayload(shift));
   });
 
@@ -252,7 +268,11 @@ describe('encounters', () => {
     openedOn: '2026-09-12T09:31:00+01:00',
   };
 
-  const entry = (step: string, values: Record<string, unknown>, extra: Record<string, unknown> = {}) => ({
+  const entry = (
+    step: string,
+    values: Record<string, unknown>,
+    extra: Record<string, unknown> = {},
+  ) => ({
     ...envelope,
     id: `encounter_entry:${step}`,
     type: 'encounter_entry',
@@ -279,15 +299,19 @@ describe('encounters', () => {
     assert.equal(EncounterEntry.safeParse(entry('complaint', {})).success, false);
   });
 
-  it("refuses a field that belongs to another step, naming where it went wrong", () => {
-    const result = EncounterEntry.safeParse(entry('vitals', { temperatureC: 37, diagnosis: 'Malaria' }));
+  it('refuses a field that belongs to another step, naming where it went wrong', () => {
+    const result = EncounterEntry.safeParse(
+      entry('vitals', { temperatureC: 37, diagnosis: 'Malaria' }),
+    );
 
     assert.equal(result.success, false);
     assert.equal(result.error?.issues[0]?.path[0], 'values');
   });
 
   it('asks for a reason when a prescribed drug is not dispensed', () => {
-    const withoutReason = entry('dispense', { lines: [{ drug: 'Artemether-Lumefantrine', dispensed: false }] });
+    const withoutReason = entry('dispense', {
+      lines: [{ drug: 'Artemether-Lumefantrine', dispensed: false }],
+    });
     const withReason = entry('dispense', {
       lines: [{ drug: 'Artemether-Lumefantrine', dispensed: false, reason: 'Out of stock' }],
     });
@@ -298,9 +322,17 @@ describe('encounters', () => {
 
   /** Corrections are added, never written over the original (PRD §9.8.3). */
   it('links an amendment to the entry it corrects, and only an amendment', () => {
-    const amendment = entry('amendment', { note: 'Temperature was 37.9, not 38.9' }, { amends: 'encounter_entry:vitals' });
+    const amendment = entry(
+      'amendment',
+      { note: 'Temperature was 37.9, not 38.9' },
+      { amends: 'encounter_entry:vitals' },
+    );
     const unlinked = entry('amendment', { note: 'Temperature was 37.9' });
-    const linkedVitals = entry('vitals', { temperatureC: 37.9 }, { amends: 'encounter_entry:vitals' });
+    const linkedVitals = entry(
+      'vitals',
+      { temperatureC: 37.9 },
+      { amends: 'encounter_entry:vitals' },
+    );
 
     assert.equal(EncounterEntry.safeParse(amendment).success, true);
     assert.equal(EncounterEntry.safeParse(unlinked).success, false);
@@ -340,7 +372,10 @@ describe('appointments', () => {
   };
 
   it('records the visit type, and still reads bookings made before it existed', () => {
-    assert.equal(Appointment.parse({ ...appointment, visitType: 'antenatal' }).visitType, 'antenatal');
+    assert.equal(
+      Appointment.parse({ ...appointment, visitType: 'antenatal' }).visitType,
+      'antenatal',
+    );
     assert.equal(Appointment.safeParse(appointment).success, true);
     assert.equal(Appointment.safeParse({ ...appointment, visitType: 'surgery' }).success, false);
   });
@@ -395,23 +430,36 @@ describe('billing', () => {
 
   it('refuses an exemption with no condition, or one no patient could meet', () => {
     assert.equal(ExemptionRule.safeParse({ reason: 'Free' }).success, false);
-    assert.equal(ExemptionRule.safeParse({ reason: 'Impossible', ageFromYears: 10, ageUnderYears: 5 }).success, false);
+    assert.equal(
+      ExemptionRule.safeParse({ reason: 'Impossible', ageFromYears: 10, ageUnderYears: 5 }).success,
+      false,
+    );
     assert.equal(ExemptionRule.safeParse({ reason: 'Elderly', ageFromYears: 65 }).success, true);
   });
 
   describe('exemptions', () => {
     const rules = [
       ExemptionRule.parse({ reason: 'Under-5 policy', ageUnderYears: 5 }),
-      ExemptionRule.parse({ reason: 'Free antenatal care', sex: 'female', visitTypes: ['antenatal', 'postnatal'] }),
+      ExemptionRule.parse({
+        reason: 'Free antenatal care',
+        sex: 'female',
+        visitTypes: ['antenatal', 'postnatal'],
+      }),
     ];
 
     it('finds the rule that makes a fee free', () => {
       assert.equal(findExemption(rules, { ageYears: 3, sex: 'male' })?.reason, 'Under-5 policy');
-      assert.equal(findExemption(rules, { ageYears: 28, sex: 'female', visitType: 'antenatal' })?.reason, 'Free antenatal care');
+      assert.equal(
+        findExemption(rules, { ageYears: 28, sex: 'female', visitType: 'antenatal' })?.reason,
+        'Free antenatal care',
+      );
     });
 
     it('needs every condition of a rule to hold', () => {
-      assert.equal(findExemption(rules, { ageYears: 28, sex: 'female', visitType: 'general' }), undefined);
+      assert.equal(
+        findExemption(rules, { ageYears: 28, sex: 'female', visitType: 'general' }),
+        undefined,
+      );
       assert.equal(findExemption(rules, { ageYears: 5, sex: 'male' }), undefined);
     });
 
@@ -424,7 +472,10 @@ describe('billing', () => {
 
   it('owes the full price, or nothing when exempt — never anything in between', () => {
     assert.equal(Charge.safeParse(charge).success, true);
-    assert.equal(Charge.safeParse({ ...charge, amountMinor: 0, exemptionReason: 'Under-5 policy' }).success, true);
+    assert.equal(
+      Charge.safeParse({ ...charge, amountMinor: 0, exemptionReason: 'Under-5 policy' }).success,
+      true,
+    );
     assert.equal(Charge.safeParse({ ...charge, amountMinor: 0 }).success, false);
     assert.equal(Charge.safeParse({ ...charge, amountMinor: 100000 }).success, false);
     assert.equal(Charge.safeParse({ ...charge, exemptionReason: 'Under-5 policy' }).success, false);
@@ -453,7 +504,10 @@ describe('billing', () => {
     const reversal = { ...payment, reverses: 'payment:0' };
 
     assert.equal(Payment.safeParse(waiver).success, false);
-    assert.equal(Payment.safeParse({ ...waiver, reason: 'Destitute — approved by supervisor' }).success, true);
+    assert.equal(
+      Payment.safeParse({ ...waiver, reason: 'Destitute — approved by supervisor' }).success,
+      true,
+    );
     assert.equal(Payment.safeParse(reversal).success, false);
     assert.equal(Payment.safeParse({ ...reversal, reason: 'Entered twice' }).success, true);
   });
