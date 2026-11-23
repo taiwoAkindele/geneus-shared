@@ -305,20 +305,32 @@ The additions are optional, so document schema version remains 3.
   Additional facility registration may reuse the existing administrator's PIN record
   on that same device after an authorized, source-bound bootstrap creates their new
   admin membership. Ordinary staff provisioning does not approve PIN initialization.
-  An online switch may continue a session only when the server links the same person,
-  the destination already trusts the exact same unlocked PIN record, and destination
-  sign-in rules pass. A different or reset PIN requires destination sign-in; it is
-  never overwritten by a switch. PIN records remain outside the shared documents.
+  Switching facility keeps the person signed in when they are the same person at the
+  destination and its sign-in rules pass (role, hours, active membership, idle limit, the
+  7-day freeze). Online, the server confirms it from the person's verified session and
+  returns a destination session (`OrganizationFacilityAccess.session`); offline, the
+  destination's own synced staff record must link the same `personId`. A switch never
+  copies or overwrites a PIN: the destination's PIN, or a password sign-in, is what
+  unlocks it next time. PIN records remain outside the shared documents.
 - **Staff passwords.** A person's password belongs to their verified email and is held by
   the server as a slow hash only — never a record, never synced. One email has one
   password across every facility it works at. Signing in with it on an enrolled device
   (`POST /staff/password/sign-in`, online only) opens a staff session and returns a
   short-lived **PIN grant**: the approval to choose this person's PIN on this device,
   spent by `POST /staff/session/enrol`. The first password is chosen when an invitation is
-  redeemed (`StaffPinEnrol.password`, with the invitation code); a forgotten one is reset
-  with a 6-digit code sent to that email, which also ends open sessions and clears the
-  person's server PIN registrations. A PIN stays per device, as above; the password is
-  what proves the person on a new device or after too many wrong PINs.
+  redeemed (`StaffPinEnrol.password`, with the invitation code). An invitation never
+  replaces an existing password: when the email already has one, the person proves it is
+  them with that password or a code sent to the email (`StaffPinEnrol.existingAccount`).
+  A forgotten password is reset with a 6-digit code sent to that email, which also ends
+  open sessions and clears the person's server PIN registrations. A PIN stays per device,
+  as above; the password is what proves the person on a new device or after too many
+  wrong PINs.
+- **New devices.** A device enrolled at no facility may sign in with email and password
+  plus a 6-digit code sent to that email (`POST /devices/password-sign-in`, then
+  `…/confirm`). The code enrols that device at the person's **primary facility** — their
+  organization's original facility, or else the first facility they joined — through the
+  same enrollment path as an administrator's code, so it is listed and revocable like any
+  device. The person then chooses the device's PIN with the returned PIN grant.
 - **Admin recovery by email.** A facility admin's email is proven with a 6-digit code at
   registration (or added later by the admin) and kept on the server only — never a record,
   never synced to a phone. Replacing one already on file also needs a code sent to that

@@ -2,6 +2,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   DeviceCredential,
+  DevicePasswordSignIn,
+  DevicePasswordSignInConfirm,
   emailAddress,
   emailCode,
   FacilityRegistration,
@@ -141,8 +143,7 @@ describe('StaffPinEnrol', () => {
 
   it('takes a first password only with an invitation or setup code', () => {
     assert.equal(
-      StaffPinEnrol.safeParse({ ...base, setupCode: 'ABCD2345', password: 'long enough' })
-        .success,
+      StaffPinEnrol.safeParse({ ...base, setupCode: 'ABCD2345', password: 'long enough' }).success,
       true,
     );
     assert.equal(
@@ -169,5 +170,55 @@ describe('staff passwords', () => {
     assert.equal(StaffPasswordReset.safeParse(reset).success, true);
     assert.equal(StaffPasswordReset.safeParse({ ...reset, code: '12345' }).success, false);
     assert.equal(StaffPasswordReset.safeParse({ ...reset, password: 'short' }).success, false);
+  });
+});
+
+describe('accepting an invitation with an existing password', () => {
+  const base = { staffId: 'staff-1', pin: '123456', setupCode: 'ABCD2345' };
+
+  it('takes the current password or an email code, never both with a new password', () => {
+    assert.equal(
+      StaffPinEnrol.safeParse({ ...base, existingAccount: { currentPassword: 'mine' } }).success,
+      true,
+    );
+    assert.equal(
+      StaffPinEnrol.safeParse({ ...base, existingAccount: { accountCode: '123456' } }).success,
+      true,
+    );
+    assert.equal(
+      StaffPinEnrol.safeParse({
+        ...base,
+        password: 'long enough',
+        existingAccount: { currentPassword: 'mine' },
+      }).success,
+      false,
+    );
+  });
+
+  it('is only part of accepting an invitation', () => {
+    const { setupCode: _setupCode, ...withoutCode } = base;
+
+    assert.equal(
+      StaffPinEnrol.safeParse({
+        ...withoutCode,
+        emailCode: '123456',
+        existingAccount: { currentPassword: 'mine' },
+      }).success,
+      false,
+    );
+  });
+});
+
+describe('new device sign-in', () => {
+  it('needs the code and the device it was sent for', () => {
+    const confirm = { email: 'Nurse@Example.org', deviceId: 'device-1', code: '123456' };
+
+    assert.equal(DevicePasswordSignInConfirm.parse(confirm).email, 'nurse@example.org');
+    assert.equal(DevicePasswordSignInConfirm.safeParse({ ...confirm, code: 'abc' }).success, false);
+    assert.equal(
+      DevicePasswordSignIn.safeParse({ email: 'nurse@example.org', password: 'x' }).success,
+      false,
+      'the device id is required',
+    );
   });
 });
