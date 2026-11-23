@@ -133,7 +133,7 @@ describe('StaffPinEnrol', () => {
   it('accepts exactly one proof', () => {
     assert.equal(StaffPinEnrol.safeParse({ ...base, pinGrant: grant }).success, true);
     assert.equal(StaffPinEnrol.safeParse({ ...base, setupCode: 'ABCD2345' }).success, true);
-    assert.equal(StaffPinEnrol.safeParse({ ...base, emailCode: '123456' }).success, true);
+    assert.equal(StaffPinEnrol.safeParse({ ...base, emailCode: '123456' }).success, false);
     assert.equal(StaffPinEnrol.safeParse(base).success, false);
     assert.equal(
       StaffPinEnrol.safeParse({ ...base, pinGrant: grant, setupCode: 'ABCD2345' }).success,

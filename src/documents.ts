@@ -1098,46 +1098,6 @@ export const rosterSignaturePayload = (
     extendedUntil: shift.extendedUntil ? Date.parse(shift.extendedUntil) : null,
   });
 
-/**
- * A one-time code that lets a member of staff set their PIN on a facility
- * device without anyone else's PIN being typed there (root §4.3). An admin
- * asks geneus-server for it from any enrolled device; the server shows the
- * code once, stores only its PBKDF2 hash here, and the record syncs down so a
- * device can check the code offline. Issuing a new code for the same person
- * revokes their earlier ones.
- *
- * Server-written. The only change a device may make is marking it used, as the
- * staff member the code was issued for.
- */
-export const PinSetupCode = baseEnvelope.extend({
-  type: z.literal('pin_setup_code'),
-  /** Who may use it. */
-  staffId: z.string().min(1),
-  /** PBKDF2-SHA-256 of the code, base64. */
-  codeHash: z.string().min(1),
-  codeSalt: z.string().min(1),
-  codeIterations: z.number().int().positive(),
-  expiresOn: isoDateTime,
-  revokedOn: isoDateTime.optional(),
-  usedOn: isoDateTime.optional(),
-  /** The device the PIN was set on. */
-  usedOnDevice: z.string().optional(),
-});
-
-export type PinSetupCode = z.infer<typeof PinSetupCode>;
-
-/** The columns a device may set on a {@link PinSetupCode}: marking it used. */
-export const PIN_SETUP_CODE_CLAIM_FIELDS = ['usedOn', 'usedOnDevice'] as const;
-
-/**
- * The code as it is hashed: read aloud and typed on a phone, so case and
- * stray spaces must not matter. The hash is PBKDF2-SHA-256 of these UTF-8
- * bytes, with the record's base64 `codeSalt` decoded to bytes, its
- * `codeIterations`, and a 32-byte output.
- */
-export const normalizePinSetupCode = (code: string): string =>
-  code.replace(/\s+/g, '').toUpperCase();
-
 export const DeviceStatus = z.enum(['active', 'revoked']);
 
 export type DeviceStatus = z.infer<typeof DeviceStatus>;

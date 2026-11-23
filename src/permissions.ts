@@ -125,13 +125,10 @@ const INSURANCE_OFFICER: readonly Permission[] = [
 ];
 
 /**
- * Granted by no role and never individually assignable. PIN claims use the
- * claim context; clinical review uses accepted scoped reviewer authority.
+ * Granted by no role and never individually assignable: clinical review uses
+ * accepted scoped reviewer authority.
  */
-export const PROTECTED_PERMISSIONS: readonly Permission[] = [
-  'pin_setup_code:claim',
-  'clinical_capability:review',
-];
+export const PROTECTED_PERMISSIONS: readonly Permission[] = ['clinical_capability:review'];
 
 /**
  * What each role may do. Roles are the PRD's job titles (§7.1, §14.1); the

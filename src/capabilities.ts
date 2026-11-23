@@ -83,16 +83,11 @@ export const Permission = z.enum([
   'device:revoke',
   // Reconciliation
   'sync_rejection:resolve',
-  // Setting one's own PIN with a code an admin issued
-  'pin_setup_code:claim',
 ]);
 
 export type Permission = z.infer<typeof Permission>;
 
-/** The PIN-code claim is never a permission an admin can assign. */
-export const AssignablePermission = Permission.exclude([
-  'pin_setup_code:claim',
-  'clinical_capability:review',
-]);
+/** Clinical review comes from accepted reviewer authority, never an assignment. */
+export const AssignablePermission = Permission.exclude(['clinical_capability:review']);
 
 export type AssignablePermission = z.infer<typeof AssignablePermission>;
