@@ -309,6 +309,16 @@ The additions are optional, so document schema version remains 3.
   the destination already trusts the exact same unlocked PIN record, and destination
   sign-in rules pass. A different or reset PIN requires destination sign-in; it is
   never overwritten by a switch. PIN records remain outside the shared documents.
+- **Staff passwords.** A person's password belongs to their verified email and is held by
+  the server as a slow hash only — never a record, never synced. One email has one
+  password across every facility it works at. Signing in with it on an enrolled device
+  (`POST /staff/password/sign-in`, online only) opens a staff session and returns a
+  short-lived **PIN grant**: the approval to choose this person's PIN on this device,
+  spent by `POST /staff/session/enrol`. The first password is chosen when an invitation is
+  redeemed (`StaffPinEnrol.password`, with the invitation code); a forgotten one is reset
+  with a 6-digit code sent to that email, which also ends open sessions and clears the
+  person's server PIN registrations. A PIN stays per device, as above; the password is
+  what proves the person on a new device or after too many wrong PINs.
 - **Admin recovery by email.** A facility admin's email is proven with a 6-digit code at
   registration (or added later by the admin) and kept on the server only — never a record,
   never synced to a phone. Replacing one already on file also needs a code sent to that

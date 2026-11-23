@@ -5,6 +5,9 @@ import {
   emailAddress,
   emailCode,
   FacilityRegistration,
+  StaffPasswordReset,
+  StaffPasswordSignIn,
+  StaffPinEnrol,
   SyncTokenClaims,
   UploadMutation,
   UploadRequest,
@@ -118,5 +121,53 @@ describe('upload', () => {
     });
 
     assert.equal(response.duplicates, 2);
+  });
+});
+
+describe('StaffPinEnrol', () => {
+  const base = { staffId: 'staff-1', pin: '123456' };
+  const grant = 'g'.repeat(43);
+
+  it('accepts exactly one proof', () => {
+    assert.equal(StaffPinEnrol.safeParse({ ...base, pinGrant: grant }).success, true);
+    assert.equal(StaffPinEnrol.safeParse({ ...base, setupCode: 'ABCD2345' }).success, true);
+    assert.equal(StaffPinEnrol.safeParse({ ...base, emailCode: '123456' }).success, true);
+    assert.equal(StaffPinEnrol.safeParse(base).success, false);
+    assert.equal(
+      StaffPinEnrol.safeParse({ ...base, pinGrant: grant, setupCode: 'ABCD2345' }).success,
+      false,
+    );
+  });
+
+  it('takes a first password only with an invitation or setup code', () => {
+    assert.equal(
+      StaffPinEnrol.safeParse({ ...base, setupCode: 'ABCD2345', password: 'long enough' })
+        .success,
+      true,
+    );
+    assert.equal(
+      StaffPinEnrol.safeParse({ ...base, pinGrant: grant, password: 'long enough' }).success,
+      false,
+    );
+    assert.equal(
+      StaffPinEnrol.safeParse({ ...base, setupCode: 'ABCD2345', password: 'short' }).success,
+      false,
+    );
+  });
+});
+
+describe('staff passwords', () => {
+  it('normalises the email it signs in with', () => {
+    const parsed = StaffPasswordSignIn.parse({ email: ' Nurse@Example.COM ', password: 'x' });
+
+    assert.equal(parsed.email, 'nurse@example.com');
+  });
+
+  it('needs the 6-digit code and a long enough new password to reset', () => {
+    const reset = { email: 'nurse@example.com', code: '123456', password: 'long enough' };
+
+    assert.equal(StaffPasswordReset.safeParse(reset).success, true);
+    assert.equal(StaffPasswordReset.safeParse({ ...reset, code: '12345' }).success, false);
+    assert.equal(StaffPasswordReset.safeParse({ ...reset, password: 'short' }).success, false);
   });
 });

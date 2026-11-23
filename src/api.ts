@@ -761,24 +761,43 @@ const staffPin = z.string().regex(/^\d{6}$/, 'A PIN is 6 digits');
 /** Opens a server session for the person signing in on this device, proven by their PIN. */
 export const StaffSessionOpen = z.strictObject({ staffId: z.string().min(1), pin: staffPin });
 
+/** A staff password as it is chosen. Signing in accepts whatever was set, so it is not re-checked there. */
+export const staffPassword = z
+  .string()
+  .min(8, 'A password is at least 8 characters')
+  .max(128, 'A password is at most 128 characters');
+
+/** The short-lived permission a password sign-in gives to register a PIN on this device. */
+const pinGrant = z.string().min(20).max(200);
+
 /**
- * Registers a person's PIN with the server for this device. Proven by a PIN
- * setup code an administrator issued to that person, or by a code sent to the
- * person's own verified email (for PINs set before server sessions existed).
+ * Registers a person's PIN with the server for this device. Proven by exactly
+ * one of: the PIN grant from signing in with their password on this device; a
+ * PIN setup code or invitation code issued to them; or a code sent to their
+ * own verified email (for PINs set before server sessions existed).
+ *
+ * `password` goes only with `setupCode`: redeeming an invitation is where a
+ * person chooses their first password.
  */
 export const StaffPinEnrol = z
   .strictObject({
     staffId: z.string().min(1),
     pin: staffPin,
+    pinGrant: pinGrant.optional(),
     setupCode: z.string().min(4).max(40).optional(),
     emailCode: z
       .string()
       .regex(/^\d{6}$/)
       .optional(),
+    password: staffPassword.optional(),
   })
   .refine(
-    (v) => Boolean(v.setupCode) !== Boolean(v.emailCode),
-    'Prove it with a PIN setup code or an email code',
+    (v) => [v.pinGrant, v.setupCode, v.emailCode].filter(Boolean).length === 1,
+    'Prove it with your password sign-in, a PIN setup code or an email code',
+  )
+  .refine(
+    (v) => !v.password || Boolean(v.setupCode),
+    'A password is chosen here only when accepting an invitation',
   );
 
 export type StaffSession = {
@@ -787,6 +806,34 @@ export type StaffSession = {
   expiresOn: string;
   idleMinutes: number;
 };
+
+/** Signs in on an enrolled device with the email and password of someone who works at its facility. */
+export const StaffPasswordSignIn = z.strictObject({
+  email: emailAddress,
+  password: z.string().min(1).max(128),
+});
+
+/** A password sign-in: an open staff session, plus permission to register a PIN on this device. */
+export type StaffPasswordSession = StaffSession & {
+  pinGrant: string;
+  pinGrantExpiresOn: string;
+};
+
+/** Asks for a password reset code. The answer is the same whether or not the email is known. */
+export const StaffPasswordResetRequest = z.strictObject({ email: emailAddress });
+
+/** Sets a new password with the code from the reset email. */
+export const StaffPasswordReset = z.strictObject({
+  email: emailAddress,
+  code: emailCode,
+  password: staffPassword,
+});
+
+/** Changes the signed-in person's password; the current one proves it is them at the keyboard. */
+export const StaffPasswordChange = z.strictObject({
+  currentPassword: z.string().min(1).max(128),
+  password: staffPassword,
+});
 
 /** Configuration saved online: the same mutations as sync, confirmed by the server before they count. */
 export type ConfigurationSaveResponse = {
