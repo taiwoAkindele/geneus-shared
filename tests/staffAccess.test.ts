@@ -76,11 +76,11 @@ describe('combined staff access', () => {
     );
   });
 
-  it('rejects unknown roles, duplicate grants and the private PIN claim capability', () => {
+  it('rejects unknown roles, duplicate grants and the protected clinical review capability', () => {
     for (const extra of [
       { additionalRoles: ['janitor'] },
       { additionalRoles: ['nurse', 'nurse'] },
-      { additionalPermissions: ['pin_setup_code:claim'] },
+      { additionalPermissions: ['clinical_capability:review'] },
       { additionalPermissions: ['payment:receive', 'payment:receive'] },
     ]) {
       assert.equal(Staff.safeParse({ ...member(), ...extra }).success, false);

@@ -316,31 +316,6 @@ export const EmailSent = z.object({
 export type EmailSent = z.infer<typeof EmailSent>;
 
 /* ------------------------------------------------------------------ */
-/* PIN setup codes — POST /staff/:staffId/pin-codes                    */
-/*   POST /staff/:staffId/pin-codes/email (a facility admin, by email) */
-/* ------------------------------------------------------------------ */
-
-/**
- * An admin, from any enrolled device, asks for a code that lets a member of
- * staff set (or reset) their PIN on a facility device. The plain code is in
- * this response only; the `pin_setup_code` record that syncs down carries its
- * hash. Read it to the staff member by phone — nothing else delivers it.
- */
-export const PinSetupCodeRequest = z.object({
-  /** Staff issuing the code — verified server-side to hold `staff:manage`. */
-  issuedBy: z.string().min(1),
-});
-
-export type PinSetupCodeRequest = z.infer<typeof PinSetupCodeRequest>;
-
-export const PinSetupCodeIssued = z.object({
-  code: z.string().min(1),
-  expiresOn: isoDateTime,
-});
-
-export type PinSetupCodeIssued = z.infer<typeof PinSetupCodeIssued>;
-
-/* ------------------------------------------------------------------ */
 /* Sync token — POST /sync/token (Authorization: Bearer <credential>)  */
 /* ------------------------------------------------------------------ */
 
@@ -800,9 +775,8 @@ export type ExistingAccountProof = z.infer<typeof ExistingAccountProof>;
 
 /**
  * Registers a person's PIN with the server for this device. Proven by exactly
- * one of: the PIN grant from signing in with their password on this device; a
- * PIN setup code or invitation code issued to them; or a code sent to their
- * own verified email (for PINs set before server sessions existed).
+ * one of: the PIN grant from signing in with their password on this device, or
+ * the code of an invitation emailed to them (`setupCode`).
  *
  * Accepting an invitation also settles the password: `password` chooses the
  * first one for an email that has none; `existingAccount` proves the person
@@ -814,16 +788,12 @@ export const StaffPinEnrol = z
     pin: staffPin,
     pinGrant: pinGrant.optional(),
     setupCode: z.string().min(4).max(40).optional(),
-    emailCode: z
-      .string()
-      .regex(/^\d{6}$/)
-      .optional(),
     password: staffPassword.optional(),
     existingAccount: ExistingAccountProof.optional(),
   })
   .refine(
-    (v) => [v.pinGrant, v.setupCode, v.emailCode].filter(Boolean).length === 1,
-    'Prove it with your password sign-in, a PIN setup code or an email code',
+    (v) => [v.pinGrant, v.setupCode].filter(Boolean).length === 1,
+    'Prove it with your password sign-in or your invitation code',
   )
   .refine(
     (v) => (!v.password && !v.existingAccount) || Boolean(v.setupCode),

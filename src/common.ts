@@ -77,7 +77,6 @@ export const DocType = z.enum([
   'device',
   'audit_event',
   'sync_rejection',
-  'pin_setup_code',
   'fee_item',
   'charge',
   'payment',

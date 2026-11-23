@@ -96,7 +96,6 @@ snake_case names.
 | `device` | `Device` | **server** (enrollment / revocation) | root §4.3c |
 | `audit_event` | `AuditEvent` | device and server, append-only | §14 |
 | `sync_rejection` | `SyncRejection` | **server**; device may resolve | root §4.1 |
-| `pin_setup_code` | `PinSetupCode` | **server**; device may mark it used | §14.1 |
 | `fee_item` | `FeeItem` (with `exemptions`) | device | §9.13.1–2 |
 | `charge` / `payment` | `Charge` / `Payment` (§14) | device, insert-only | §9.13 |
 
@@ -291,18 +290,13 @@ The additions are optional, so document schema version remains 3.
 - **Auth secrets / credentials.** A staff member's PIN is owned by **the device**: set and
   verified where it was set, never a record. A device's credential is held by the server
   as a **hash** and by the device as a secret; the `device` record carries neither.
-- **Who may set a PIN.** A PIN is set on a device only with someone's approval, never by
-  whoever is holding the phone. Two ways: a facility admin or supervisor on site enters
-  their own PIN on that device, or an admin anywhere asks geneus-server for a one-time
-  **PIN setup code** (`POST /staff/:staffId/pin-codes`) and reads it to the staff member.
-  The `pin_setup_code` record syncs down with the code's PBKDF2 **hash** only (never the
-  code), so the device checks it offline. It expires after 24 hours, a newer code for the
-  same person revokes older ones, and the device marks it used by patching `usedOn` and
-  `usedOnDevice` as that staff member (`pin_setup_code:claim`, a permission no role
-  holds). The first admin sets their PIN with no approval, straight after registering
-  the facility, because nobody else exists yet. On site, only a facility admin may
-  approve a facility admin's PIN — whoever approves could choose the PIN themselves.
-  Additional facility registration may reuse the existing administrator's PIN record
+- **Who may set a PIN.** A PIN is set on a device only once the server has proven who the
+  person is, never by whoever is holding the phone, and only online: by their password
+  sign-in on that device (its PIN grant, below), or by accepting an invitation emailed to
+  them (`POST /staff/:staffId/invitations`, whose code `POST /staff/session/enrol`
+  checks). Invitations are sent only by staff with the clinical authority to approve that
+  person. The first admin sets their PIN with no approval, straight after registering
+  the facility, because nobody else exists yet. Additional facility registration may reuse the existing administrator's PIN record
   on that same device after an authorized, source-bound bootstrap creates their new
   admin membership. Ordinary staff provisioning does not approve PIN initialization.
   Switching facility keeps the person signed in when they are the same person at the
@@ -334,9 +328,8 @@ The additions are optional, so document schema version remains 3.
 - **Admin recovery by email.** A facility admin's email is proven with a 6-digit code at
   registration (or added later by the admin) and kept on the server only — never a record,
   never synced to a phone. Replacing one already on file also needs a code sent to that
-  current address, because the server knows the device, not who is holding it. A facility admin who forgets their PIN asks for a PIN setup code
-  by email (`POST /staff/:staffId/pin-codes/email`, from any of the facility's enrolled
-  devices); it is the same 24-hour, one-time code an admin would issue.
+  current address, because the server knows the device, not who is holding it. A facility admin who forgets their PIN signs in
+  with their email and password, as anyone does.
 - **Roster signatures are the deliberate exception** — `roster_shift.signature` is a field
   precisely because devices must verify it offline. The server signs
   `rosterSignaturePayload` (staff, facility, start, end and any extension, as epoch
@@ -395,8 +388,6 @@ The handful of things that must happen online. Shapes only; handlers live in
 | `POST /devices/:id/revoke` | `DeviceRevocationRequest` → `Device` | De-enrol; optionally request a wipe (needs `device:revoke`) |
 | `POST /email-verifications` | `RegistrationEmailRequest` → `EmailSent` | Email a 6-digit code to the would-be admin (needs a valid invite) |
 | `POST /staff/:staffId/email/code` · `POST /staff/:staffId/email` | `StaffEmailRequest` → `EmailSent` · `StaffEmailConfirmation` → 204 | A facility admin adds or changes their own recovery email (a code to the new address, and to the current one when replacing it) |
-| `POST /staff/:staffId/pin-codes` | `PinSetupCodeRequest` → `PinSetupCodeIssued` | An admin issues a PIN setup code (needs `staff:manage`) |
-| `POST /staff/:staffId/pin-codes/email` | *(device credential)* → `EmailSent` | A facility admin who forgot their PIN gets a PIN setup code by email |
 | `POST /sync/token` | *(device credential)* → `SyncTokenResponse` | Short-lived PowerSync JWT: `sub` = device, `facility_id` claim |
 | `POST /sync/upload` | `UploadRequest` → `UploadResponse` | The connector's write-back; every mutation authorised server-side (§6–§8) |
 | `GET /time` | → `SignedTime` | The clock devices trust (unchanged from v2) |

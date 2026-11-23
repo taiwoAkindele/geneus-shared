@@ -86,13 +86,6 @@ describe('role permissions', () => {
     }
   });
 
-  /** Only the person a PIN setup code was issued for may claim it (SCHEMA.md §10). */
-  it('grants the PIN setup code claim to no role', () => {
-    for (const role of Role.options) {
-      assert.equal(ROLE_PERMISSIONS[role].includes('pin_setup_code:claim'), false, role);
-    }
-  });
-
   it('preserves only medical-history read access for read-only staff', () => {
     for (const role of Role.options) {
       assert.deepEqual(

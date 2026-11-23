@@ -20,10 +20,8 @@ import {
   FeeItem,
   findExemption,
   Handoff,
-  normalizePinSetupCode,
   Patient,
   Payment,
-  PinSetupCode,
   RosterShift,
   rosterSignaturePayload,
   SyncRejection,
@@ -221,29 +219,6 @@ describe('roster signatures', () => {
   it('covers the supervisor extension, so it cannot be added under an old signature', () => {
     const extended = { ...shift, extendedUntil: '2026-09-12T20:00:00+01:00' };
     assert.notEqual(rosterSignaturePayload(extended), rosterSignaturePayload(shift));
-  });
-});
-
-describe('PIN setup codes', () => {
-  const code = {
-    ...envelope,
-    id: 'pin_setup_code:one',
-    type: 'pin_setup_code',
-    staffId: 'staff:two',
-    codeHash: 'aGFzaA==',
-    codeSalt: 'c2FsdA==',
-    codeIterations: 100_000,
-    expiresOn: '2026-09-13T09:30:00+01:00',
-  };
-
-  it('carries the hash of the code, never the code itself', () => {
-    const parsed = PinSetupCode.parse(code);
-    assert.equal('code' in parsed, false);
-    assert.equal(parseDocument(code).success, true);
-  });
-
-  it('ignores case and spaces in a code read aloud', () => {
-    assert.equal(normalizePinSetupCode(' ab3d ef7h '), 'AB3DEF7H');
   });
 });
 
