@@ -195,11 +195,26 @@ export const OrganizationFacilityOpen = z.object({
 
 export type OrganizationFacilityOpen = z.infer<typeof OrganizationFacilityOpen>;
 
+/** A server staff session as the API returns it (the `StaffSession` type, validated). */
+export const StaffSessionShape = z.object({
+  token: z.string().min(1),
+  staffId: z.string().min(1),
+  expiresOn: z.string().min(1),
+  idleMinutes: z.number().positive(),
+});
+
+/**
+ * Opening another facility of the organization. `session` is the signed-in
+ * person's session at the destination: the server confirmed it is the same
+ * person, so a switch keeps them signed in. Role, sign-in hours and
+ * membership still come from the destination facility.
+ */
 export const OrganizationFacilityAccess = z.object({
   facilityId: z.string(),
   staffId: z.string(),
   personId: z.string(),
   device: DeviceCredential.optional(),
+  session: StaffSessionShape.optional(),
 });
 
 export type OrganizationFacilityAccess = z.infer<typeof OrganizationFacilityAccess>;
@@ -771,13 +786,27 @@ export const staffPassword = z
 const pinGrant = z.string().min(20).max(200);
 
 /**
+ * When an invitation goes to an email that already has a password (the person
+ * works at another facility), they prove it is them instead of choosing a new
+ * one: their current password, or a code sent to that email
+ * (`POST /staff/:staffId/invitations/account-code`).
+ */
+export const ExistingAccountProof = z.union([
+  z.strictObject({ currentPassword: z.string().min(1).max(128) }),
+  z.strictObject({ accountCode: emailCode }),
+]);
+
+export type ExistingAccountProof = z.infer<typeof ExistingAccountProof>;
+
+/**
  * Registers a person's PIN with the server for this device. Proven by exactly
  * one of: the PIN grant from signing in with their password on this device; a
  * PIN setup code or invitation code issued to them; or a code sent to their
  * own verified email (for PINs set before server sessions existed).
  *
- * `password` goes only with `setupCode`: redeeming an invitation is where a
- * person chooses their first password.
+ * Accepting an invitation also settles the password: `password` chooses the
+ * first one for an email that has none; `existingAccount` proves the person
+ * for an email that already has one, which is never replaced here.
  */
 export const StaffPinEnrol = z
   .strictObject({
@@ -790,15 +819,23 @@ export const StaffPinEnrol = z
       .regex(/^\d{6}$/)
       .optional(),
     password: staffPassword.optional(),
+    existingAccount: ExistingAccountProof.optional(),
   })
   .refine(
     (v) => [v.pinGrant, v.setupCode, v.emailCode].filter(Boolean).length === 1,
     'Prove it with your password sign-in, a PIN setup code or an email code',
   )
   .refine(
-    (v) => !v.password || Boolean(v.setupCode),
-    'A password is chosen here only when accepting an invitation',
+    (v) => (!v.password && !v.existingAccount) || Boolean(v.setupCode),
+    'A password is settled here only when accepting an invitation',
+  )
+  .refine(
+    (v) => !(v.password && v.existingAccount),
+    'Choose a new password or confirm your existing one, not both',
   );
+
+/** What checking an invitation code tells the person: whether their email already has a password. */
+export type InvitationCheckResult = { existingAccount: boolean };
 
 export type StaffSession = {
   token: string;
@@ -817,6 +854,39 @@ export const StaffPasswordSignIn = z.strictObject({
 export type StaffPasswordSession = StaffSession & {
   pinGrant: string;
   pinGrantExpiresOn: string;
+};
+
+/**
+ * Signing in on a device enrolled at no facility (`POST /devices/password-sign-in`).
+ * The right password emails a 6-digit code; `deviceId` is the id the device
+ * chose for itself, as in `DeviceEnrollmentRequest`, and the code works for
+ * that device only.
+ */
+export const DevicePasswordSignIn = z.strictObject({
+  email: emailAddress,
+  password: z.string().min(1).max(128),
+  deviceId: z.string().min(1).max(200),
+});
+
+/** Where the new-device code went, masked. */
+export type DevicePasswordChallenge = { sentTo: string; expiresOn: string };
+
+/**
+ * The emailed code confirms the new device (`POST /devices/password-sign-in/confirm`).
+ * The device is enrolled at the person's primary facility — their organization's
+ * original facility, or else the first facility they joined.
+ */
+export const DevicePasswordSignInConfirm = z.strictObject({
+  email: emailAddress,
+  deviceId: z.string().min(1).max(200),
+  code: emailCode,
+  deviceLabel: z.string().trim().max(200).optional(),
+});
+
+/** A new device's credential, and the person's session and PIN grant on it. */
+export type DevicePasswordSignInResult = {
+  device: DeviceCredential;
+  session: StaffPasswordSession;
 };
 
 /** Asks for a password reset code. The answer is the same whether or not the email is known. */
