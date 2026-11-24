@@ -7,6 +7,8 @@ import {
   emailAddress,
   emailCode,
   FacilityRegistration,
+  FacilitySignupDecision,
+  FacilitySignupRequest,
   StaffPasswordReset,
   StaffPasswordSignIn,
   StaffPinEnrol,
@@ -16,7 +18,7 @@ import {
   UploadResponse,
 } from '../src/api.ts';
 
-const registration = {
+const signupRequest = {
   code: 'OOE-PHC',
   name: 'Odo-Ona Elewe PHC',
   state: 'Oyo',
@@ -25,29 +27,62 @@ const registration = {
   adminFullName: 'Amaka Okoro',
   adminEmail: 'amaka@example.org',
   emailCode: '482193',
-  deviceId: 'device-one',
-  inviteToken: 'ABCDEFGHJK',
 };
 
-describe('facility registration', () => {
-  it('accepts a well-formed registration', () => {
-    assert.ok(FacilityRegistration.safeParse(registration).success);
+const registration = {
+  token: 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789',
+  deviceId: 'device-one',
+  password: 'a long enough password',
+};
+
+describe('facility sign-up', () => {
+  it('accepts a well-formed request', () => {
+    assert.ok(FacilitySignupRequest.safeParse(signupRequest).success);
   });
 
   /** The code prefixes every Patient ID, so a lowercase or spaced one would break PATIENT_ID_RE. */
   it('rejects a facility code that could not prefix a Patient ID', () => {
     for (const code of ['ooe-phc', 'OOE PHC', 'OOE-', 'X']) {
-      assert.equal(FacilityRegistration.safeParse({ ...registration, code }).success, false, code);
+      assert.equal(
+        FacilitySignupRequest.safeParse({ ...signupRequest, code }).success,
+        false,
+        code,
+      );
     }
   });
 
-  /** Recovery depends on it, so a registration without a proven email is incomplete (SCHEMA.md §10). */
+  /** Sign-in and recovery depend on it, so a request without a proven email is incomplete (SCHEMA.md §10). */
   it('requires the admin email and its verification code', () => {
-    const { adminEmail: _email, ...withoutEmail } = registration;
-    assert.equal(FacilityRegistration.safeParse(withoutEmail).success, false);
+    const { adminEmail: _email, ...withoutEmail } = signupRequest;
+
+    assert.equal(FacilitySignupRequest.safeParse(withoutEmail).success, false);
     assert.equal(
-      FacilityRegistration.safeParse({ ...registration, emailCode: '12345' }).success,
+      FacilitySignupRequest.safeParse({ ...signupRequest, emailCode: '12345' }).success,
       false,
+    );
+  });
+
+  it('registers from the link with this device and a password, nothing else', () => {
+    assert.ok(FacilityRegistration.safeParse(registration).success);
+
+    const { password: _password, ...withoutPassword } = registration;
+
+    assert.equal(FacilityRegistration.safeParse(withoutPassword).success, false);
+    assert.equal(
+      FacilityRegistration.safeParse({ ...registration, ...signupRequest }).success,
+      false,
+    );
+    assert.equal(FacilityRegistration.safeParse({ ...registration, token: 'short' }).success, false);
+  });
+
+  it('needs a reason to reject a request, and none to approve one', () => {
+    const token = registration.token;
+
+    assert.ok(FacilitySignupDecision.safeParse({ token, decision: 'approve' }).success);
+    assert.equal(FacilitySignupDecision.safeParse({ token, decision: 'reject' }).success, false);
+    assert.ok(
+      FacilitySignupDecision.safeParse({ token, decision: 'reject', note: 'Not a facility' })
+        .success,
     );
   });
 

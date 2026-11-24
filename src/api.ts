@@ -53,15 +53,8 @@ export const ApiErrorBody = z.object({
 export type ApiErrorBody = z.infer<typeof ApiErrorBody>;
 
 /* ------------------------------------------------------------------ */
-/* Facility registration — GET /invites/:token · POST /facilities      */
+/* Facility sign-up — POST /facility-requests · POST /facilities       */
 /* ------------------------------------------------------------------ */
-
-export const InviteCheck = z.object({
-  label: z.string().min(1),
-  expiresOn: isoDateTime,
-});
-
-export type InviteCheck = z.infer<typeof InviteCheck>;
 
 /** Facility codes build every Patient ID, so the format is fixed here. */
 export const facilityCode = z
@@ -79,25 +72,59 @@ export const emailCode = z
   .trim()
   .regex(/^\d{6}$/, 'Enter the 6-digit code from the email');
 
-export const FacilityRegistration = z.object({
+/** The same facility details are collected for primary and additional facilities. */
+export const FacilityDetails = z.object({
   code: facilityCode,
   name: z.string().min(1),
   state: z.string().min(1),
   lga: z.string().min(1),
   level: Facility.shape.level,
-  adminFullName: z.string().min(1),
-  /**
-   * The first admin's email, proven with `emailCode` from
-   * `POST /email-verifications`. Kept on the server only — never a synced
-   * record — and used for one thing: emailing them a PIN setup code if they
-   * forget their PIN (SCHEMA.md §10).
-   */
+});
+
+export type FacilityDetails = z.infer<typeof FacilityDetails>;
+
+/**
+ * "Create an account": someone asks Geneus to set up their facility. The
+ * email is proven first with `emailCode` from `POST /email-verifications`, so
+ * a request can only be sent from an address its sender can read. Geneus
+ * approves or rejects it; an approval emails a registration link.
+ */
+export const FacilitySignupRequest = FacilityDetails.extend({
+  adminFullName: z.string().trim().min(1).max(200),
   adminEmail: emailAddress,
   emailCode,
+});
+
+export type FacilitySignupRequest = z.infer<typeof FacilitySignupRequest>;
+
+/** The token in a facility registration link (`/onboarding/register#token=…`). */
+export const facilityRegistrationToken = z.string().trim().min(20).max(200);
+
+/**
+ * What opening a registration link shows: the approved request, to confirm.
+ * The details cannot be changed here, since they are what Geneus approved.
+ * `hasPassword`: the email already has a Geneus password (the person works at
+ * another facility), so they enter it rather than choose one.
+ */
+export type FacilityRegistrationView = {
+  facility: FacilityDetails;
+  adminFullName: string;
+  sentTo: string;
+  hasPassword: boolean;
+  expiresOn: string;
+};
+
+/**
+ * Registering the approved facility from its link, on the device that opened
+ * it. `password` is the first admin's new password, or their existing one when
+ * the email already has a password: registration never replaces it.
+ */
+export const FacilityRegistration = z.strictObject({
+  token: facilityRegistrationToken,
   /** Minted on the device before it has any other identity; becomes `devices.id`. */
-  deviceId: z.string().min(1),
-  deviceLabel: z.string().optional(),
-  inviteToken: z.string().min(1),
+  deviceId: z.string().min(1).max(200),
+  deviceLabel: z.string().trim().min(1).max(80).optional(),
+  password: z.string().min(1).max(128),
 });
 
 export type FacilityRegistration = z.infer<typeof FacilityRegistration>;
@@ -125,17 +152,6 @@ export const FacilityRegistrationResult = z.object({
 });
 
 export type FacilityRegistrationResult = z.infer<typeof FacilityRegistrationResult>;
-
-/** The same facility details are collected for primary and additional facilities. */
-export const FacilityDetails = FacilityRegistration.pick({
-  code: true,
-  name: true,
-  state: true,
-  lga: true,
-  level: true,
-});
-
-export type FacilityDetails = z.infer<typeof FacilityDetails>;
 
 /** Reuses the authenticated administrator's verified contact, never a client-supplied email. */
 export const OrganizationFacilityRegistration = FacilityDetails.extend({
@@ -204,6 +220,20 @@ export const StaffSessionShape = z.object({
 });
 
 /**
+ * What `POST /facilities` returns: the new facility, its first admin and this
+ * device's credential, plus the admin's server session and the permission to
+ * register their PIN on this device, as a password sign-in gives.
+ */
+export const FacilityRegistrationResponse = FacilityRegistrationResult.extend({
+  session: StaffSessionShape.extend({
+    pinGrant: z.string().min(1),
+    pinGrantExpiresOn: isoDateTime,
+  }),
+});
+
+export type FacilityRegistrationResponse = z.infer<typeof FacilityRegistrationResponse>;
+
+/**
  * Opening another facility of the organization. `session` is the signed-in
  * person's session at the destination: the server confirmed it is the same
  * person, so a switch keeps them signed in. Role, sign-in hours and
@@ -220,35 +250,8 @@ export const OrganizationFacilityAccess = z.object({
 export type OrganizationFacilityAccess = z.infer<typeof OrganizationFacilityAccess>;
 
 /* ------------------------------------------------------------------ */
-/* Device enrollment — POST /devices/codes · POST /devices · POST /devices/:id/revoke */
+/* Device revocation — POST /devices/:id/revoke                        */
 /* ------------------------------------------------------------------ */
-
-/**
- * An already-enrolled device, with a signed-in `device:enroll` holder, asks for
- * a short code and reads it out to the joining device. The code is single-use
- * and short-lived; the joining device spends it for its own credential.
- */
-export const EnrollmentCodeRequest = z.object({
-  /** Staff issuing the code — verified server-side against the device's facility. */
-  issuedBy: z.string().min(1),
-});
-
-export type EnrollmentCodeRequest = z.infer<typeof EnrollmentCodeRequest>;
-
-export const EnrollmentCode = z.object({
-  code: z.string().min(1),
-  expiresOn: isoDateTime,
-});
-
-export type EnrollmentCode = z.infer<typeof EnrollmentCode>;
-
-export const DeviceEnrollmentRequest = z.object({
-  code: z.string().min(1),
-  deviceId: z.string().min(1),
-  deviceLabel: z.string().optional(),
-});
-
-export type DeviceEnrollmentRequest = z.infer<typeof DeviceEnrollmentRequest>;
 
 export const DeviceRevocationRequest = z.object({
   /** Staff revoking — verified server-side to hold `device:revoke`. */
@@ -270,13 +273,12 @@ export type DeviceRevocationRequest = z.infer<typeof DeviceRevocationRequest>;
 /* ------------------------------------------------------------------ */
 
 /**
- * Before registering, the would-be admin proves their email: the server emails
- * a 6-digit code, which goes back with the registration. The invite token is
- * required so the endpoint cannot be used to send mail to anyone.
+ * Before asking Geneus for a facility, the would-be admin proves their email:
+ * the server emails a 6-digit code, which goes back with the request
+ * (`FacilitySignupRequest.emailCode`).
  */
-export const RegistrationEmailRequest = z.object({
+export const RegistrationEmailRequest = z.strictObject({
   email: emailAddress,
-  inviteToken: z.string().min(1),
 });
 
 export type RegistrationEmailRequest = z.infer<typeof RegistrationEmailRequest>;
@@ -742,6 +744,49 @@ export type OperatorFacility = {
   openRequest?: { id: string; requestedOn: string };
 };
 
+/**
+ * A facility sign-up request as a Geneus operator reviews it from the link in
+ * the email they were sent (`/operator/facility-request#token=…`). Each
+ * operator's link is their own, so a decision is recorded against them.
+ *
+ * `requesterEmail`: whether the email to the requester went out after the
+ * decision. `failed` or `not_configured` means they have not heard; the
+ * operator can send it again.
+ */
+export type FacilitySignupReview = {
+  id: string;
+  status: 'requested' | 'approved' | 'rejected';
+  facility: FacilityDetails;
+  adminFullName: string;
+  adminEmail: string;
+  requestedOn: string;
+  reviewer: { name: string; email: string };
+  decision?: {
+    decidedOn: string;
+    decidedBy: string;
+    note?: string;
+  };
+  registeredOn?: string;
+  requesterEmail?: 'sent' | 'failed' | 'not_configured';
+};
+
+/** The token in an operator's review link. */
+export const facilitySignupReviewToken = z.string().trim().min(20).max(200);
+
+/** Approving needs no note; rejecting does, since the reason is emailed to the requester. */
+export const FacilitySignupDecision = z
+  .strictObject({
+    token: facilitySignupReviewToken,
+    decision: z.enum(['approve', 'reject']),
+    note: z.string().trim().max(1000).optional(),
+  })
+  .refine((value) => value.decision === 'approve' || (value.note ?? '').length >= 3, {
+    path: ['note'],
+    message: 'Say why the request is rejected: it is sent to the person who asked',
+  });
+
+export type FacilitySignupDecision = z.infer<typeof FacilitySignupDecision>;
+
 /* ------------------------------------------------------------------ */
 /* Server-verified staff sessions                                      */
 /* ------------------------------------------------------------------ */
@@ -829,7 +874,7 @@ export type StaffPasswordSession = StaffSession & {
 /**
  * Signing in on a device enrolled at no facility (`POST /devices/password-sign-in`).
  * The right password emails a 6-digit code; `deviceId` is the id the device
- * chose for itself, as in `DeviceEnrollmentRequest`, and the code works for
+ * chose for itself, as in `FacilityRegistration`, and the code works for
  * that device only.
  */
 export const DevicePasswordSignIn = z.strictObject({

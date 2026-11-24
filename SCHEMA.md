@@ -381,12 +381,12 @@ The handful of things that must happen online. Shapes only; handlers live in
 
 | Route | Request → Response | Purpose |
 | --- | --- | --- |
-| `GET /invites/:token` | → `InviteCheck` | Reject a bad invite before asking for details |
-| `POST /facilities` | `FacilityRegistration` → `FacilityRegistrationResult` | Create the facility, its admin, and enrol the registering device |
-| `POST /devices/codes` | `EnrollmentCodeRequest` → `EnrollmentCode` | An enrolled device issues a short-lived code (needs `device:enroll`) |
-| `POST /devices` | `DeviceEnrollmentRequest` → `DeviceCredential` | The joining device spends the code |
+| `POST /facility-requests` | `FacilitySignupRequest` → `{ sentTo }` | "Create an account": ask Geneus for a facility, with a proven email |
+| `POST /facility-requests/review/open` · `/decide` · `/resend` | `{ token }` · `FacilitySignupDecision` · `{ token }` → `FacilitySignupReview` | A Geneus operator decides from the link emailed to them |
+| `POST /facility-registration/open` | `{ token }` → `FacilityRegistrationView` | What an approved registration link is for, spending nothing |
+| `POST /facilities` | `FacilityRegistration` → `FacilityRegistrationResponse` | From the approval's link: create the facility, its admin (and their password), enrol the registering device and sign the admin in |
 | `POST /devices/:id/revoke` | `DeviceRevocationRequest` → `Device` | De-enrol; optionally request a wipe (needs `device:revoke`) |
-| `POST /email-verifications` | `RegistrationEmailRequest` → `EmailSent` | Email a 6-digit code to the would-be admin (needs a valid invite) |
+| `POST /email-verifications` | `RegistrationEmailRequest` → `EmailSent` | Email a 6-digit code to someone asking for a facility |
 | `POST /staff/:staffId/email/code` · `POST /staff/:staffId/email` | `StaffEmailRequest` → `EmailSent` · `StaffEmailConfirmation` → 204 | A facility admin adds or changes their own recovery email (a code to the new address, and to the current one when replacing it) |
 | `POST /sync/token` | *(device credential)* → `SyncTokenResponse` | Short-lived PowerSync JWT: `sub` = device, `facility_id` claim |
 | `POST /sync/upload` | `UploadRequest` → `UploadResponse` | The connector's write-back; every mutation authorised server-side (§6–§8) |
