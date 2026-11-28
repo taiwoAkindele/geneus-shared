@@ -664,6 +664,12 @@ references remain supported. Billing review reasons suppress a second generated
 charge, without declaring an uncertain bill paid. DispensingDetails optionally
 marks catalogueVersion 1 and an explicit additionalChargeReason.
 
+Classified Laboratory definitions carry optional `laboratoryCatalogue` metadata with an
+explicit `billable` or `non_billable` pricing category and distinct specimen types. Multiple
+types require an `any` or `all` requirement. The existing `investigation.specimen` string
+remains the readable order snapshot. A billable definition requires its central fee link
+before it can become orderable. Non-billable definitions carry no fee link.
+
 ExemptionRule is re-exported from its existing public API; its unchanged schema
 now lives in billingRules.ts to avoid a runtime dependency cycle. No new document
 type, configurable category registry, ledger or generic service-link contract is

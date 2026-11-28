@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { baseEnvelope, patientId, SCHEMA_VERSION } from './common.ts';
+import { LaboratoryCatalogueDetails } from './laboratoryCatalogue.ts';
 import {
   CodedConcept,
   ClinicalAction,
@@ -80,6 +81,7 @@ export type Location = z.infer<typeof Location>;
 
 export const ServiceDefinition = record({
   feeItemId: ref.optional(),
+  laboratoryCatalogue: LaboratoryCatalogueDetails.optional(),
   type: z.literal('service_definition'),
   name: text,
   category: ServiceCategory,
@@ -90,7 +92,19 @@ export const ServiceDefinition = record({
   orderable: z.boolean().default(false),
   active: z.boolean().default(true),
   revision: version.default(1),
-});
+}).refine((definition) => {
+  if (!definition.laboratoryCatalogue) {
+    return true;
+  }
+
+  if (definition.category !== 'laboratory' || !definition.investigation) {
+    return false;
+  }
+
+  return definition.laboratoryCatalogue.pricingCategory === 'billable'
+    ? !definition.orderable || Boolean(definition.feeItemId)
+    : !definition.feeItemId;
+}, 'A classified laboratory test may be ordered only with the applicable pricing setup');
 
 export type ServiceDefinition = z.infer<typeof ServiceDefinition>;
 
