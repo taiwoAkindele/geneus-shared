@@ -16,6 +16,7 @@ export * from './common.ts';
 export * from './careWorkflow.ts';
 export * from './documents.ts';
 export * from './billingCatalogue.ts';
+export * from './laboratoryCatalogue.ts';
 export * from './serviceAllocations.ts';
 import { ServiceChargeAllocation } from './serviceAllocations.ts';
 export * from './patientStatements.ts';
